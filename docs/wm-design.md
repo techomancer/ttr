@@ -337,7 +337,45 @@ client, and it creates two frame-drawing paths for no visible benefit.
 On exit or crash, clients survive: they are in our save-set and are reparented
 back to the root window.
 
-### 5.2 Wayland mode (`ttr-wayland`, later)
+Pitfalls of running the shell in the WM's own process, found the hard way:
+
+- **Our own dialogs are not redirected.** The X server only redirects map
+  requests from *other* clients, so the shell's Motif dialogs (Run, Exit)
+  never produce a MapRequest. The WM adopts any ordinary top-level window
+  when its MapNotify arrives on the root window.
+- **Event masks are per client.** On our own windows the mask is Xt's, so
+  the WM must add `PropertyChangeMask` to it, never replace it. Our own
+  windows also report their unmapping to themselves; the WM acts only on the
+  copy reported to the frame or root.
+- **Post Motif menus on button release.** A menu posted while the button is
+  still down closes again when it is released outside the menu. Menu actions
+  run from a zero-length timeout, after the menu has popped down and given
+  back its grab.
+- **Use real timestamps for focus.** Toolkits ignore `WM_TAKE_FOCUS` with
+  `CurrentTime`; use the last timestamp Xt processed.
+
+### 5.3 Configuration
+
+Settings are X resources, as in mwm (`~/.Xresources`, app-defaults, or
+`-xrm`). See [src/x11/config.h](../src/x11/config.h):
+
+| Resource | Values | Default |
+|---|---|---|
+| `Ttr*focusPolicy` (`-focus`) | `click`, `pointer` | `click` |
+| `Ttr*switchStyle` (`-switch`) | `windows` (Alt+Tab popup, most recently used first), `stack` (mwm circulation) | `windows` |
+| `Ttr*appSource` | `auto`, `desktop`, `toolchest` | `auto`: toolchest on IRIX, desktop elsewhere |
+| `Ttr*toolchestFiles` | colon-separated paths | `~/.auxchestrc:/usr/lib/X11/system.chestrc` |
+| `Ttr*terminal` | command prefix for `Terminal=true` entries | `xterm -e` |
+| `Ttr*clockFormat` | `strftime` format | `%H:%M` |
+
+The start menu reads applications through the `AppSource` interface
+([src/core/apps.h](../src/core/apps.h)): `DesktopAppSource` reads XDG
+`.desktop` files into Windows-like folders, and `ToolchestAppSource` reads
+4Dwm toolchest menus (mwm menu syntax, rooted at `Menu ToolChest`). The
+toolchest file locations and syntax details still need to be checked
+against a real IRIX system.
+
+### 5.4 Wayland mode (`ttr-wayland`, later)
 
 1. Bring up DRM/KMS, libinput and the scene graph, then create the Wayland
    socket.

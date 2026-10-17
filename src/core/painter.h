@@ -10,6 +10,8 @@
 
 namespace ttr {
 
+class Icon;
+
 class Painter {
 public:
     virtual ~Painter() {}
@@ -21,7 +23,19 @@ public:
     virtual int text_descent() = 0;
     /* y is the baseline. */
     virtual void text(int x, int y, const char* s, int len, const Rgb& c) = 0;
+
+    /* Draw 'ic' scaled to size x size, blended onto the solid color 'bg'. */
+    virtual void icon(const Icon& ic, int x, int y, int size,
+                      const Rgb& bg) = 0;
 };
+
+/* Draw 'ic', or a generic window glyph if it is null. */
+void draw_app_icon(Painter& p, const Icon* ic, int x, int y, int size,
+                   const ColorSet& cs);
+
+/* Longest prefix of s that fits in 'width' pixels, with "..." appended if
+ * it had to be cut. Writes into buf (size bytes); returns its length. */
+int fit_text(Painter& p, const char* s, int width, char* buf, int size);
 
 /* Motif-style bevel: top/left in 'top', bottom/right in 'bottom'. Pass the
  * colors swapped for a sunken bevel. */

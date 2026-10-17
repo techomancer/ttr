@@ -54,7 +54,8 @@ void WindowMenu::post(ToplevelId id, int x_root, int y_root,
     target_ = id;
     int i;
     for (i = 0; i < ACT_COUNT; i++)
-        XtSetSensitive(buttons_[i], action_allowed(allowed, (WmAction)i));
+        if (buttons_[i])
+            XtSetSensitive(buttons_[i], action_allowed(allowed, (WmAction)i));
 
     XButtonEvent bev;
     if (ev) {

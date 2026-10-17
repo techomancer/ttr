@@ -1,6 +1,7 @@
 #include "x11/wm.h"
 #include "x11/xpainter.h"
-#include "shell/winmenu.h"
+#include "core/icon.h"
+#include "core/switcher.h"
 
 #include <Xm/Xm.h>
 #include <Xm/DrawingA.h>
@@ -9,6 +10,7 @@
 #include <X11/cursorfont.h>
 #include <X11/keysym.h>
 
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
@@ -29,17 +31,11 @@ static const char* const k_title_fonts[] = {
     0
 };
 
-static const char* k_fallback_resources[] = {
-    "*background: #b8b8b8",
-    "*fontList: -*-helvetica-bold-r-normal--12-*-*-*-*-*-iso8859-1",
-    0
-};
-
 /* Event types the WM looks at; everything else goes straight to Xt. */
 static const int k_wm_events[] = {
-    MapRequest, ConfigureRequest, UnmapNotify, DestroyNotify,
+    MapRequest, MapNotify, ConfigureRequest, UnmapNotify, DestroyNotify,
     PropertyNotify, ClientMessage, ButtonPress, ButtonRelease,
-    MotionNotify, Expose, KeyPress, MappingNotify
+    MotionNotify, EnterNotify, Expose, KeyPress, KeyRelease, MappingNotify
 };
 
 static const unsigned int k_lock_masks[] = {
@@ -53,7 +49,15 @@ static const unsigned int k_binding_mods =
 /* Two clicks on a title bar within this many ms toggle maximize. */
 static const Time k_double_click_ms = 400;
 
-enum KeyCommand { KC_ACTION, KC_NEXT, KC_PREV, KC_MENU };
+enum KeyCommand {
+    KC_ACTION,      /* a WmAction on the active window */
+    KC_SWITCH,      /* Alt+Tab: Windows-style or stack, per switchStyle */
+    KC_SWITCH_BACK,
+    KC_NEXT,        /* circulate the stack */
+    KC_PREV,
+    KC_MENU,        /* window menu */
+    KC_START        /* start menu */
+};
 
 struct KeyBinding {
     const char* keysym;
@@ -62,7 +66,7 @@ struct KeyBinding {
     WmAction action;    /* for KC_ACTION */
 };
 
-/* mwm's default bindings, plus Alt+Tab. */
+/* mwm's default bindings, plus Alt+Tab and the Windows key. */
 static const KeyBinding k_keys[] = {
     { "F3", Mod1Mask, KC_ACTION, ACT_LOWER },
     { "F4", Mod1Mask, KC_ACTION, ACT_CLOSE },
@@ -71,31 +75,47 @@ static const KeyBinding k_keys[] = {
     { "F8", Mod1Mask, KC_ACTION, ACT_SIZE },
     { "F9", Mod1Mask, KC_ACTION, ACT_MINIMIZE },
     { "F10", Mod1Mask, KC_ACTION, ACT_MAXIMIZE },
-    { "Tab", Mod1Mask, KC_NEXT, ACT_COUNT },
-    { "Tab", Mod1Mask | ShiftMask, KC_PREV, ACT_COUNT },
+    { "Tab", Mod1Mask, KC_SWITCH, ACT_COUNT },
+    { "Tab", Mod1Mask | ShiftMask, KC_SWITCH_BACK, ACT_COUNT },
     { "Escape", Mod1Mask, KC_NEXT, ACT_COUNT },
     { "Escape", Mod1Mask | ShiftMask, KC_PREV, ACT_COUNT },
     { "Escape", ShiftMask, KC_MENU, ACT_COUNT },
-    { "space", Mod1Mask, KC_MENU, ACT_COUNT }
+    { "space", Mod1Mask, KC_MENU, ACT_COUNT },
+    { "Escape", ControlMask, KC_START, ACT_COUNT },
+    { "Super_L", 0, KC_START, ACT_COUNT },
+    { "Super_R", 0, KC_START, ACT_COUNT }
 };
 static const int k_nkeys = (int)(sizeof(k_keys) / sizeof(k_keys[0]));
 static KeySym g_key_syms[sizeof(k_keys) / sizeof(k_keys[0])];
 
+static bool is_alt_key(KeySym ks)
+{
+    return ks == XK_Alt_L || ks == XK_Alt_R || ks == XK_Meta_L ||
+           ks == XK_Meta_R;
+}
+
 Client::Client()
     : win(None), frame(None), transient_for(None), x(0), y(0), w(1), h(1),
-      old_bw(0), gravity(GRAV_NW), type(WT_NORMAL),
+      old_bw(0), gravity(GRAV_NW), icon(0), type(WT_NORMAL),
       actions(all_actions()), accepts_input(true), take_focus(false),
       delete_window(false), maximized(false), fullscreen(false),
-      ignore_unmap(0), pressed(FP_NONE), cursor_part(FP_NONE)
+      minimized(false), listed(false), ignore_unmap(0), pressed(FP_NONE),
+      cursor_part(FP_NONE)
 {
 }
 
+Client::~Client()
+{
+    delete icon;
+}
+
 Wm::Wm()
-    : app_(0), toplevel_(0), dpy_(0), screen_(0), root_(None),
-      check_win_(None), screen_w_(0), screen_h_(0), running_(true),
-      painter_(0), menu_(0), cursor_normal_(None), cursor_move_(None),
-      active_(0), place_x_(0), place_y_(0), last_click_time_(0),
-      last_click_win_(None)
+    : app_(0), toplevel_(0), menu_parent_(0), dpy_(0), screen_(0),
+      root_(None), check_win_(None), screen_w_(0), screen_h_(0),
+      running_(true), restart_(false), painter_(0), shell_(0), panel_(None),
+      cursor_normal_(None), cursor_move_(None), active_(0), place_x_(0),
+      place_y_(0), last_click_time_(0), last_click_win_(None),
+      switching_(false), switch_win_(None), switch_sel_(0)
 {
     signal_pipe_[0] = signal_pipe_[1] = -1;
     memset(&drag_, 0, sizeof(drag_));
@@ -105,7 +125,6 @@ Wm::Wm()
 
 Wm::~Wm()
 {
-    delete menu_;
     delete painter_;
     g_wm = 0;
 }
@@ -122,16 +141,25 @@ static void on_signal(int sig)
     }
 }
 
+static void close_on_exec(int fd)
+{
+    fcntl(fd, F_SETFD, FD_CLOEXEC);
+}
+
 bool Wm::init(int* argc, char** argv)
 {
-    toplevel_ = XtOpenApplication(&app_, "Ttr", 0, 0, argc, argv,
-                                  (String*)k_fallback_resources,
+    toplevel_ = XtOpenApplication(&app_, "Ttr", config_options(),
+                                  (Cardinal)config_option_count(), argc, argv,
+                                  config_fallback_resources(),
                                   applicationShellWidgetClass, 0, 0);
     dpy_ = XtDisplay(toplevel_);
     screen_ = DefaultScreen(dpy_);
     root_ = RootWindow(dpy_, screen_);
     screen_w_ = DisplayWidth(dpy_, screen_);
     screen_h_ = DisplayHeight(dpy_, screen_);
+    work_ = Rect(0, 0, screen_w_, screen_h_);
+    close_on_exec(ConnectionNumber(dpy_));
+    read_config(toplevel_, &config_);
 
     /* The application shell only parents our Motif popups; it is never
      * shown. Override-redirect so it can never reach our own MapRequest. */
@@ -142,8 +170,8 @@ bool Wm::init(int* argc, char** argv)
     XtSetArg(args[n], XmNwidth, 1); n++;
     XtSetArg(args[n], XmNheight, 1); n++;
     XtSetValues(toplevel_, args, n);
-    Widget area = XmCreateDrawingArea(toplevel_, (char*)"menuParent", 0, 0);
-    XtManageChild(area);
+    menu_parent_ = XmCreateDrawingArea(toplevel_, (char*)"shell", 0, 0);
+    XtManageChild(menu_parent_);
     XtRealizeWidget(toplevel_);
 
     /* Only one client can select SubstructureRedirect on the root. */
@@ -179,9 +207,18 @@ bool Wm::init(int* argc, char** argv)
         cursor_border_[i] = XCreateFontCursor(dpy_, shapes[i]);
     XDefineCursor(dpy_, root_, cursor_normal_);
 
-    menu_ = new WindowMenu(area, this);
+    XSetWindowAttributes sa;
+    sa.override_redirect = True;
+    sa.save_under = True;
+    sa.event_mask = ExposureMask;
+    switch_win_ = XCreateWindow(dpy_, root_, 0, 0, 1, 1, 0, CopyFromParent,
+                                InputOutput, CopyFromParent,
+                                CWOverrideRedirect | CWSaveUnder |
+                                CWEventMask, &sa);
 
     if (pipe(signal_pipe_) == 0) {
+        close_on_exec(signal_pipe_[0]);
+        close_on_exec(signal_pipe_[1]);
         g_signal_fd = signal_pipe_[1];
         XtAppAddInput(app_, signal_pipe_[0], (XtPointer)XtInputReadMask,
                       on_signal_input, (XtPointer)this);
@@ -196,17 +233,34 @@ bool Wm::init(int* argc, char** argv)
 
     setup_ewmh();
     grab_keys();
-    adopt_existing();
     return true;
+}
+
+void Wm::start()
+{
+    adopt_existing();
 }
 
 int Wm::run()
 {
     while (running_)
         XtAppProcessEvent(app_, XtIMAll);
+    if (shell_)
+        shell_->shutdown();
     restore_all();
     XSync(dpy_, False);
     return 0;
+}
+
+void Wm::quit()
+{
+    running_ = false;
+}
+
+void Wm::restart()
+{
+    restart_ = true;
+    running_ = false;
 }
 
 void Wm::on_signal_input(XtPointer closure, int* fd, XtInputId* id)
@@ -235,9 +289,11 @@ void Wm::setup_ewmh()
         atoms_.net_wm_name, atoms_.net_client_list,
         atoms_.net_client_list_stacking, atoms_.net_active_window,
         atoms_.net_close_window, atoms_.net_frame_extents,
+        atoms_.net_workarea, atoms_.net_wm_icon,
         atoms_.net_wm_state, atoms_.net_wm_state_fullscreen,
         atoms_.net_wm_state_maximized_vert,
-        atoms_.net_wm_state_maximized_horz, atoms_.net_wm_window_type,
+        atoms_.net_wm_state_maximized_horz, atoms_.net_wm_state_hidden,
+        atoms_.net_wm_window_type,
         atoms_.net_type_desktop, atoms_.net_type_dock,
         atoms_.net_type_toolbar, atoms_.net_type_menu,
         atoms_.net_type_utility, atoms_.net_type_splash,
@@ -248,6 +304,7 @@ void Wm::setup_ewmh()
                     PropModeReplace, (unsigned char*)supported,
                     (int)(sizeof(supported) / sizeof(supported[0])));
     update_client_lists();
+    update_workarea();
 }
 
 void Wm::grab_keys()
@@ -265,6 +322,23 @@ void Wm::grab_keys()
     }
 }
 
+long Wm::get_wm_state(Window w)
+{
+    Atom type;
+    int format;
+    unsigned long n = 0, after;
+    unsigned char* data = 0;
+    long state = -1;
+    if (XGetWindowProperty(dpy_, w, atoms_.wm_state, 0, 2, False,
+                           atoms_.wm_state, &type, &format, &n, &after,
+                           &data) == Success && data) {
+        if (format == 32 && n >= 1)
+            state = ((long*)data)[0];
+        XFree(data);
+    }
+    return state;
+}
+
 void Wm::adopt_existing()
 {
     Window root_ret, parent_ret;
@@ -274,14 +348,17 @@ void Wm::adopt_existing()
     XGrabServer(dpy_);
     if (XQueryTree(dpy_, root_, &root_ret, &parent_ret, &children, &count)) {
         for (i = 0; i < count; i++) {
+            Window w = children[i];
             XWindowAttributes attr;
-            if (!XGetWindowAttributes(dpy_, children[i], &attr))
+            if (!XGetWindowAttributes(dpy_, w, &attr))
                 continue;
-            if (attr.override_redirect || attr.map_state != IsViewable)
+            if (attr.override_redirect || w == XtWindow(toplevel_) ||
+                w == check_win_ || w == switch_win_)
                 continue;
-            if (children[i] == XtWindow(toplevel_))
-                continue;
-            manage(children[i], true);
+            if (attr.map_state == IsViewable)
+                manage(w, MANAGE_MAPPED);
+            else if (get_wm_state(w) == IconicState)
+                manage(w, MANAGE_ICONIC);   /* minimized before a restart */
         }
         if (children)
             XFree(children);
@@ -300,12 +377,16 @@ void Wm::restore_all()
         XReparentWindow(dpy_, c->win, root_, c->x - dx, c->y - dy);
         XSetWindowBorderWidth(dpy_, c->win, c->old_bw);
         XRemoveFromSaveSet(dpy_, c->win);
-        XMapWindow(dpy_, c->win);
+        if (c->minimized)
+            set_wm_state(c->win, IconicState);  /* adopted again on restart */
+        else
+            XMapWindow(dpy_, c->win);
         XDestroyWindow(dpy_, c->frame);
         delete c;
     }
     clients_.clear();
     mapped_.clear();
+    mru_.clear();
     active_ = 0;
     XSetInputFocus(dpy_, PointerRoot, RevertToPointerRoot, CurrentTime);
 
@@ -314,7 +395,9 @@ void Wm::restore_all()
     XDeleteProperty(dpy_, root_, atoms_.net_active_window);
     XDeleteProperty(dpy_, root_, atoms_.net_client_list);
     XDeleteProperty(dpy_, root_, atoms_.net_client_list_stacking);
+    XDeleteProperty(dpy_, root_, atoms_.net_workarea);
     XDestroyWindow(dpy_, check_win_);
+    XDestroyWindow(dpy_, switch_win_);
 }
 
 int Wm::on_startup_error(Display* dpy, XErrorEvent* ev)
@@ -354,6 +437,8 @@ bool Wm::handle(XEvent* ev)
     case MapRequest:
         on_map_request(&ev->xmaprequest);
         return true;
+    case MapNotify:
+        return on_map_notify(&ev->xmap);
     case ConfigureRequest:
         on_configure_request(&ev->xconfigurerequest);
         return true;
@@ -371,10 +456,14 @@ bool Wm::handle(XEvent* ev)
         return on_button_release(&ev->xbutton);
     case MotionNotify:
         return on_motion(&ev->xmotion);
+    case EnterNotify:
+        return on_enter(&ev->xcrossing);
     case Expose:
         return on_expose(&ev->xexpose);
     case KeyPress:
         return on_key_press(&ev->xkey);
+    case KeyRelease:
+        return on_key_release(&ev->xkey);
     case MappingNotify:
         on_mapping(&ev->xmapping);
         return false;   /* Xt needs to see it too */
@@ -386,14 +475,26 @@ void Wm::on_map_request(XMapRequestEvent* ev)
 {
     Client* c = find_client(ev->window);
     if (c) {
-        XMapWindow(dpy_, c->win);
-        XMapWindow(dpy_, c->frame);
-        set_wm_state(c->win, NormalState);
-        raise(c);
-        focus(c, CurrentTime);
+        set_minimized(c, false);
+        activate(c, CurrentTime);
         return;
     }
-    manage(ev->window, false);
+    manage(ev->window, MANAGE_NEW);
+}
+
+/* Our own top-level windows (the shell's Motif dialogs) are not
+ * redirected to us, because the X server only redirects other clients'
+ * requests. Pick them up when they appear. */
+bool Wm::on_map_notify(XMapEvent* ev)
+{
+    if (ev->event != root_ || ev->override_redirect)
+        return false;
+    Window w = ev->window;
+    if (find_client(w) || find_frame(w) || w == check_win_ ||
+        w == switch_win_ || w == panel_ || w == XtWindow(toplevel_))
+        return false;
+    manage(w, MANAGE_OWN);
+    return false;   /* Xt tracks mapping of its own shells */
 }
 
 void Wm::on_configure_request(XConfigureRequestEvent* ev)
@@ -426,17 +527,23 @@ void Wm::on_configure_request(XConfigureRequestEvent* ev)
         c->size.apply(&w, &h);
         set_geometry(c, x, y, w, h);
     }
-    if ((ev->value_mask & CWStackMode) && ev->detail == Above)
+    if ((ev->value_mask & CWStackMode) && ev->detail == Above &&
+        !c->minimized)
         raise(c);
     send_configure(c);
 }
 
 bool Wm::on_unmap(XUnmapEvent* ev)
 {
+    /* Our own shell windows also report their unmapping to themselves;
+     * that copy belongs to Xt. We act on the one reported to the frame
+     * (or root), and on the synthetic ICCCM withdrawal sent to root. */
+    if (ev->event == ev->window && !ev->send_event)
+        return false;
     Client* c = find_client(ev->window);
     if (!c)
         return false;
-    if (c->ignore_unmap > 0) {
+    if (c->ignore_unmap > 0 && !ev->send_event) {
         c->ignore_unmap--;
         return true;
     }
@@ -446,6 +553,8 @@ bool Wm::on_unmap(XUnmapEvent* ev)
 
 bool Wm::on_destroy(XDestroyWindowEvent* ev)
 {
+    if (ev->event == ev->window)
+        return false;   /* see on_unmap */
     Client* c = find_client(ev->window);
     if (!c)
         return false;
@@ -461,10 +570,24 @@ bool Wm::on_property(XPropertyEvent* ev)
     if (ev->atom == XA_WM_NAME || ev->atom == atoms_.net_wm_name) {
         c->title = read_title(dpy_, atoms_, c->win);
         paint(c);
+        notify(c);
+        if (switching_)
+            paint_switch();
     } else if (ev->atom == XA_WM_NORMAL_HINTS) {
         read_size_hints(c);
     } else if (ev->atom == XA_WM_HINTS) {
         read_wm_hints(c);
+        if (!c->icon) {     /* an icon pixmap may have been added */
+            c->icon = read_icon(dpy_, atoms_, c->win);
+            if (c->icon)
+                notify(c);
+        }
+    } else if (ev->atom == atoms_.net_wm_icon) {
+        delete c->icon;
+        c->icon = read_icon(dpy_, atoms_, c->win);
+        notify(c);
+        if (switching_)
+            paint_switch();
     } else if (ev->atom == atoms_.wm_protocols) {
         read_protocols(c);
     } else if (ev->atom == atoms_.motif_wm_hints) {
@@ -482,11 +605,14 @@ bool Wm::on_client_message(XClientMessageEvent* ev)
         return false;
 
     if (ev->message_type == atoms_.net_active_window) {
-        raise(c);
-        focus(c, ev->data.l[1] ? (Time)ev->data.l[1] : CurrentTime);
+        activate(c, ev->data.l[1] ? (Time)ev->data.l[1] : CurrentTime);
     } else if (ev->message_type == atoms_.net_close_window) {
         if (action_allowed(c->actions, ACT_CLOSE))
             close(c);
+    } else if (ev->message_type == atoms_.wm_change_state) {
+        if (ev->data.l[0] == IconicState &&
+            action_allowed(allowed(c), ACT_MINIMIZE))
+            set_minimized(c, true);
     } else if (ev->message_type == atoms_.net_wm_state) {
         /* data.l[0]: 0 remove, 1 add, 2 toggle; l[1], l[2]: properties.
          * Maximized vert and horz are only supported together. */
@@ -508,7 +634,6 @@ bool Wm::on_client_message(XClientMessageEvent* ev)
             set_maximized(c, op == 1 ? true : op == 0 ? false
                                                       : !c->maximized);
     }
-    /* WM_CHANGE_STATE to IconicState needs the taskbar; ignored for now. */
     return true;
 }
 
@@ -519,6 +644,8 @@ bool Wm::on_button_press(XButtonEvent* ev)
             end_drag(ev->time, false);
         return true;
     }
+    if (switching_)
+        return true;
 
     Client* c = find_frame(ev->window);
     if (c) {
@@ -528,15 +655,18 @@ bool Wm::on_button_press(XButtonEvent* ev)
         raise(c);
         focus(c, ev->time);
 
+        /* Menus are posted on release: a Motif menu posted while the
+         * button is still down closes again when it is released. */
         if (ev->button == Button3 && part == FP_TITLE) {
-            menu_->post(c->win, ev->x_root, ev->y_root, ev, ev->time, ok);
+            c->pressed = FP_TITLE;
             return true;
         }
         if (ev->button != Button1)
             return true;
 
         if (part == FP_MENU) {
-            post_menu(c, ev, ev->time);
+            c->pressed = FP_MENU;
+            paint(c);
         } else if (part == FP_TITLE) {
             bool dbl = last_click_win_ == c->win &&
                        ev->time - last_click_time_ < k_double_click_ms;
@@ -565,7 +695,7 @@ bool Wm::on_button_press(XButtonEvent* ev)
 
     c = find_client(ev->window);
     if (c) {
-        /* Passive grab: click-to-focus on unfocused windows, Alt+drag. */
+        /* Passive grab: click to focus (and raise), Alt+drag to move. */
         raise(c);
         focus(c, ev->time);
         if (ev->button == Button1 && (ev->state & Mod1Mask)) {
@@ -597,13 +727,20 @@ bool Wm::on_button_release(XButtonEvent* ev)
         FramePart pressed = c->pressed;
         c->pressed = FP_NONE;
         paint(c);
-        if (part == pressed && pressed == FP_MAXIMIZE) {
+        if (part == pressed && pressed == FP_MENU) {
+            post_menu_at_button(c, ev->time);
+        } else if (part == pressed && pressed == FP_TITLE &&
+                   ev->button == Button3) {
+            post_menu(c, ev->x_root, ev->y_root, ev->time);
+        } else if (part == pressed && pressed == FP_MAXIMIZE) {
             if (c->maximized)
                 set_maximized(c, false);
             else if (action_allowed(allowed(c), ACT_MAXIMIZE))
                 set_maximized(c, true);
+        } else if (part == pressed && pressed == FP_MINIMIZE &&
+                   action_allowed(allowed(c), ACT_MINIMIZE)) {
+            set_minimized(c, true);
         }
-        /* FP_MINIMIZE: needs the taskbar. */
     }
     return true;
 }
@@ -635,8 +772,27 @@ bool Wm::on_motion(XMotionEvent* ev)
     return true;
 }
 
+/* focusPolicy: pointer. Focus follows the mouse into a window and stays
+ * there when it moves onto the root window. */
+bool Wm::on_enter(XCrossingEvent* ev)
+{
+    Client* c = find_frame(ev->window);
+    if (!c)
+        return false;
+    if (config_.focus == Config::FOCUS_POINTER && ev->mode == NotifyNormal &&
+        ev->detail != NotifyInferior && c != active_ && !switching_ &&
+        drag_.mode == DRAG_NONE && cycles(c))
+        focus(c, ev->time);
+    return true;
+}
+
 bool Wm::on_expose(XExposeEvent* ev)
 {
+    if (ev->window == switch_win_) {
+        if (ev->count == 0)
+            paint_switch();
+        return true;
+    }
     Client* c = find_frame(ev->window);
     if (!c)
         return false;
@@ -648,6 +804,16 @@ bool Wm::on_expose(XExposeEvent* ev)
 bool Wm::on_key_press(XKeyEvent* ev)
 {
     KeySym ks = XLookupKeysym(ev, 0);
+
+    if (switching_) {
+        if (ks == XK_Tab)
+            step_switch((ev->state & ShiftMask) ? -1 : 1);
+        else if (ks == XK_Escape)
+            end_switch(false, ev->time);
+        else if (ks == XK_Return || ks == XK_KP_Enter)
+            end_switch(true, ev->time);
+        return true;
+    }
 
     if (drag_.mode != DRAG_NONE) {
         int step = (ev->state & ControlMask) ? 1 : 10;
@@ -676,6 +842,7 @@ bool Wm::on_key_press(XKeyEvent* ev)
         return false;
 
     unsigned int mods = ev->state & k_binding_mods;
+    bool windows = config_.switch_style == Config::SWITCH_WINDOWS;
     int i;
     for (i = 0; i < k_nkeys; i++) {
         if (g_key_syms[i] != ks || k_keys[i].mods != mods)
@@ -686,6 +853,18 @@ bool Wm::on_key_press(XKeyEvent* ev)
                                           k_keys[i].action))
                 request(active_->win, k_keys[i].action);
             break;
+        case KC_SWITCH:
+            if (windows)
+                begin_switch(true, ev->time);
+            else
+                cycle(true, ev->time);
+            break;
+        case KC_SWITCH_BACK:
+            if (windows)
+                begin_switch(false, ev->time);
+            else
+                cycle(false, ev->time);
+            break;
         case KC_NEXT:
             cycle(true, ev->time);
             break;
@@ -694,11 +873,24 @@ bool Wm::on_key_press(XKeyEvent* ev)
             break;
         case KC_MENU:
             if (active_)
-                post_menu(active_, 0, ev->time);
+                post_menu_at_button(active_, ev->time);
+            break;
+        case KC_START:
+            if (shell_)
+                shell_->show_start_menu(ev->time);
             break;
         }
         return true;
     }
+    return true;
+}
+
+bool Wm::on_key_release(XKeyEvent* ev)
+{
+    if (!switching_)
+        return false;
+    if (is_alt_key(XLookupKeysym(ev, 0)))
+        end_switch(true, ev->time);
     return true;
 }
 
@@ -713,13 +905,15 @@ void Wm::on_mapping(XMappingEvent* ev)
 /* ------------------------------------------------------------------ */
 /* Managing clients                                                    */
 
-void Wm::manage(Window w, bool already_mapped)
+void Wm::manage(Window w, ManageMode mode)
 {
     XWindowAttributes attr;
     if (!XGetWindowAttributes(dpy_, w, &attr) || attr.override_redirect)
         return;
 
-    XSelectInput(dpy_, w, PropertyChangeMask);
+    /* Event masks are per client; for our own (shell) windows this one is
+     * Xt's, so add to it rather than replace it. */
+    XSelectInput(dpy_, w, attr.your_event_mask | PropertyChangeMask);
 
     Client* c = new Client;
     c->win = w;
@@ -730,6 +924,7 @@ void Wm::manage(Window w, bool already_mapped)
         c->transient_for = None;
     c->type = read_window_type(dpy_, atoms_, w);
     c->title = read_title(dpy_, atoms_, w);
+    c->icon = read_icon(dpy_, atoms_, w);
     read_decor(c);
     read_size_hints(c);
     read_wm_hints(c);
@@ -737,9 +932,9 @@ void Wm::manage(Window w, bool already_mapped)
 
     FrameExtents e = extents_of(c);
 
-    /* Fit on screen, frame included. */
-    int max_w = screen_w_ - e.width();
-    int max_h = screen_h_ - e.height();
+    /* Fit in the work area, frame included. */
+    int max_w = work_.w - e.width();
+    int max_h = work_.h - e.height();
     if (c->w > max_w) c->w = max_w;
     if (c->h > max_h) c->h = max_h;
     c->size.apply(&c->w, &c->h);
@@ -753,27 +948,38 @@ void Wm::manage(Window w, bool already_mapped)
                                               : 0;
     int fw = c->w + e.width(), fh = c->h + e.height();
 
-    if (already_mapped || positioned) {
+    /* Our own dialogs position themselves relative to the hidden 1x1
+     * shell; place them like new windows instead. */
+    if (mode == MANAGE_OWN)
+        positioned = false;
+    if (mode == MANAGE_MAPPED || mode == MANAGE_ICONIC || positioned) {
         int dx, dy;
         gravity_offset(c->gravity, e, c->old_bw, &dx, &dy);
         c->x = attr.x + dx;
         c->y = attr.y + dy;
-    } else if (parent) {
-        /* Center over the parent, but keep the title bar on screen. */
-        c->x = parent->x + (frame_w(parent) - fw) / 2;
-        c->y = parent->y + (frame_h(parent) - fh) / 2;
-        if (c->x + fw > screen_w_) c->x = screen_w_ - fw;
-        if (c->y + fh > screen_h_) c->y = screen_h_ - fh;
-        if (c->x < 0) c->x = 0;
-        if (c->y < 0) c->y = 0;
+    } else if (parent || c->transient_for != None) {
+        /* Center over the parent (or the screen, for dialogs of windows
+         * we do not manage), keeping the title bar on screen. */
+        if (parent) {
+            c->x = parent->x + (frame_w(parent) - fw) / 2;
+            c->y = parent->y + (frame_h(parent) - fh) / 2;
+        } else {
+            c->x = work_.x + (work_.w - fw) / 2;
+            c->y = work_.y + (work_.h - fh) / 2;
+        }
+        if (c->x + fw > work_.x + work_.w) c->x = work_.x + work_.w - fw;
+        if (c->y + fh > work_.y + work_.h) c->y = work_.y + work_.h - fh;
+        if (c->x < work_.x) c->x = work_.x;
+        if (c->y < work_.y) c->y = work_.y;
     } else {
         /* Cascade. */
         place_x_ += 24;
         place_y_ += 24;
-        if (place_x_ + fw > screen_w_ || place_y_ + fh > screen_h_)
+        if (place_x_ + fw > work_.x + work_.w ||
+            place_y_ + fh > work_.y + work_.h)
             place_x_ = place_y_ = 24;
-        c->x = place_x_;
-        c->y = place_y_;
+        c->x = work_.x + place_x_;
+        c->y = work_.y + place_y_;
     }
     c->saved = Rect(c->x, c->y, c->w, c->h);
 
@@ -781,7 +987,7 @@ void Wm::manage(Window w, bool already_mapped)
     sa.background_pixel = painter_->pixel(theme_.inactive.bg);
     sa.event_mask = SubstructureRedirectMask | SubstructureNotifyMask |
                     ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
-                    ExposureMask;
+                    EnterWindowMask | ExposureMask;
     sa.cursor = cursor_normal_;
     c->frame = XCreateWindow(dpy_, root_, c->x, c->y, fw, fh, 0,
                              CopyFromParent, InputOutput, CopyFromParent,
@@ -789,18 +995,38 @@ void Wm::manage(Window w, bool already_mapped)
 
     XAddToSaveSet(dpy_, w);
     XSetWindowBorderWidth(dpy_, w, 0);
-    if (already_mapped)
+    if (mode == MANAGE_MAPPED || mode == MANAGE_OWN)
         c->ignore_unmap++;  /* reparenting a mapped window unmaps it */
     XReparentWindow(dpy_, w, c->frame, e.left, e.top);
     XResizeWindow(dpy_, w, c->w, c->h);
 
     clients_.push_back(c);
     mapped_.push_back(c);
+    mru_.push_back(c);
     update_grabs(c, false);
 
-    XMapWindow(dpy_, w);
-    XMapWindow(dpy_, c->frame);
-    set_wm_state(w, NormalState);
+    /* Start minimized if asked (WM_HINTS) or if it was minimized when the
+     * previous window manager exited. */
+    bool iconic = mode == MANAGE_ICONIC;
+    if (mode == MANAGE_NEW) {
+        XWMHints* wh = XGetWMHints(dpy_, w);
+        if (wh) {
+            iconic = (wh->flags & StateHint) &&
+                     wh->initial_state == IconicState;
+            XFree(wh);
+        }
+    }
+    if (iconic && !on_taskbar(c))
+        iconic = false;     /* nowhere to restore it from */
+
+    if (iconic) {
+        c->minimized = true;
+        set_wm_state(w, IconicState);
+    } else {
+        XMapWindow(dpy_, w);
+        XMapWindow(dpy_, c->frame);
+        set_wm_state(w, NormalState);
+    }
 
     bool fs = false, max = false;
     read_net_wm_state(dpy_, atoms_, w, &fs, &max);
@@ -810,11 +1036,12 @@ void Wm::manage(Window w, bool already_mapped)
 
     if (c->type == WT_DESKTOP)
         lower(c);
-    else
+    else if (!iconic)
         raise(c);
     update_client_lists();
 
-    if (cycles(c) || c->type == WT_SPLASH)
+    notify(c);
+    if (!iconic && (cycles(c) || c->type == WT_SPLASH))
         focus(c, CurrentTime);
 }
 
@@ -844,15 +1071,30 @@ void Wm::unmanage(Client* c, bool destroyed)
     i = mapped_.find(c);
     if (i >= 0)
         mapped_.remove_at(i);
+    i = mru_.find(c);
+    if (i >= 0)
+        mru_.remove_at(i);
     update_client_lists();
+    if (c->listed && shell_)
+        shell_->task_removed(c->win);
+
+    if (switching_) {
+        i = switch_list_.find(c);
+        if (i >= 0) {
+            switch_list_.remove_at(i);
+            if (switch_list_.empty())
+                end_switch(false, CurrentTime);
+            else {
+                if (switch_sel_ >= switch_list_.size())
+                    switch_sel_ = 0;
+                paint_switch();
+            }
+        }
+    }
 
     if (active_ == c) {
         active_ = 0;
-        Client* next = 0;
-        for (i = clients_.size() - 1; i >= 0 && !next; i--)
-            if (cycles(clients_[i]))
-                next = clients_[i];
-        focus(next, CurrentTime);
+        focus(next_focus(c), CurrentTime);
     }
     delete c;
 }
@@ -996,7 +1238,8 @@ int Wm::frame_h(const Client* c) const
 ActionMask Wm::allowed(const Client* c) const
 {
     ActionMask m = c->actions;
-    m &= ~(1u << ACT_MINIMIZE);     /* needs the taskbar */
+    if (!shell_ || !on_taskbar(c))
+        m &= ~(1u << ACT_MINIMIZE);     /* nowhere to restore it from */
     if (c->maximized || c->fullscreen) {
         m &= ~((1u << ACT_MOVE) | (1u << ACT_SIZE) | (1u << ACT_MAXIMIZE));
         m |= 1u << ACT_RESTORE;
@@ -1012,11 +1255,46 @@ bool Wm::cycles(const Client* c) const
     return c->type == WT_NORMAL || c->type == WT_DIALOG;
 }
 
+/* Top-level application windows get taskbar buttons; their transients
+ * share the owner's. */
+bool Wm::on_taskbar(const Client* c) const
+{
+    return cycles(c) && c->transient_for == None;
+}
+
+/* The window whose taskbar button stands for c. */
+Client* Wm::owner_of(Client* c)
+{
+    int depth;
+    for (depth = 0; c && !c->listed && c->transient_for != None && depth < 8;
+         depth++)
+        c = find_client(c->transient_for);
+    return c && c->listed ? c : 0;
+}
+
+/* Most recently focused window that can take focus now. */
+Client* Wm::next_focus(Client* except)
+{
+    int i;
+    for (i = 0; i < mru_.size(); i++) {
+        Client* c = mru_[i];
+        if (c != except && !c->minimized && cycles(c))
+            return c;
+    }
+    return 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* Focus, stacking, actions                                            */
 
 void Wm::focus(Client* c, Time t)
 {
+    if (c && c->minimized)
+        return;
+    /* Toolkits (Motif among them) ignore WM_TAKE_FOCUS without a real
+     * timestamp, so use the last one the server sent us. */
+    if (t == CurrentTime)
+        t = XtLastTimestampProcessed(dpy_);
     Client* old = active_;
     active_ = c;
     if (old && old != c) {
@@ -1026,10 +1304,25 @@ void Wm::focus(Client* c, Time t)
     Window w = c ? c->win : None;
     XChangeProperty(dpy_, root_, atoms_.net_active_window, XA_WINDOW, 32,
                     PropModeReplace, (unsigned char*)&w, 1);
+    if (shell_) {
+        Client* owner = c ? owner_of(c) : 0;
+        shell_->active_changed(owner ? owner->win : 0);
+    }
     if (!c) {
         XSetInputFocus(dpy_, PointerRoot, RevertToPointerRoot, t);
         return;
     }
+
+    int i = mru_.find(c);
+    if (i > 0) {
+        mru_.remove_at(i);
+        mru_.push_back(c);
+        int j;
+        for (j = mru_.size() - 1; j > 0; j--)
+            mru_[j] = mru_[j - 1];
+        mru_[0] = c;
+    }
+
     update_grabs(c, true);
     if (c->accepts_input)
         XSetInputFocus(dpy_, c->win, RevertToPointerRoot, t);
@@ -1038,8 +1331,16 @@ void Wm::focus(Client* c, Time t)
     paint(c);
 }
 
+void Wm::activate(Client* c, Time t)
+{
+    set_minimized(c, false);
+    raise(c);
+    focus(c, t);
+}
+
 /* Raise a window, then its transients above it. Desktop windows stay at
- * the bottom. */
+ * the bottom; the panel stays on top unless a fullscreen window covers
+ * it. */
 void Wm::raise(Client* c)
 {
     if (c->type == WT_DESKTOP)
@@ -1057,6 +1358,9 @@ void Wm::raise(Client* c)
             transients.push_back(clients_[i]);
     for (i = 0; i < transients.size(); i++)
         raise(transients[i]);
+
+    if (panel_ != None && !c->fullscreen)
+        XRaiseWindow(dpy_, panel_);
     update_client_lists();
 }
 
@@ -1093,7 +1397,7 @@ void Wm::cycle(bool forward, Time t)
     Client* top = 0;
     int i, n = 0;
     for (i = 0; i < clients_.size(); i++) {
-        if (!cycles(clients_[i]))
+        if (!cycles(clients_[i]) || clients_[i]->minimized)
             continue;
         if (!bottom)
             bottom = clients_[i];
@@ -1111,20 +1415,22 @@ void Wm::cycle(bool forward, Time t)
     if (n > 1)
         lower(top);
     for (i = clients_.size() - 1; i >= 0; i--) {
-        if (cycles(clients_[i])) {
+        if (cycles(clients_[i]) && !clients_[i]->minimized) {
             focus(clients_[i], t);
             break;
         }
     }
 }
 
-/* Unfocused windows get a synchronous grab on every button so the first
- * click focuses them (and is then replayed). All windows get Alt+Button1
- * for moving. Lock and NumLock variants are grabbed too. */
+/* With click-to-focus, unfocused windows get a synchronous grab on every
+ * button so the first click focuses them (and is then replayed). With
+ * pointer focus every window keeps it, so a click still raises. All
+ * windows get Alt+Button1 for moving. Lock and NumLock variants are
+ * grabbed too. */
 void Wm::update_grabs(Client* c, bool focused)
 {
     XUngrabButton(dpy_, AnyButton, AnyModifier, c->win);
-    if (!focused)
+    if (!focused || config_.focus == Config::FOCUS_POINTER)
         XGrabButton(dpy_, AnyButton, AnyModifier, c->win, False,
                     ButtonPressMask, GrabModeSync, GrabModeAsync, None, None);
     int i;
@@ -1155,22 +1461,24 @@ void Wm::close(Client* c)
         XKillClient(dpy_, c->win);
 }
 
+void Wm::post_menu(Client* c, int x, int y, Time t)
+{
+    if (shell_)
+        shell_->show_window_menu(c->win, x, y, t, allowed(c));
+}
+
 /* Post the window menu below the menu button, or at the frame's top left
  * corner if the window has none. */
-void Wm::post_menu(Client* c, const XButtonEvent* ev, Time t)
+void Wm::post_menu_at_button(Client* c, Time t)
 {
     FrameDecor d = decor_of(c);
     Rect r = theme_.menu_rect(d, frame_w(c));
-    int x, y;
     if (r.w > 0) {
-        x = c->x + r.x;
-        y = c->y + r.y + r.h;
+        post_menu(c, c->x + r.x, c->y + r.y + r.h, t);
     } else {
         FrameExtents e = extents_of(c);
-        x = c->x + e.left;
-        y = c->y + e.top;
+        post_menu(c, c->x + e.left, c->y + e.top, t);
     }
-    menu_->post(c->win, x, y, ev, t, allowed(c));
 }
 
 void Wm::request(ToplevelId id, WmAction action)
@@ -1192,6 +1500,12 @@ void Wm::request(ToplevelId id, WmAction action)
     case ACT_MAXIMIZE:
         set_maximized(c, true);
         break;
+    case ACT_MINIMIZE:
+        set_minimized(c, true);
+        break;
+    case ACT_ACTIVATE:
+        activate(c, CurrentTime);
+        break;
     case ACT_MOVE: {
         Rect t = theme_.title_rect(decor_of(c), fw);
         int x = c->x + (t.w > 0 ? t.x + t.w / 2 : fw / 2);
@@ -1212,10 +1526,26 @@ void Wm::request(ToplevelId id, WmAction action)
     case ACT_CLOSE:
         close(c);
         break;
-    case ACT_MINIMIZE:
     case ACT_COUNT:
         break;
     }
+}
+
+void Wm::set_panel(unsigned long window, const Rect& r)
+{
+    panel_ = (Window)window;
+    /* Only a panel along the top or bottom edge reserves space. */
+    if (r.y + r.h >= screen_h_)
+        work_ = Rect(0, 0, screen_w_, r.y);
+    else if (r.y <= 0)
+        work_ = Rect(0, r.h, screen_w_, screen_h_ - r.h);
+    update_workarea();
+    XRaiseWindow(dpy_, panel_);
+
+    int i;
+    for (i = 0; i < clients_.size(); i++)
+        if (clients_[i]->maximized)
+            apply_state(clients_[i], false);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1240,7 +1570,49 @@ void Wm::set_fullscreen(Client* c, bool on)
     c->fullscreen = on;
     if (on)
         raise(c);
+    else if (panel_ != None)
+        XRaiseWindow(dpy_, panel_);
     apply_state(c, true);
+}
+
+/* Minimized windows are unmapped and live on as taskbar buttons. Their
+ * transients go and come back with them. */
+void Wm::set_minimized(Client* c, bool on)
+{
+    if (c->minimized == on)
+        return;
+    c->minimized = on;
+    if (on) {
+        c->ignore_unmap++;
+        XUnmapWindow(dpy_, c->win);
+        XUnmapWindow(dpy_, c->frame);
+        set_wm_state(c->win, IconicState);
+        /* Last in the focus history, as on Windows. */
+        int i = mru_.find(c);
+        if (i >= 0) {
+            mru_.remove_at(i);
+            mru_.push_back(c);
+        }
+    } else {
+        XMapWindow(dpy_, c->win);
+        XMapWindow(dpy_, c->frame);
+        set_wm_state(c->win, NormalState);
+    }
+
+    int i;
+    Vector<Client*> transients;
+    for (i = 0; i < clients_.size(); i++)
+        if (clients_[i]->transient_for == c->win && clients_[i] != c)
+            transients.push_back(clients_[i]);
+    for (i = 0; i < transients.size(); i++)
+        set_minimized(transients[i], on);
+
+    if (on && active_ && (active_ == c || active_->minimized)) {
+        active_ = 0;
+        focus(next_focus(c), CurrentTime);
+    }
+    set_net_state(c);
+    notify(c);
 }
 
 /* Lay the window out for its current state and decoration. 'restore'
@@ -1251,9 +1623,9 @@ void Wm::apply_state(Client* c, bool restore)
         set_geometry(c, 0, 0, screen_w_, screen_h_);
     } else if (c->maximized) {
         FrameExtents e = extents_of(c);
-        int w = screen_w_ - e.width(), h = screen_h_ - e.height();
+        int w = work_.w - e.width(), h = work_.h - e.height();
         c->size.apply(&w, &h);
-        set_geometry(c, 0, 0, w, h);
+        set_geometry(c, work_.x, work_.y, w, h);
     } else if (restore) {
         set_geometry(c, c->saved.x, c->saved.y, c->saved.w, c->saved.h);
     } else {
@@ -1263,10 +1635,105 @@ void Wm::apply_state(Client* c, bool restore)
     set_net_state(c);
     set_frame_extents(c);
     send_configure(c);
+    notify(c);
+}
+
+/* ------------------------------------------------------------------ */
+/* Windows-style Alt+Tab                                               */
+
+void Wm::begin_switch(bool forward, Time t)
+{
+    switch_list_.clear();
+    int i;
+    for (i = 0; i < mru_.size(); i++)
+        if (cycles(mru_[i]))
+            switch_list_.push_back(mru_[i]);
+    if (switch_list_.empty())
+        return;
+    if (XGrabKeyboard(dpy_, root_, False, GrabModeAsync, GrabModeAsync, t) !=
+        GrabSuccess)
+        return;
+
+    int n = switch_list_.size();
+    switching_ = true;
+    switch_sel_ = n > 1 ? (forward ? 1 : n - 1) : 0;
+
+    int w, h;
+    switcher_size(*painter_, n, &w, &h);
+    XMoveResizeWindow(dpy_, switch_win_, work_.x + (work_.w - w) / 2,
+                      work_.y + (work_.h - h) / 2, w, h);
+    XMapRaised(dpy_, switch_win_);
+    paint_switch();
+
+    /* Alt may already be up if the keys were tapped quickly. */
+    Window r, child;
+    int rx, ry, wx, wy;
+    unsigned int mask = 0;
+    XQueryPointer(dpy_, root_, &r, &child, &rx, &ry, &wx, &wy, &mask);
+    if (!(mask & Mod1Mask))
+        end_switch(true, t);
+}
+
+void Wm::step_switch(int dir)
+{
+    int n = switch_list_.size();
+    if (n == 0)
+        return;
+    switch_sel_ = (switch_sel_ + dir + n) % n;
+    paint_switch();
+}
+
+void Wm::end_switch(bool commit, Time t)
+{
+    switching_ = false;
+    XUngrabKeyboard(dpy_, t);
+    XUnmapWindow(dpy_, switch_win_);
+    if (commit && switch_sel_ >= 0 && switch_sel_ < switch_list_.size())
+        activate(switch_list_[switch_sel_], t);
+    switch_list_.clear();
+}
+
+void Wm::paint_switch()
+{
+    if (!switching_)
+        return;
+    int n = switch_list_.size();
+    SwitchItem* items = new SwitchItem[n > 0 ? n : 1];
+    int i;
+    for (i = 0; i < n; i++) {
+        items[i].icon = switch_list_[i]->icon;
+        items[i].title = switch_list_[i]->title.c_str();
+    }
+    int w, h;
+    switcher_size(*painter_, n, &w, &h);
+    painter_->begin(switch_win_, w, h);
+    paint_switcher(*painter_, theme_.inactive, items, n, switch_sel_, w, h);
+    painter_->end();
+    delete [] items;
 }
 
 /* ------------------------------------------------------------------ */
 /* Geometry, properties, painting                                      */
+
+/* Tell the shell about a window on the taskbar: the first call adds its
+ * button, later ones update it. */
+void Wm::notify(Client* c)
+{
+    if (!shell_ || !on_taskbar(c))
+        return;
+    TaskInfo t;
+    t.id = c->win;
+    t.title = c->title.c_str();
+    t.icon = c->icon;
+    t.minimized = c->minimized;
+    t.allowed = allowed(c);
+    if (c->listed) {
+        shell_->task_changed(t);
+    } else {
+        c->listed = true;
+        shell_->task_added(t);
+    }
+}
 
 void Wm::set_geometry(Client* c, int x, int y, int w, int h)
 {
@@ -1312,7 +1779,7 @@ void Wm::set_wm_state(Window w, long state)
 
 void Wm::set_net_state(Client* c)
 {
-    Atom state[3];
+    Atom state[4];
     int n = 0;
     if (c->fullscreen)
         state[n++] = atoms_.net_wm_state_fullscreen;
@@ -1320,6 +1787,8 @@ void Wm::set_net_state(Client* c)
         state[n++] = atoms_.net_wm_state_maximized_vert;
         state[n++] = atoms_.net_wm_state_maximized_horz;
     }
+    if (c->minimized)
+        state[n++] = atoms_.net_wm_state_hidden;
     XChangeProperty(dpy_, c->win, atoms_.net_wm_state, XA_ATOM, 32,
                     PropModeReplace, (unsigned char*)state, n);
 }
@@ -1349,6 +1818,17 @@ void Wm::update_client_lists()
     XChangeProperty(dpy_, root_, atoms_.net_client_list_stacking, XA_WINDOW,
                     32, PropModeReplace, (unsigned char*)list, n);
     delete [] list;
+}
+
+void Wm::update_workarea()
+{
+    long v[4];
+    v[0] = work_.x;
+    v[1] = work_.y;
+    v[2] = work_.w;
+    v[3] = work_.h;
+    XChangeProperty(dpy_, root_, atoms_.net_workarea, XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char*)v, 4);
 }
 
 void Wm::paint(Client* c)

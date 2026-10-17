@@ -24,6 +24,7 @@ struct Atoms {
     Atom net_active_window, net_close_window, net_frame_extents;
     Atom net_wm_state, net_wm_state_fullscreen;
     Atom net_wm_state_maximized_vert, net_wm_state_maximized_horz;
+    Atom net_wm_state_hidden, net_wm_icon, net_workarea;
     Atom net_wm_window_type;
     Atom net_type_desktop, net_type_dock, net_type_toolbar, net_type_menu;
     Atom net_type_utility, net_type_splash, net_type_dialog;
@@ -49,6 +50,12 @@ WindowType read_window_type(Display* dpy, const Atoms& a, Window w);
 /* Restrict 'decor' and 'actions' by _MOTIF_WM_HINTS, if present. */
 void apply_motif_hints(Display* dpy, const Atoms& a, Window w,
                        FrameDecor* decor, ActionMask* actions);
+
+class Icon;
+
+/* The window's icon: the _NET_WM_ICON image closest to 32x32, else the
+ * WM_HINTS icon pixmap. Null if neither; the caller owns the result. */
+Icon* read_icon(Display* dpy, const Atoms& a, Window w);
 
 void read_net_wm_state(Display* dpy, const Atoms& a, Window w,
                        bool* fullscreen, bool* maximized);

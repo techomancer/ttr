@@ -29,6 +29,7 @@ public:
     int text_ascent();
     int text_descent();
     void text(int x, int y, const char* s, int len, const Rgb& c);
+    void icon(const Icon& ic, int x, int y, int size, const Rgb& bg);
 
     unsigned long pixel(const Rgb& c);
 
@@ -37,6 +38,16 @@ private:
         Rgb rgb;
         unsigned long pixel;
     };
+    struct CachedIcon {
+        unsigned long serial;
+        int size;
+        Rgb bg;
+        Pixmap pixmap;
+    };
+
+    Pixmap icon_pixmap(const Icon& ic, int size, const Rgb& bg);
+    unsigned long icon_pixel(unsigned long r, unsigned long g,
+                             unsigned long b);
 
     Display* dpy_;
     int screen_;
@@ -47,6 +58,9 @@ private:
     Window win_;
     int w_, h_;
     Vector<CachedColor> colors_;
+    Vector<CachedIcon> icons_;
+    bool truecolor_;
+    int shift_[3], bits_[3];    /* r, g, b of a TrueColor visual */
 };
 
 }

@@ -11,13 +11,14 @@
 #include "core/str.h"
 #include "core/vector.h"
 #include "core/wmlink.h"
+#include "x11/config.h"
 #include "x11/hints.h"
 
 #include <X11/Intrinsic.h>
 
 namespace ttr {
 
-class WindowMenu;
+class Icon;
 class XPainter;
 
 struct Client {
@@ -29,6 +30,7 @@ struct Client {
     int old_bw;
     int gravity;
     Str title;
+    Icon* icon;         /* owned, may be null */
     WindowType type;
     FrameDecor decor;   /* decoration when not fullscreen */
     ActionMask actions; /* from type and _MOTIF_WM_HINTS */
@@ -38,12 +40,15 @@ struct Client {
     bool delete_window;
     bool maximized;
     bool fullscreen;
+    bool minimized;
+    bool listed;        /* has a taskbar entry */
     Rect saved;         /* frame x/y and client w/h in the normal state */
     int ignore_unmap;
     FramePart pressed;
     FramePart cursor_part;
 
     Client();
+    ~Client();
 };
 
 class Wm : public WmLink {
@@ -52,12 +57,24 @@ public:
     ~Wm();
 
     bool init(int* argc, char** argv);
+    /* Parent widget for the shell's Motif widgets. */
+    Widget shell_parent() const { return menu_parent_; }
+    const Config& config() const { return config_; }
+    void set_shell(ShellLink* shell) { shell_ = shell; }
+    /* Adopt existing windows; call after set_shell(). */
+    void start();
     int run();
+    bool restart_requested() const { return restart_; }
 
+    /* WmLink */
     void request(ToplevelId id, WmAction action);
+    void set_panel(unsigned long window, const Rect& r);
+    void quit();
+    void restart();
 
 private:
     enum DragMode { DRAG_NONE, DRAG_MOVE, DRAG_RESIZE };
+    enum ManageMode { MANAGE_NEW, MANAGE_MAPPED, MANAGE_ICONIC, MANAGE_OWN };
 
     struct Drag {
         DragMode mode;
@@ -76,6 +93,7 @@ private:
 
     bool handle(XEvent* ev);
     void on_map_request(XMapRequestEvent* ev);
+    bool on_map_notify(XMapEvent* ev);
     void on_configure_request(XConfigureRequestEvent* ev);
     bool on_unmap(XUnmapEvent* ev);
     bool on_destroy(XDestroyWindowEvent* ev);
@@ -84,16 +102,19 @@ private:
     bool on_button_press(XButtonEvent* ev);
     bool on_button_release(XButtonEvent* ev);
     bool on_motion(XMotionEvent* ev);
+    bool on_enter(XCrossingEvent* ev);
     bool on_expose(XExposeEvent* ev);
     bool on_key_press(XKeyEvent* ev);
+    bool on_key_release(XKeyEvent* ev);
     void on_mapping(XMappingEvent* ev);
 
     void setup_ewmh();
     void grab_keys();
     void adopt_existing();
-    void manage(Window w, bool already_mapped);
+    void manage(Window w, ManageMode mode);
     void unmanage(Client* c, bool destroyed);
     void restore_all();
+    long get_wm_state(Window w);
 
     void read_decor(Client* c);
     void read_size_hints(Client* c);
@@ -110,26 +131,39 @@ private:
     int frame_h(const Client* c) const;
     ActionMask allowed(const Client* c) const;
     bool cycles(const Client* c) const;
+    bool on_taskbar(const Client* c) const;
+    Client* owner_of(Client* c);
+    Client* next_focus(Client* except);
 
     void focus(Client* c, Time t);
+    void activate(Client* c, Time t);
     void raise(Client* c);
     void lower(Client* c);
     void cycle(bool forward, Time t);
     void update_grabs(Client* c, bool focused);
     void send_protocol(Client* c, Atom proto, Time t);
     void close(Client* c);
-    void post_menu(Client* c, const XButtonEvent* ev, Time t);
+    void post_menu(Client* c, int x, int y, Time t);
+    void post_menu_at_button(Client* c, Time t);
 
     void set_maximized(Client* c, bool on);
     void set_fullscreen(Client* c, bool on);
+    void set_minimized(Client* c, bool on);
     void apply_state(Client* c, bool restore);
 
+    void begin_switch(bool forward, Time t);
+    void step_switch(int dir);
+    void end_switch(bool commit, Time t);
+    void paint_switch();
+
+    void notify(Client* c);
     void set_geometry(Client* c, int x, int y, int w, int h);
     void send_configure(Client* c);
     void set_wm_state(Window w, long state);
     void set_net_state(Client* c);
     void set_frame_extents(Client* c);
     void update_client_lists();
+    void update_workarea();
     void paint(Client* c);
     Cursor cursor_for(FramePart part);
 
@@ -140,29 +174,41 @@ private:
 
     XtAppContext app_;
     Widget toplevel_;
+    Widget menu_parent_;
     Display* dpy_;
     int screen_;
     Window root_;
     Window check_win_;
     int screen_w_, screen_h_;
+    Rect work_;                 /* screen minus the panel */
     bool running_;
+    bool restart_;
     int signal_pipe_[2];
 
+    Config config_;
     Atoms atoms_;
     XPainter* painter_;
     FrameTheme theme_;
-    WindowMenu* menu_;
+    ShellLink* shell_;
+    Window panel_;
 
     Cursor cursor_normal_, cursor_move_;
     Cursor cursor_border_[8];   /* FP_N .. FP_NW */
 
     Vector<Client*> clients_;   /* stacking order, bottom first */
     Vector<Client*> mapped_;    /* order of management, for EWMH */
+    Vector<Client*> mru_;       /* focus history, most recent first */
     Client* active_;
     Drag drag_;
     int place_x_, place_y_;
     Time last_click_time_;      /* title bar double click detection */
     Window last_click_win_;
+
+    /* Windows-style Alt+Tab */
+    bool switching_;
+    Window switch_win_;
+    Vector<Client*> switch_list_;
+    int switch_sel_;
 };
 
 }

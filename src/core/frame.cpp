@@ -5,22 +5,6 @@
 
 namespace ttr {
 
-void draw_bevel(Painter& p, const Rect& r, int thickness,
-                const Rgb& top, const Rgb& bottom)
-{
-    int i;
-    for (i = 0; i < thickness; i++) {
-        int w = r.w - 2 * i;
-        int h = r.h - 2 * i;
-        if (w <= 0 || h <= 0)
-            break;
-        p.fill(Rect(r.x + i, r.y + i, w - 1, 1), top);
-        p.fill(Rect(r.x + i, r.y + i, 1, h - 1), top);
-        p.fill(Rect(r.x + i, r.y + r.h - 1 - i, w, 1), bottom);
-        p.fill(Rect(r.x + r.w - 1 - i, r.y + i, 1, h), bottom);
-    }
-}
-
 FrameDecor::FrameDecor()
     : border(true), resizeh(true), title(true), menu(true), minimize(true),
       maximize(true)
