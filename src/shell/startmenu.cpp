@@ -1,5 +1,6 @@
 #include "shell/startmenu.h"
 #include "shell/launch.h"
+#include "shell/settings.h"
 #include "core/apps.h"
 #include "core/icon.h"
 #include "core/painter.h"
@@ -77,14 +78,20 @@ static Rgb pixel_rgb(Display* dpy, Pixel p)
 }
 
 StartMenu::StartMenu(Widget parent, WmLink* wm, const Config& cfg)
-    : parent_(parent), wm_(wm), run_dialog_(0), exit_dialog_(0), unpost_(0),
+    : parent_(parent), wm_(wm), run_dialog_(0), exit_dialog_(0),
+      settings_(new SettingsDialog(parent, wm, cfg)), unpost_(0),
       unpost_closure_(0)
 {
     Display* dpy = XtDisplay(parent);
     apps_ = new AppFolder("Programs");
     load_apps(cfg, apps_);
     painter_ = new XPainter(dpy, DefaultScreen(dpy));
-    painter_->load_font(k_menu_fonts);
+    const char* fonts[6];
+    fonts[0] = cfg.menu_font.c_str();
+    int k;
+    for (k = 0; k < 5; k++)
+        fonts[k + 1] = k_menu_fonts[k];
+    painter_->load_font(fonts);
     icons_ = new IconLoader(dpy);
 
     menu_ = XmCreatePopupMenu(parent, (char*)"startMenu", 0, 0);
@@ -104,6 +111,8 @@ StartMenu::StartMenu(Widget parent, WmLink* wm, const Config& cfg)
     XtManageChild(XmCreateSeparatorGadget(menu_, (char*)"sep", 0, 0));
     item(menu_, "Run...", "system-run", GLYPH_NONE, run_cb, (XtPointer)this,
          0);
+    item(menu_, "Settings...", "preferences-system", GLYPH_NONE,
+         settings_cb, (XtPointer)this, 0);
     XtManageChild(XmCreateSeparatorGadget(menu_, (char*)"sep", 0, 0));
     item(menu_, "Restart ttr", "view-refresh", GLYPH_NONE, restart_cb,
          (XtPointer)this, 0);
@@ -122,6 +131,7 @@ StartMenu::~StartMenu()
     int i;
     for (i = 0; i < pixmaps_.size(); i++)
         XFreePixmap(dpy, pixmaps_[i]);
+    delete settings_;
     delete icons_;
     delete painter_;
     delete apps_;
@@ -266,6 +276,9 @@ void StartMenu::deferred_cb(XtPointer closure, XtIntervalId* id)
     case CMD_RUN:
         p->menu->run_dialog();
         break;
+    case CMD_SETTINGS:
+        p->menu->settings_->show();
+        break;
     case CMD_RESTART:
         p->menu->wm_->restart();
         break;
@@ -327,6 +340,13 @@ void StartMenu::run_ok_cb(Widget w, XtPointer closure, XtPointer call)
             spawn(text);
         XtFree(text);
     }
+}
+
+void StartMenu::settings_cb(Widget w, XtPointer closure, XtPointer call)
+{
+    (void)w;
+    (void)call;
+    ((StartMenu*)closure)->defer(CMD_SETTINGS, 0);
 }
 
 void StartMenu::restart_cb(Widget w, XtPointer closure, XtPointer call)

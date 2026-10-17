@@ -149,6 +149,14 @@ static void close_on_exec(int fd)
 
 bool Wm::init(int* argc, char** argv)
 {
+    /* XtOpenApplication removes the options it knows from argv; the
+     * settings file goes under the original command line. */
+    int argc0 = *argc;
+    char** argv0 = new char*[argc0 + 1];
+    int k;
+    for (k = 0; k <= argc0; k++)
+        argv0[k] = argv[k];
+
     toplevel_ = XtOpenApplication(&app_, "Ttr", config_options(),
                                   (Cardinal)config_option_count(), argc, argv,
                                   config_fallback_resources(),
@@ -160,6 +168,8 @@ bool Wm::init(int* argc, char** argv)
     screen_h_ = DisplayHeight(dpy_, screen_);
     work_ = Rect(0, 0, screen_w_, screen_h_);
     close_on_exec(ConnectionNumber(dpy_));
+    merge_settings_file(toplevel_, argc0, argv0);
+    delete [] argv0;
     read_config(toplevel_, &config_);
 
     /* Programs we start must reach this server even if we were started
@@ -196,7 +206,11 @@ bool Wm::init(int* argc, char** argv)
     atoms_.init(dpy_);
 
     painter_ = new XPainter(dpy_, screen_);
-    if (!painter_->load_font(k_title_fonts)) {
+    const char* fonts[6];
+    fonts[0] = config_.title_font.c_str();
+    for (k = 0; k < 5; k++)
+        fonts[k + 1] = k_title_fonts[k];
+    if (!painter_->load_font(fonts)) {
         fprintf(stderr, "ttr: no usable font\n");
         return false;
     }

@@ -16,6 +16,7 @@ namespace ttr {
 
 class Icon;
 class IconLoader;
+class SettingsDialog;
 class XPainter;
 struct AppFolder;
 struct AppNode;
@@ -32,7 +33,7 @@ public:
     void on_unpost(void (*fn)(void*), void* closure);
 
 private:
-    enum Command { CMD_APP, CMD_RUN, CMD_RESTART, CMD_EXIT };
+    enum Command { CMD_APP, CMD_RUN, CMD_SETTINGS, CMD_RESTART, CMD_EXIT };
     struct Pending {
         StartMenu* menu;
         Command cmd;
@@ -48,6 +49,7 @@ private:
 
     static void app_cb(Widget w, XtPointer closure, XtPointer call);
     static void run_cb(Widget w, XtPointer closure, XtPointer call);
+    static void settings_cb(Widget w, XtPointer closure, XtPointer call);
     static void run_ok_cb(Widget w, XtPointer closure, XtPointer call);
     static void restart_cb(Widget w, XtPointer closure, XtPointer call);
     static void exit_cb(Widget w, XtPointer closure, XtPointer call);
@@ -68,6 +70,7 @@ private:
     Widget menu_;
     Widget run_dialog_;
     Widget exit_dialog_;
+    SettingsDialog* settings_;
     AppFolder* apps_;
     XPainter* painter_;
     IconLoader* icons_;

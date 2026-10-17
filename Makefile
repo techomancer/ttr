@@ -35,10 +35,12 @@ OBJS = $(B)/main.o \
 	$(B)/core_geom.o \
 	$(B)/core_icon.o \
 	$(B)/core_painter.o \
+	$(B)/core_settings.o \
 	$(B)/core_str.o \
 	$(B)/core_switcher.o \
 	$(B)/core_text.o \
 	$(B)/shell_launch.o \
+	$(B)/shell_settings.o \
 	$(B)/shell_shell.o \
 	$(B)/shell_startmenu.o \
 	$(B)/shell_taskbar.o \
@@ -63,12 +65,14 @@ $(B)/.dir:
 # Header groups, to keep the rules below short.
 CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
-	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h
+	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h \
+	src/core/settings.h
 X11_H = src/x11/wm.h src/x11/hints.h src/x11/config.h src/x11/xpainter.h \
 	src/x11/iconload.h src/x11/svg.h \
 	$(CORE_H)
 SHELL_H = src/shell/shell.h src/shell/startmenu.h src/shell/taskbar.h \
-	src/shell/tray.h src/shell/winmenu.h src/shell/launch.h
+	src/shell/tray.h src/shell/winmenu.h src/shell/launch.h \
+	src/shell/settings.h
 
 $(B)/main.o: $(B)/.dir src/main.cpp $(X11_H) $(SHELL_H)
 	$(COMPILE) -c src/main.cpp -o $@
@@ -91,6 +95,9 @@ $(B)/core_icon.o: $(B)/.dir src/core/icon.cpp $(CORE_H)
 $(B)/core_painter.o: $(B)/.dir src/core/painter.cpp $(CORE_H)
 	$(COMPILE) -c src/core/painter.cpp -o $@
 
+$(B)/core_settings.o: $(B)/.dir src/core/settings.cpp $(CORE_H)
+	$(COMPILE) -c src/core/settings.cpp -o $@
+
 $(B)/core_str.o: $(B)/.dir src/core/str.cpp $(CORE_H)
 	$(COMPILE) -c src/core/str.cpp -o $@
 
@@ -102,6 +109,9 @@ $(B)/core_text.o: $(B)/.dir src/core/text.cpp $(CORE_H)
 
 $(B)/shell_launch.o: $(B)/.dir src/shell/launch.cpp $(SHELL_H)
 	$(COMPILE) -c src/shell/launch.cpp -o $@
+
+$(B)/shell_settings.o: $(B)/.dir src/shell/settings.cpp $(SHELL_H) $(X11_H)
+	$(COMPILE) -c src/shell/settings.cpp -o $@
 
 $(B)/shell_shell.o: $(B)/.dir src/shell/shell.cpp $(SHELL_H) $(CORE_H)
 	$(COMPILE) -c src/shell/shell.cpp -o $@

@@ -37,7 +37,12 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     Display* dpy = XtDisplay(parent);
     int screen = DefaultScreen(dpy);
     painter_ = new XPainter(dpy, screen);
-    painter_->load_font(k_task_fonts);
+    const char* fonts[6];
+    fonts[0] = cfg.taskbar_font.c_str();
+    int k;
+    for (k = 0; k < 5; k++)
+        fonts[k + 1] = k_task_fonts[k];
+    painter_->load_font(fonts);
     cs_ = motif_colors(Rgb::hex(k_widget_bg));
 
     int h = painter_->text_ascent() + painter_->text_descent() + 14;

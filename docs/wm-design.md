@@ -356,8 +356,14 @@ Pitfalls of running the shell in the WM's own process, found the hard way:
 
 ### 5.3 Configuration
 
-Settings are X resources, as in mwm (`~/.Xresources`, app-defaults, or
-`-xrm`). See [src/x11/config.h](../src/x11/config.h):
+Settings are X resources, as in mwm. In increasing order of precedence they
+come from app-defaults, `~/.Xresources`, the settings file
+`~/.config/ttr/settings` (or `$XDG_CONFIG_HOME/ttr/settings`), and the
+command line (`-focus`, `-switch`, `-xrm`). The settings file uses the same
+names, one `name: value` per line; it is edited by hand or by the Motif
+Settings dialog (Start > Settings...), which keeps comments and unknown lines.
+OK in the dialog saves and restarts ttr in place, because fonts reach Motif
+widgets only when they are created. See [src/x11/config.h](../src/x11/config.h):
 
 | Resource | Values | Default |
 |---|---|---|
@@ -367,6 +373,9 @@ Settings are X resources, as in mwm (`~/.Xresources`, app-defaults, or
 | `Ttr*toolchestFiles` | colon-separated paths | `~/.auxchestrc:/usr/lib/X11/system.chestrc` |
 | `Ttr*terminal` | command prefix for `Terminal=true` entries | `xterm -e` |
 | `Ttr*clockFormat` | `strftime` format | `%H:%M` |
+| `Ttr*titleFont` | core X font (XLFD) for window titles and Alt+Tab | Helvetica bold 12 |
+| `Ttr*menuFont` | for Motif menus and dialogs (`*fontList`) | Helvetica bold 12 |
+| `Ttr*taskbarFont` | for task buttons and the clock | Helvetica medium 12 |
 
 The start menu reads applications through the `AppSource` interface
 ([src/core/apps.h](../src/core/apps.h)): `DesktopAppSource` reads XDG
