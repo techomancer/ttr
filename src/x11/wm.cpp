@@ -8,6 +8,8 @@
 
 #include <Xm/Xm.h>
 #include <Xm/DrawingA.h>
+#include <Xm/GrabShell.h>
+#include <Xm/MenuShell.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
 #include <X11/cursorfont.h>
@@ -107,6 +109,15 @@ static const unsigned long k_osd_ms = 900;
 static const long k_net_all_desktops = 0xFFFFFFFFL;
 static const int k_nkeys = (int)(sizeof(k_keys) / sizeof(k_keys[0]));
 static KeySym g_key_syms[sizeof(k_keys) / sizeof(k_keys[0])];
+
+/* Motif shells that grab the pointer while up: menus (popup, pulldown,
+ * option) and the grab shell of combo box lists. Not every override shell
+ * of ours: the taskbar is one and is always mapped. */
+static bool is_motif_popup(Widget w)
+{
+    return XtIsSubclass(w, xmMenuShellWidgetClass) ||
+           XtIsSubclass(w, xmGrabShellWidgetClass);
+}
 
 static bool is_super_key(KeySym ks)
 {
@@ -610,7 +621,7 @@ bool Wm::on_map_notify(XMapEvent* ev)
         /* One of our own Motif popups (menu, option menu, combo box list):
          * it grabs the pointer, so keep out of its way while it is up. */
         Widget w = XtWindowToWidget(dpy_, ev->window);
-        if (w && XtIsShell(w) && own_popups_.find(ev->window) < 0) {
+        if (w && is_motif_popup(w) && own_popups_.find(ev->window) < 0) {
             own_popups_.push_back(ev->window);
             popups_changed();
         }
