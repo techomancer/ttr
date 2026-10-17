@@ -27,7 +27,9 @@ OBJS = $(B)/main.o \
 	$(B)/core_frame.o \
 	$(B)/core_geom.o \
 	$(B)/core_str.o \
+	$(B)/core_text.o \
 	$(B)/shell_winmenu.o \
+	$(B)/x11_hints.o \
 	$(B)/x11_wm.o \
 	$(B)/x11_xpainter.o
 
@@ -42,8 +44,9 @@ $(B)/.dir:
 
 # Header groups, to keep the rules below short.
 CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
-	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h
-WM_H = src/x11/wm.h $(CORE_H)
+	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
+	src/core/text.h
+WM_H = src/x11/wm.h src/x11/hints.h $(CORE_H)
 
 $(B)/main.o: $(B)/.dir src/main.cpp $(WM_H)
 	$(COMPILE) -c src/main.cpp -o $@
@@ -60,9 +63,15 @@ $(B)/core_geom.o: $(B)/.dir src/core/geom.cpp src/core/geom.h
 $(B)/core_str.o: $(B)/.dir src/core/str.cpp src/core/str.h
 	$(COMPILE) -c src/core/str.cpp -o $@
 
+$(B)/core_text.o: $(B)/.dir src/core/text.cpp src/core/text.h src/core/str.h
+	$(COMPILE) -c src/core/text.cpp -o $@
+
 $(B)/shell_winmenu.o: $(B)/.dir src/shell/winmenu.cpp src/shell/winmenu.h \
 		src/core/wmlink.h
 	$(COMPILE) -c src/shell/winmenu.cpp -o $@
+
+$(B)/x11_hints.o: $(B)/.dir src/x11/hints.cpp src/x11/hints.h $(CORE_H)
+	$(COMPILE) -c src/x11/hints.cpp -o $@
 
 $(B)/x11_wm.o: $(B)/.dir src/x11/wm.cpp $(WM_H) src/x11/xpainter.h \
 		src/shell/winmenu.h

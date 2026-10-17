@@ -21,6 +21,19 @@ void draw_bevel(Painter& p, const Rect& r, int thickness,
     }
 }
 
+FrameDecor::FrameDecor()
+    : border(true), resizeh(true), title(true), menu(true), minimize(true),
+      maximize(true)
+{
+}
+
+FrameDecor FrameDecor::none()
+{
+    FrameDecor d;
+    d.border = d.resizeh = d.title = d.menu = d.minimize = d.maximize = false;
+    return d;
+}
+
 FrameTheme::FrameTheme()
     : border(6), shadow(2), title_h(20)
 {
@@ -33,36 +46,85 @@ void FrameTheme::fit_font(int font_height)
     title_h = font_height + 2 * shadow + 6;
 }
 
-Rect FrameTheme::menu_rect(int fw) const
+int FrameTheme::border_w(const FrameDecor& d) const
+{
+    if (!d.border)
+        return 0;
+    return d.resizeh ? border : shadow + 1;
+}
+
+int FrameTheme::title_height(const FrameDecor& d) const
+{
+    return d.title ? title_h : 0;
+}
+
+FrameExtents FrameTheme::extents(const FrameDecor& d) const
+{
+    FrameExtents e;
+    int b = border_w(d);
+    e.left = e.right = e.bottom = b;
+    e.top = b + title_height(d);
+    return e;
+}
+
+int FrameTheme::min_client_w(const FrameDecor& d) const
+{
+    if (!d.title)
+        return 1;
+    int buttons = (d.menu ? 1 : 0) + (d.minimize ? 1 : 0) +
+                  (d.maximize ? 1 : 0);
+    return (buttons + 1) * title_h;
+}
+
+Rect FrameTheme::menu_rect(const FrameDecor& d, int fw) const
 {
     (void)fw;
-    return Rect(border, border, title_h, title_h);
+    if (!d.title || !d.menu)
+        return Rect();
+    int b = border_w(d);
+    return Rect(b, b, title_h, title_h);
 }
 
-Rect FrameTheme::title_rect(int fw) const
+Rect FrameTheme::maximize_rect(const FrameDecor& d, int fw) const
 {
-    return Rect(border + title_h, border, fw - 2 * border - 3 * title_h,
-                title_h);
+    if (!d.title || !d.maximize)
+        return Rect();
+    int b = border_w(d);
+    return Rect(fw - b - title_h, b, title_h, title_h);
 }
 
-Rect FrameTheme::minimize_rect(int fw) const
+Rect FrameTheme::minimize_rect(const FrameDecor& d, int fw) const
 {
-    return Rect(fw - border - 2 * title_h, border, title_h, title_h);
+    if (!d.title || !d.minimize)
+        return Rect();
+    int b = border_w(d);
+    int right = fw - b - (d.maximize ? title_h : 0);
+    return Rect(right - title_h, b, title_h, title_h);
 }
 
-Rect FrameTheme::maximize_rect(int fw) const
+Rect FrameTheme::title_rect(const FrameDecor& d, int fw) const
 {
-    return Rect(fw - border - title_h, border, title_h, title_h);
+    if (!d.title)
+        return Rect();
+    int b = border_w(d);
+    int left = b + (d.menu ? title_h : 0);
+    int right = fw - b - (d.minimize ? title_h : 0) -
+                (d.maximize ? title_h : 0);
+    return Rect(left, b, right > left ? right - left : 0, title_h);
 }
 
-FramePart FrameTheme::hit(int fw, int fh, int x, int y) const
+FramePart FrameTheme::hit(const FrameDecor& d, int fw, int fh,
+                          int x, int y) const
 {
     if (x < 0 || y < 0 || x >= fw || y >= fh)
         return FP_NONE;
 
-    bool l = x < border, r = x >= fw - border;
-    bool t = y < border, b = y >= fh - border;
+    int bw = border_w(d);
+    bool l = x < bw, r = x >= fw - bw;
+    bool t = y < bw, b = y >= fh - bw;
     if (l || r || t || b) {
+        if (!d.resizeh)
+            return FP_NONE;
         int c = border + title_h;  /* length of a corner handle */
         bool near_l = x < c, near_r = x >= fw - c;
         bool near_t = y < c, near_b = y >= fh - c;
@@ -76,13 +138,46 @@ FramePart FrameTheme::hit(int fw, int fh, int x, int y) const
         return FP_E;
     }
 
-    if (y < border + title_h) {
-        if (menu_rect(fw).contains(x, y)) return FP_MENU;
-        if (minimize_rect(fw).contains(x, y)) return FP_MINIMIZE;
-        if (maximize_rect(fw).contains(x, y)) return FP_MAXIMIZE;
+    if (y < bw + title_height(d)) {
+        if (menu_rect(d, fw).contains(x, y)) return FP_MENU;
+        if (minimize_rect(d, fw).contains(x, y)) return FP_MINIMIZE;
+        if (maximize_rect(d, fw).contains(x, y)) return FP_MAXIMIZE;
         return FP_TITLE;
     }
     return FP_CLIENT;
+}
+
+void gravity_offset(int gravity, const FrameExtents& e, int bw,
+                    int* dx, int* dy)
+{
+    switch (gravity) {
+    case GRAV_N: case GRAV_CENTER: case GRAV_S:
+        *dx = bw - e.width() / 2;
+        break;
+    case GRAV_NE: case GRAV_E: case GRAV_SE:
+        *dx = 2 * bw - e.width();
+        break;
+    case GRAV_STATIC:
+        *dx = bw - e.left;
+        break;
+    default:
+        *dx = 0;
+        break;
+    }
+    switch (gravity) {
+    case GRAV_W: case GRAV_CENTER: case GRAV_E:
+        *dy = bw - e.height() / 2;
+        break;
+    case GRAV_SW: case GRAV_S: case GRAV_SE:
+        *dy = 2 * bw - e.height();
+        break;
+    case GRAV_STATIC:
+        *dy = bw - e.top;
+        break;
+    default:
+        *dy = 0;
+        break;
+    }
 }
 
 bool frame_part_is_border(FramePart p)
@@ -120,42 +215,59 @@ static void icon_box(Painter& p, const Rect& r, int w, int h,
     draw_bevel(p, b, 1, cs.top, cs.bottom);
 }
 
-void paint_frame(Painter& p, const FrameTheme& t, int fw, int fh,
-                 const char* title, bool active, FramePart pressed)
+void paint_frame(Painter& p, const FrameTheme& t, const FrameDecor& d,
+                 int fw, int fh, const char* title, bool active,
+                 FramePart pressed)
 {
     const ColorSet& cs = active ? t.active : t.inactive;
-    int B = t.border, T = t.title_h, S = t.shadow;
+    int B = t.border_w(d), T = t.title_h, S = t.shadow;
+
+    if (B == 0 && !d.title)
+        return;
 
     p.fill(Rect(0, 0, fw, fh), cs.bg);
-    draw_bevel(p, Rect(0, 0, fw, fh), S, cs.top, cs.bottom);
-    draw_bevel(p, Rect(B - 1, B - 1, fw - 2 * B + 2, fh - 2 * B + 2), 1,
-               cs.bottom, cs.top);
+    if (B > 0) {
+        int s = B > S ? S : B;
+        draw_bevel(p, Rect(0, 0, fw, fh), s, cs.top, cs.bottom);
+    }
+    if (d.resizeh) {
+        draw_bevel(p, Rect(B - 1, B - 1, fw - 2 * B + 2, fh - 2 * B + 2), 1,
+                   cs.bottom, cs.top);
 
-    /* Corner handle grooves across the resize border. */
-    int c = B + T;
-    int depth = B - 1 - S;
-    groove_v(p, c, S, depth, cs);
-    groove_v(p, fw - c - 1, S, depth, cs);
-    groove_v(p, c, fh - B + 1, depth, cs);
-    groove_v(p, fw - c - 1, fh - B + 1, depth, cs);
-    groove_h(p, S, c, depth, cs);
-    groove_h(p, S, fh - c - 1, depth, cs);
-    groove_h(p, fw - B + 1, c, depth, cs);
-    groove_h(p, fw - B + 1, fh - c - 1, depth, cs);
+        /* Corner handle grooves across the resize border. */
+        int c = t.border + T;
+        int depth = B - 1 - S;
+        groove_v(p, c, S, depth, cs);
+        groove_v(p, fw - c - 1, S, depth, cs);
+        groove_v(p, c, fh - B + 1, depth, cs);
+        groove_v(p, fw - c - 1, fh - B + 1, depth, cs);
+        groove_h(p, S, c, depth, cs);
+        groove_h(p, S, fh - c - 1, depth, cs);
+        groove_h(p, fw - B + 1, c, depth, cs);
+        groove_h(p, fw - B + 1, fh - c - 1, depth, cs);
+    }
 
-    Rect menu = t.menu_rect(fw);
-    button(p, menu, S, pressed == FP_MENU, cs);
-    icon_box(p, menu, T * 3 / 5, T / 5 > 4 ? T / 5 : 4, cs);
+    if (!d.title)
+        return;
 
-    Rect mini = t.minimize_rect(fw);
-    button(p, mini, S, pressed == FP_MINIMIZE, cs);
-    icon_box(p, mini, T / 5 > 4 ? T / 5 : 4, T / 5 > 4 ? T / 5 : 4, cs);
+    int small = T / 5 > 4 ? T / 5 : 4;
+    if (d.menu) {
+        Rect r = t.menu_rect(d, fw);
+        button(p, r, S, pressed == FP_MENU, cs);
+        icon_box(p, r, T * 3 / 5, small, cs);
+    }
+    if (d.minimize) {
+        Rect r = t.minimize_rect(d, fw);
+        button(p, r, S, pressed == FP_MINIMIZE, cs);
+        icon_box(p, r, small, small, cs);
+    }
+    if (d.maximize) {
+        Rect r = t.maximize_rect(d, fw);
+        button(p, r, S, pressed == FP_MAXIMIZE, cs);
+        icon_box(p, r, T / 2, T / 2, cs);
+    }
 
-    Rect maxi = t.maximize_rect(fw);
-    button(p, maxi, S, pressed == FP_MAXIMIZE, cs);
-    icon_box(p, maxi, T / 2, T / 2, cs);
-
-    Rect tr = t.title_rect(fw);
+    Rect tr = t.title_rect(d, fw);
     if (tr.w <= 2 * S)
         return;
     button(p, tr, S, false, cs);

@@ -20,6 +20,19 @@ enum WmAction {
     ACT_COUNT
 };
 
+/* Bit (1 << WmAction) for each allowed window action. */
+typedef unsigned int ActionMask;
+
+inline ActionMask all_actions()
+{
+    return (1u << ACT_COUNT) - 1;
+}
+
+inline bool action_allowed(ActionMask m, WmAction a)
+{
+    return (m & (1u << a)) != 0;
+}
+
 class WmLink {
 public:
     virtual ~WmLink() {}

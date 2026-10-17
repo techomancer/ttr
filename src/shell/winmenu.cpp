@@ -49,19 +49,21 @@ void WindowMenu::add_item(WmAction action, const char* label, char mnemonic,
 }
 
 void WindowMenu::post(ToplevelId id, int x_root, int y_root,
-                      const XButtonEvent* ev, bool maximized)
+                      const XButtonEvent* ev, Time time, ActionMask allowed)
 {
     target_ = id;
-    XtSetSensitive(buttons_[ACT_RESTORE], maximized);
-    XtSetSensitive(buttons_[ACT_MAXIMIZE], !maximized);
-    /* Nowhere to restore a minimized window from until the taskbar exists. */
-    XtSetSensitive(buttons_[ACT_MINIMIZE], False);
+    int i;
+    for (i = 0; i < ACT_COUNT; i++)
+        XtSetSensitive(buttons_[i], action_allowed(allowed, (WmAction)i));
 
     XButtonEvent bev;
-    if (ev)
+    if (ev) {
         bev = *ev;
-    else
+    } else {
         memset(&bev, 0, sizeof(bev));
+        bev.type = ButtonPress;
+        bev.time = time;
+    }
     bev.x_root = x_root;
     bev.y_root = y_root;
     XmMenuPosition(menu_, &bev);

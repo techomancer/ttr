@@ -11,6 +11,7 @@
 #include "core/str.h"
 #include "core/vector.h"
 #include "core/wmlink.h"
+#include "x11/hints.h"
 
 #include <X11/Intrinsic.h>
 
@@ -22,16 +23,22 @@ class XPainter;
 struct Client {
     Window win;
     Window frame;
+    Window transient_for;
     int x, y;           /* frame position */
     int w, h;           /* client size */
     int old_bw;
+    int gravity;
     Str title;
+    WindowType type;
+    FrameDecor decor;   /* decoration when not fullscreen */
+    ActionMask actions; /* from type and _MOTIF_WM_HINTS */
     SizeConstraints size;
     bool accepts_input;
     bool take_focus;
     bool delete_window;
     bool maximized;
-    Rect saved;         /* frame x/y and client w/h before maximize */
+    bool fullscreen;
+    Rect saved;         /* frame x/y and client w/h in the normal state */
     int ignore_unmap;
     FramePart pressed;
     FramePart cursor_part;
@@ -56,7 +63,7 @@ private:
         DragMode mode;
         Client* client;
         FramePart part;
-        bool explicit_grab;
+        bool explicit_grab;     /* started from menu or keyboard */
         int start_x, start_y;   /* pointer, root coordinates */
         int orig_x, orig_y;     /* frame position */
         int orig_w, orig_h;     /* client size */
@@ -78,13 +85,17 @@ private:
     bool on_button_release(XButtonEvent* ev);
     bool on_motion(XMotionEvent* ev);
     bool on_expose(XExposeEvent* ev);
+    bool on_key_press(XKeyEvent* ev);
+    void on_mapping(XMappingEvent* ev);
 
+    void setup_ewmh();
+    void grab_keys();
     void adopt_existing();
     void manage(Window w, bool already_mapped);
     void unmanage(Client* c, bool destroyed);
     void restore_all();
 
-    void read_title(Client* c);
+    void read_decor(Client* c);
     void read_size_hints(Client* c);
     void read_wm_hints(Client* c);
     void read_protocols(Client* c);
@@ -93,37 +104,51 @@ private:
     Client* find_frame(Window w);
     Client* find_id(ToplevelId id);
 
+    FrameDecor decor_of(const Client* c) const;
+    FrameExtents extents_of(const Client* c) const;
+    int frame_w(const Client* c) const;
+    int frame_h(const Client* c) const;
+    ActionMask allowed(const Client* c) const;
+    bool cycles(const Client* c) const;
+
     void focus(Client* c, Time t);
     void raise(Client* c);
     void lower(Client* c);
+    void cycle(bool forward, Time t);
     void update_grabs(Client* c, bool focused);
     void send_protocol(Client* c, Atom proto, Time t);
     void close(Client* c);
-    void toggle_maximize(Client* c);
+    void post_menu(Client* c, const XButtonEvent* ev, Time t);
+
+    void set_maximized(Client* c, bool on);
+    void set_fullscreen(Client* c, bool on);
+    void apply_state(Client* c, bool restore);
 
     void set_geometry(Client* c, int x, int y, int w, int h);
     void send_configure(Client* c);
     void set_wm_state(Window w, long state);
+    void set_net_state(Client* c);
+    void set_frame_extents(Client* c);
+    void update_client_lists();
     void paint(Client* c);
     Cursor cursor_for(FramePart part);
 
     void begin_drag(Client* c, DragMode mode, FramePart part,
                     int x_root, int y_root, bool explicit_grab, Time t);
     void update_drag(int x_root, int y_root);
-    void end_drag(Time t);
+    void end_drag(Time t, bool cancel);
 
     XtAppContext app_;
     Widget toplevel_;
     Display* dpy_;
     int screen_;
     Window root_;
+    Window check_win_;
     int screen_w_, screen_h_;
     bool running_;
     int signal_pipe_[2];
 
-    Atom wm_protocols_, wm_delete_window_, wm_take_focus_;
-    Atom wm_state_, wm_change_state_;
-
+    Atoms atoms_;
     XPainter* painter_;
     FrameTheme theme_;
     WindowMenu* menu_;
@@ -132,9 +157,12 @@ private:
     Cursor cursor_border_[8];   /* FP_N .. FP_NW */
 
     Vector<Client*> clients_;   /* stacking order, bottom first */
+    Vector<Client*> mapped_;    /* order of management, for EWMH */
     Client* active_;
     Drag drag_;
     int place_x_, place_y_;
+    Time last_click_time_;      /* title bar double click detection */
+    Window last_click_win_;
 };
 
 }

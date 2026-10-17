@@ -14,10 +14,11 @@ class WindowMenu {
 public:
     WindowMenu(Widget parent, WmLink* link);
 
-    /* Post the menu at (x_root, y_root) for toplevel 'id'. 'ev' is the
-     * button press that caused it, if any. */
+    /* Post the menu at (x_root, y_root) for toplevel 'id', with only the
+     * 'allowed' actions sensitive. 'ev' is the button press that caused
+     * it; for keyboard posting pass 0 and the key event time. */
     void post(ToplevelId id, int x_root, int y_root, const XButtonEvent* ev,
-              bool maximized);
+              Time time, ActionMask allowed);
 
 private:
     struct Item {
