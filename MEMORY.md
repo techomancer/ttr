@@ -1,0 +1,2 @@
+- [Commit WIP often](commit-wip-often.md) — commit early, amend later; never git checkout a file to drop a line
+- [Window prefs](user-window-prefs.md) — user likes Windows-style Alt+Tab and click-to-focus, selectable

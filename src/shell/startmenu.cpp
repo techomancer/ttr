@@ -1,7 +1,11 @@
 #include "shell/startmenu.h"
 #include "shell/launch.h"
 #include "core/apps.h"
+#include "core/icon.h"
+#include "core/painter.h"
 #include "x11/config.h"
+#include "x11/iconload.h"
+#include "x11/xpainter.h"
 
 #include <Xm/Xm.h>
 #include <Xm/CascadeBG.h>
@@ -53,32 +57,58 @@ static XmString xmstr(const char* s)
     return XmStringCreateLocalized((char*)s);
 }
 
+static const char* const k_menu_fonts[] = {
+    "-*-helvetica-bold-r-normal--12-*-*-*-*-*-iso8859-1",
+    "-*-helvetica-bold-r-normal--*-120-*-*-*-*-*-*",
+    "variable",
+    "fixed",
+    0
+};
+
+static const int k_icon = 16;       /* menu icon size */
+static const int k_icon_gap = 6;    /* between icon and text */
+
+static Rgb pixel_rgb(Display* dpy, Pixel p)
+{
+    XColor c;
+    c.pixel = p;
+    XQueryColor(dpy, DefaultColormap(dpy, DefaultScreen(dpy)), &c);
+    return Rgb(c.red, c.green, c.blue);
+}
+
 StartMenu::StartMenu(Widget parent, WmLink* wm, const Config& cfg)
     : parent_(parent), wm_(wm), run_dialog_(0), exit_dialog_(0), unpost_(0),
       unpost_closure_(0)
 {
+    Display* dpy = XtDisplay(parent);
     apps_ = new AppFolder("Programs");
     load_apps(cfg, apps_);
+    painter_ = new XPainter(dpy, DefaultScreen(dpy));
+    painter_->load_font(k_menu_fonts);
+    icons_ = new IconLoader(dpy);
 
     menu_ = XmCreatePopupMenu(parent, (char*)"startMenu", 0, 0);
 
+    /* Item labels are drawn by us in the menu's own colors. */
+    Pixel bg = 0, fg = 0;
+    Arg args[2];
+    XtSetArg(args[0], XmNbackground, &bg);
+    XtSetArg(args[1], XmNforeground, &fg);
+    XtGetValues(menu_, args, 2);
+    cs_ = motif_colors(pixel_rgb(dpy, bg));
+    cs_.fg = pixel_rgb(dpy, fg);
+
     Widget programs = XmCreatePulldownMenu(menu_, (char*)"programs", 0, 0);
     build(programs, apps_);
-    XmString l = xmstr("Programs");
-    Arg args[3];
-    int n = 0;
-    XtSetArg(args[n], XmNlabelString, l); n++;
-    XtSetArg(args[n], XmNmnemonic, (KeySym)'P'); n++;
-    XtSetArg(args[n], XmNsubMenuId, programs); n++;
-    XtManageChild(XmCreateCascadeButtonGadget(menu_, (char*)"programsItem",
-                                              args, n));
-    XmStringFree(l);
-
+    item(menu_, "Programs", 0, GLYPH_FOLDER, 0, 0, programs);
     XtManageChild(XmCreateSeparatorGadget(menu_, (char*)"sep", 0, 0));
-    button(menu_, "Run...", run_cb, (XtPointer)this);
+    item(menu_, "Run...", "system-run", GLYPH_NONE, run_cb, (XtPointer)this,
+         0);
     XtManageChild(XmCreateSeparatorGadget(menu_, (char*)"sep", 0, 0));
-    button(menu_, "Restart ttr", restart_cb, (XtPointer)this);
-    button(menu_, "Exit...", exit_cb, (XtPointer)this);
+    item(menu_, "Restart ttr", "view-refresh", GLYPH_NONE, restart_cb,
+         (XtPointer)this, 0);
+    item(menu_, "Exit...", "system-log-out", GLYPH_NONE, exit_cb,
+         (XtPointer)this, 0);
 
     XtAddCallback(menu_, XmNunmapCallback, unmap_cb, (XtPointer)this);
 
@@ -88,18 +118,67 @@ StartMenu::StartMenu(Widget parent, WmLink* wm, const Config& cfg)
 
 StartMenu::~StartMenu()
 {
+    Display* dpy = XtDisplay(parent_);
+    int i;
+    for (i = 0; i < pixmaps_.size(); i++)
+        XFreePixmap(dpy, pixmaps_[i]);
+    delete icons_;
+    delete painter_;
     delete apps_;
 }
 
-Widget StartMenu::button(Widget menu, const char* label, XtCallbackProc cb,
-                         XtPointer closure)
+/* Motif 2.1 labels show text or a pixmap, not both, so the icon and the
+ * text are drawn together into one pixmap. */
+Pixmap StartMenu::label_pixmap(const char* text, const Icon* icon,
+                               Glyph fallback)
 {
-    XmString l = xmstr(label);
-    Arg args[1];
-    XtSetArg(args[0], XmNlabelString, l);
-    Widget b = XmCreatePushButtonGadget(menu, (char*)"item", args, 1);
-    XmStringFree(l);
-    XtAddCallback(b, XmNactivateCallback, cb, closure);
+    Display* dpy = XtDisplay(parent_);
+    int screen = DefaultScreen(dpy);
+    int len = (int)strlen(text);
+    int asc = painter_->text_ascent(), desc = painter_->text_descent();
+    int w = k_icon + k_icon_gap + painter_->text_width(text, len) + 2;
+    int h = asc + desc + 4;
+    if (h < k_icon + 2)
+        h = k_icon + 2;
+
+    Pixmap pm = XCreatePixmap(dpy, RootWindow(dpy, screen), w, h,
+                              DefaultDepth(dpy, screen));
+    painter_->begin(pm, w, h);
+    painter_->fill(Rect(0, 0, w, h), cs_.bg);
+    int iy = (h - k_icon) / 2;
+    if (icon)
+        painter_->icon(*icon, 0, iy, k_icon, cs_.bg);
+    else if (fallback == GLYPH_FOLDER)
+        draw_folder_icon(*painter_, 0, iy, k_icon);
+    else if (fallback == GLYPH_APP)
+        draw_app_icon(*painter_, 0, 0, iy, k_icon, cs_);
+    painter_->text(k_icon + k_icon_gap, (h - asc - desc) / 2 + asc, text, len,
+                   cs_.fg);
+    painter_->end();
+    pixmaps_.push_back(pm);
+    return pm;
+}
+
+Widget StartMenu::item(Widget menu, const char* label, const char* icon,
+                       Glyph fallback, XtCallbackProc cb, XtPointer closure,
+                       Widget sub)
+{
+    Icon* ic = icon && *icon ? icons_->load(icon, k_icon) : 0;
+    Pixmap pm = label_pixmap(label, ic, fallback);
+    delete ic;      /* the painter keeps its own pixmap */
+
+    Arg args[3];
+    int n = 0;
+    XtSetArg(args[n], XmNlabelType, XmPIXMAP); n++;
+    XtSetArg(args[n], XmNlabelPixmap, pm); n++;
+    Widget b;
+    if (sub) {
+        XtSetArg(args[n], XmNsubMenuId, sub); n++;
+        b = XmCreateCascadeButtonGadget(menu, (char*)"folderItem", args, n);
+    } else {
+        b = XmCreatePushButtonGadget(menu, (char*)"item", args, n);
+        XtAddCallback(b, XmNactivateCallback, cb, closure);
+    }
     XtManageChild(b);
     return b;
 }
@@ -112,21 +191,15 @@ void StartMenu::build(Widget menu, AppFolder* folder)
         if (node->kind == AppNode::SEPARATOR) {
             XtManageChild(XmCreateSeparatorGadget(menu, (char*)"sep", 0, 0));
         } else if (node->kind == AppNode::APP) {
-            Widget b = button(menu, node->name.c_str(), app_cb,
-                              (XtPointer)node);
+            Widget b = item(menu, node->name.c_str(), node->icon.c_str(),
+                            GLYPH_APP, app_cb, (XtPointer)node, 0);
             Arg args[1];
             XtSetArg(args[0], XmNuserData, (XtPointer)this);
             XtSetValues(b, args, 1);
         } else {
             Widget sub = XmCreatePulldownMenu(menu, (char*)"folder", 0, 0);
             build(sub, node->folder);
-            XmString l = xmstr(node->name.c_str());
-            Arg args[2];
-            XtSetArg(args[0], XmNlabelString, l);
-            XtSetArg(args[1], XmNsubMenuId, sub);
-            XtManageChild(XmCreateCascadeButtonGadget(menu, (char*)"folderItem",
-                                                      args, 2));
-            XmStringFree(l);
+            item(menu, node->name.c_str(), 0, GLYPH_FOLDER, 0, 0, sub);
         }
     }
 

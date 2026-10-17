@@ -6,12 +6,17 @@
 #ifndef TTR_SHELL_STARTMENU_H
 #define TTR_SHELL_STARTMENU_H
 
+#include "core/color.h"
+#include "core/vector.h"
 #include "core/wmlink.h"
 
 #include <X11/Intrinsic.h>
 
 namespace ttr {
 
+class Icon;
+class IconLoader;
+class XPainter;
 struct AppFolder;
 struct AppNode;
 struct Config;
@@ -49,9 +54,14 @@ private:
     static void exit_ok_cb(Widget w, XtPointer closure, XtPointer call);
     static void unmap_cb(Widget w, XtPointer closure, XtPointer call);
 
+    enum Glyph { GLYPH_NONE, GLYPH_APP, GLYPH_FOLDER };
+
     void build(Widget menu, AppFolder* folder);
-    Widget button(Widget menu, const char* label, XtCallbackProc cb,
-                  XtPointer closure);
+    /* A menu button (or cascade, if 'sub') whose label is icon + text. */
+    Widget item(Widget menu, const char* label, const char* icon,
+                Glyph fallback, XtCallbackProc cb, XtPointer closure,
+                Widget sub);
+    Pixmap label_pixmap(const char* text, const Icon* icon, Glyph fallback);
 
     Widget parent_;
     WmLink* wm_;
@@ -59,6 +69,10 @@ private:
     Widget run_dialog_;
     Widget exit_dialog_;
     AppFolder* apps_;
+    XPainter* painter_;
+    IconLoader* icons_;
+    ColorSet cs_;               /* the menu's own colors */
+    Vector<Pixmap> pixmaps_;
     void (*unpost_)(void*);
     void* unpost_closure_;
 };

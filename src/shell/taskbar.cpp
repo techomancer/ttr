@@ -26,6 +26,7 @@ static const char* const k_task_fonts[] = {
 
 static const int k_max_button = 160;    /* Windows 2000 metrics */
 static const int k_button_gap = 3;
+/* Gap between the bar's 1 pixel shadow and its contents. */
 static const int k_margin = 2;
 
 Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
@@ -45,7 +46,7 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     geom_ = Rect(0, DisplayHeight(dpy, screen) - h, DisplayWidth(dpy, screen),
                  h);
 
-    Arg args[12];
+    Arg args[16];
     int n = 0;
     XtSetArg(args[n], XmNx, geom_.x); n++;
     XtSetArg(args[n], XmNy, geom_.y); n++;
@@ -70,6 +71,7 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     XtSetArg(args[n], XmNbottomOffset, k_margin); n++;
     XtSetArg(args[n], XmNmarginWidth, 8); n++;
     XtSetArg(args[n], XmNtraversalOn, False); n++;
+    XtSetArg(args[n], XmNhighlightThickness, 0); n++;
     XtSetArg(args[n], XmNindicatorOn, False); n++;
     XtSetArg(args[n], XmNshadowThickness, 2); n++;
     XtSetArg(args[n], XmNfillOnSelect, False); n++;
@@ -102,9 +104,9 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     XtSetArg(args[n], XmNrightWidget, tray_area_); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNbottomAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNleftOffset, 6); n++;
-    XtSetArg(args[n], XmNrightOffset, 6); n++;
-    XtSetArg(args[n], XmNtopOffset, k_margin + 1); n++;
+    XtSetArg(args[n], XmNleftOffset, 4); n++;
+    XtSetArg(args[n], XmNrightOffset, 4); n++;
+    XtSetArg(args[n], XmNtopOffset, k_margin); n++;
     XtSetArg(args[n], XmNbottomOffset, k_margin); n++;
     XtSetArg(args[n], XmNresizePolicy, XmRESIZE_NONE); n++;
     XtSetArg(args[n], XmNtraversalOn, False); n++;

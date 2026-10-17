@@ -375,6 +375,11 @@ The start menu reads applications through the `AppSource` interface
 toolchest file locations and syntax details still need to be checked
 against a real IRIX system.
 
+Menu entries show an icon and text. Motif 2.1 labels hold either a string or
+a pixmap, so each label is drawn by us into one pixmap (icon, then text, in
+the menu's own colors) and set with `XmNlabelType: XmPIXMAP`. This costs the
+mnemonic underline on those entries.
+
 ### 5.4 Wayland mode (`ttr-wayland`, later)
 
 1. Bring up DRM/KMS, libinput and the scene graph, then create the Wayland
@@ -453,6 +458,7 @@ clients**.
 | Toolkit | Xt + Motif. Baseline is the **Motif 2.1 API**, which IRIX 6.5 ships (IRIS IM) | Open Motif 2.3 (`x11-libs/motif` on Gentoo). Xft fonts through render tables are optional. |
 | GL widget | `GLwMDrawingArea` from SGI's libGLw | `GLwMDrawingArea` from Mesa's libGLw, built against Motif |
 | Extensions | SHAPE; Xinerama/RandR optional | RandR 1.2+, XFixes |
+| Icon files | libXpm (`TTR_HAVE_XPM`) | libpng 1.6+ (`TTR_HAVE_PNG`); themes in `$XDG_DATA_DIRS/icons` |
 | Wayland mode | — | wlroots, libinput, xkbcommon, FreeType/fontconfig (or cairo/pango), XWayland |
 
 ### 8.1 Motif feature rules

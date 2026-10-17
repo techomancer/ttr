@@ -1,6 +1,7 @@
 #include "x11/hints.h"
 #include "core/icon.h"
 #include "core/text.h"
+#include "x11/iconload.h"
 
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
@@ -268,31 +269,6 @@ static Icon* read_net_wm_icon(Display* dpy, const Atoms& a, Window w)
     return ic;
 }
 
-/* Bit position and width of a TrueColor channel mask. */
-static void mask_shift(unsigned long mask, int* shift, int* bits)
-{
-    *shift = 0;
-    *bits = 0;
-    if (!mask)
-        return;
-    while (!(mask & 1)) {
-        mask >>= 1;
-        (*shift)++;
-    }
-    while (mask & 1) {
-        mask >>= 1;
-        (*bits)++;
-    }
-}
-
-static unsigned long channel8(unsigned long pixel, int shift, int bits)
-{
-    if (bits == 0)
-        return 0;
-    unsigned long v = (pixel >> shift) & ((1UL << bits) - 1);
-    return bits >= 8 ? v >> (bits - 8) : v * 255 / ((1UL << bits) - 1);
-}
-
 /* ICCCM icon pixmaps: depth 1 (drawn black on white) or the screen depth. */
 static Icon* read_icon_pixmap(Display* dpy, Pixmap pm, Pixmap mask)
 {
@@ -308,52 +284,7 @@ static Icon* read_icon_pixmap(Display* dpy, Pixmap pm, Pixmap mask)
         return 0;
     XImage* mimg = mask != None ?
         XGetImage(dpy, mask, 0, 0, w, h, 1, ZPixmap) : 0;
-
-    int screen = DefaultScreen(dpy);
-    Visual* vis = DefaultVisual(dpy, screen);
-    bool truecolor = vis->c_class == TrueColor || vis->c_class == DirectColor;
-    int rs, rb, gs, gb, bs, bb;
-    mask_shift(vis->red_mask, &rs, &rb);
-    mask_shift(vis->green_mask, &gs, &gb);
-    mask_shift(vis->blue_mask, &bs, &bb);
-
-    /* Colormapped visuals: look all pixels up in one request. */
-    XColor* colors = 0;
-    if (depth != 1 && !truecolor) {
-        colors = new XColor[w * h];
-        unsigned int i, j;
-        for (j = 0; j < h; j++)
-            for (i = 0; i < w; i++)
-                colors[j * w + i].pixel = XGetPixel(img, i, j);
-        XQueryColors(dpy, DefaultColormap(dpy, screen), colors, w * h);
-    }
-
-    Icon* ic = new Icon(w, h);
-    uint32_t* px = ic->pixels();
-    unsigned int i, j;
-    for (j = 0; j < h; j++) {
-        for (i = 0; i < w; i++) {
-            unsigned long p = XGetPixel(img, i, j);
-            unsigned long r, g, b;
-            if (depth == 1) {
-                r = g = b = p ? 0 : 255;
-            } else if (truecolor) {
-                r = channel8(p, rs, rb);
-                g = channel8(p, gs, gb);
-                b = channel8(p, bs, bb);
-            } else {
-                XColor& c = colors[j * w + i];
-                r = c.red >> 8;
-                g = c.green >> 8;
-                b = c.blue >> 8;
-            }
-            unsigned long alpha = (!mimg || XGetPixel(mimg, i, j)) ? 255 : 0;
-            px[j * w + i] = (uint32_t)((alpha << 24) | (r << 16) | (g << 8) |
-                                       b);
-        }
-    }
-
-    delete [] colors;
+    Icon* ic = icon_from_ximage(dpy, img, mimg, depth);
     if (mimg)
         XDestroyImage(mimg);
     XDestroyImage(img);

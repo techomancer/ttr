@@ -38,6 +38,20 @@ void draw_app_icon(Painter& p, const Icon* ic, int x, int y, int size,
            Rgb(0xffff, 0xffff, 0xffff));
 }
 
+void draw_folder_icon(Painter& p, int x, int y, int size)
+{
+    Rgb edge = Rgb::hex(0x806010), face = Rgb::hex(0xf0d060),
+        light = Rgb::hex(0xfff0a0);
+    int tab_w = size * 2 / 5, tab_h = size / 6 > 1 ? size / 6 : 1;
+    int top = y + size / 6 + tab_h;
+    int h = size - (top - y) - size / 8;
+    p.fill(Rect(x + 1, top - tab_h, tab_w, tab_h + 1), edge);
+    p.fill(Rect(x + 2, top - tab_h + 1, tab_w - 2, tab_h), face);
+    p.fill(Rect(x, top, size, h), edge);
+    p.fill(Rect(x + 1, top + 1, size - 2, h - 2), face);
+    p.fill(Rect(x + 1, top + 1, size - 2, 1), light);
+}
+
 int fit_text(Painter& p, const char* s, int width, char* buf, int size)
 {
     int len = (int)strlen(s);

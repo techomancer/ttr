@@ -6,8 +6,12 @@
 # Defaults are for Linux with gcc. Override on the command line, e.g.
 #
 #   make CXX=clang++
-#   make CXX=CC CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF" \
-#        WARNFLAGS= LIBS="-lXm -lXt -lX11"                    (IRIX, MIPSpro)
+#   make CXX=CC CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF" WARNFLAGS= \
+#        CPPFLAGS="-Isrc -DTTR_HAVE_XPM" LIBS="-lXm -lXt -lXpm -lX11"
+#                                                             (IRIX, MIPSpro)
+#
+# TTR_HAVE_PNG and TTR_HAVE_XPM enable icon files in those formats; drop the
+# define and the library to build without one.
 #
 # Every object has an explicit rule. When you add a source file, add its
 # object to OBJS and give it a rule listing the headers it includes.
@@ -15,9 +19,9 @@
 CXX = g++
 CXXFLAGS = -std=c++98 -O2 -g -fno-exceptions -fno-rtti
 WARNFLAGS = -pedantic -Wall -Wextra
-CPPFLAGS = -Isrc
+CPPFLAGS = -Isrc -DTTR_HAVE_PNG -DTTR_HAVE_XPM
 LDFLAGS =
-LIBS = -lXm -lXt -lX11
+LIBS = -lXm -lXt -lXpm -lpng -lX11
 
 B = build
 COMPILE = $(CXX) $(CPPFLAGS) $(CXXFLAGS) $(WARNFLAGS)
@@ -40,6 +44,7 @@ OBJS = $(B)/main.o \
 	$(B)/shell_winmenu.o \
 	$(B)/x11_config.o \
 	$(B)/x11_hints.o \
+	$(B)/x11_iconload.o \
 	$(B)/x11_wm.o \
 	$(B)/x11_xpainter.o
 
@@ -57,6 +62,7 @@ CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
 	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h
 X11_H = src/x11/wm.h src/x11/hints.h src/x11/config.h src/x11/xpainter.h \
+	src/x11/iconload.h \
 	$(CORE_H)
 SHELL_H = src/shell/shell.h src/shell/startmenu.h src/shell/taskbar.h \
 	src/shell/tray.h src/shell/winmenu.h src/shell/launch.h
@@ -114,6 +120,9 @@ $(B)/x11_config.o: $(B)/.dir src/x11/config.cpp $(X11_H)
 
 $(B)/x11_hints.o: $(B)/.dir src/x11/hints.cpp $(X11_H)
 	$(COMPILE) -c src/x11/hints.cpp -o $@
+
+$(B)/x11_iconload.o: $(B)/.dir src/x11/iconload.cpp $(X11_H)
+	$(COMPILE) -c src/x11/iconload.cpp -o $@
 
 $(B)/x11_wm.o: $(B)/.dir src/x11/wm.cpp $(X11_H)
 	$(COMPILE) -c src/x11/wm.cpp -o $@

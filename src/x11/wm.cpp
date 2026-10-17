@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -160,6 +161,12 @@ bool Wm::init(int* argc, char** argv)
     work_ = Rect(0, 0, screen_w_, screen_h_);
     close_on_exec(ConnectionNumber(dpy_));
     read_config(toplevel_, &config_);
+
+    /* Programs we start must reach this server even if we were started
+     * with -display. putenv keeps the string, so it must stay alive. */
+    static char display_env[300];
+    sprintf(display_env, "DISPLAY=%.280s", DisplayString(dpy_));
+    putenv(display_env);
 
     /* The application shell only parents our Motif popups; it is never
      * shown. Override-redirect so it can never reach our own MapRequest. */

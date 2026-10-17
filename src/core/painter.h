@@ -33,6 +33,9 @@ public:
 void draw_app_icon(Painter& p, const Icon* ic, int x, int y, int size,
                    const ColorSet& cs);
 
+/* A closed folder, for menus. */
+void draw_folder_icon(Painter& p, int x, int y, int size);
+
 /* Longest prefix of s that fits in 'width' pixels, with "..." appended if
  * it had to be cut. Writes into buf (size bytes); returns its length. */
 int fit_text(Painter& p, const char* s, int width, char* buf, int size);
