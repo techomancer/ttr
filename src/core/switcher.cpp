@@ -65,4 +65,44 @@ void paint_switcher(Painter& p, const ColorSet& cs, const SwitchItem* items,
     }
 }
 
+static const int DESK_W = 28, DESK_H = 20, DESK_GAP = 6;
+
+void desktop_osd_size(Painter& p, int count, int* w, int* h)
+{
+    *w = 2 * MARGIN + count * DESK_W + (count - 1) * DESK_GAP;
+    if (*w < 160)
+        *w = 160;
+    *h = 2 * MARGIN + DESK_H + 6 + text_box_h(p);
+}
+
+void paint_desktop_osd(Painter& p, const ColorSet& cs, const char* name,
+                       int current, int count, int w, int h)
+{
+    p.fill(Rect(0, 0, w, h), cs.bg);
+    draw_bevel(p, Rect(0, 0, w, h), 2, cs.top, cs.bottom);
+
+    int row_w = count * DESK_W + (count - 1) * DESK_GAP;
+    int x = (w - row_w) / 2;
+    int i;
+    for (i = 0; i < count; i++) {
+        Rect r(x + i * (DESK_W + DESK_GAP), MARGIN, DESK_W, DESK_H);
+        if (i == current) {
+            p.fill(r, cs.select);
+            draw_bevel(p, r, 2, cs.bottom, cs.top);
+        } else {
+            draw_bevel(p, r, 2, cs.top, cs.bottom);
+        }
+    }
+
+    Rect box(MARGIN, MARGIN + DESK_H + 6, w - 2 * MARGIN, text_box_h(p));
+    draw_bevel(p, box, 1, cs.bottom, cs.top);
+    int len = 0;
+    while (name[len])
+        len++;
+    int tw = p.text_width(name, len);
+    int y = box.y + (box.h - p.text_ascent() - p.text_descent()) / 2 +
+            p.text_ascent();
+    p.text(box.x + (box.w - tw) / 2, y, name, len, cs.fg);
+}
+
 }

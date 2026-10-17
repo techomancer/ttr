@@ -15,6 +15,7 @@
 #include <Xm/RowColumn.h>
 #include <Xm/SelectioB.h>
 #include <Xm/SeparatoG.h>
+#include <Xm/ToggleBG.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -79,7 +80,8 @@ static Rgb pixel_rgb(Display* dpy, Pixel p)
 
 StartMenu::StartMenu(Widget parent, WmLink* wm, const Config& cfg)
     : parent_(parent), wm_(wm), run_dialog_(0), exit_dialog_(0),
-      settings_(new SettingsDialog(parent, wm, cfg)), unpost_(0),
+      settings_(new SettingsDialog(parent, wm, cfg)),
+      desktops_(cfg.desktops), desk_items_(0), unpost_(0),
       unpost_closure_(0)
 {
     Display* dpy = XtDisplay(parent);
@@ -108,6 +110,34 @@ StartMenu::StartMenu(Widget parent, WmLink* wm, const Config& cfg)
     Widget programs = XmCreatePulldownMenu(menu_, (char*)"programs", 0, 0);
     build(programs, apps_);
     item(menu_, "Programs", 0, GLYPH_FOLDER, 0, 0, programs);
+
+    if (desktops_ > 1) {
+        Arg dargs[1];
+        XtSetArg(dargs[0], XmNradioBehavior, True);
+        Widget desks = XmCreatePulldownMenu(menu_, (char*)"desktops", dargs,
+                                            1);
+        desk_items_ = new DeskItem[desktops_];
+        int i;
+        for (i = 0; i < desktops_; i++) {
+            char label[32];
+            sprintf(label, "Desktop %d", i + 1);
+            XmString l = xmstr(label);
+            Arg targs[3];
+            XtSetArg(targs[0], XmNlabelString, l);
+            XtSetArg(targs[1], XmNindicatorType, XmONE_OF_MANY);
+            XtSetArg(targs[2], XmNvisibleWhenOff, True);
+            Widget b = XmCreateToggleButtonGadget(desks, (char*)"desktopItem",
+                                                  targs, 3);
+            XmStringFree(l);
+            desk_items_[i].menu = this;
+            desk_items_[i].desktop = i;
+            desk_items_[i].button = b;
+            XtAddCallback(b, XmNvalueChangedCallback, desktop_cb,
+                          (XtPointer)&desk_items_[i]);
+            XtManageChild(b);
+        }
+        item(menu_, "Desktops", "user-desktop", GLYPH_NONE, 0, 0, desks);
+    }
     XtManageChild(XmCreateSeparatorGadget(menu_, (char*)"sep", 0, 0));
     item(menu_, "Run...", "system-run", GLYPH_NONE, run_cb, (XtPointer)this,
          0);
@@ -131,6 +161,7 @@ StartMenu::~StartMenu()
     int i;
     for (i = 0; i < pixmaps_.size(); i++)
         XFreePixmap(dpy, pixmaps_[i]);
+    delete [] desk_items_;
     delete settings_;
     delete icons_;
     delete painter_;
@@ -255,12 +286,30 @@ void StartMenu::unmap_cb(Widget w, XtPointer closure, XtPointer call)
         self->unpost_(self->unpost_closure_);
 }
 
-void StartMenu::defer(Command cmd, AppNode* app)
+void StartMenu::set_desktop(int desktop)
+{
+    int i;
+    for (i = 0; desk_items_ && i < desktops_; i++)
+        XmToggleButtonGadgetSetState(desk_items_[i].button, i == desktop,
+                                     False);
+}
+
+void StartMenu::desktop_cb(Widget w, XtPointer closure, XtPointer call)
+{
+    (void)w;
+    if (!((XmToggleButtonCallbackStruct*)call)->set)
+        return;     /* the radio partner being switched off */
+    DeskItem* item = (DeskItem*)closure;
+    item->menu->defer(CMD_DESKTOP, 0, item->desktop);
+}
+
+void StartMenu::defer(Command cmd, AppNode* app, int desktop)
 {
     Pending* p = new Pending;
     p->menu = this;
     p->cmd = cmd;
     p->app = app;
+    p->desktop = desktop;
     XtAppAddTimeOut(XtWidgetToApplicationContext(parent_), 0, deferred_cb,
                     (XtPointer)p);
 }
@@ -278,6 +327,9 @@ void StartMenu::deferred_cb(XtPointer closure, XtIntervalId* id)
         break;
     case CMD_SETTINGS:
         p->menu->settings_->show();
+        break;
+    case CMD_DESKTOP:
+        p->menu->wm_->switch_desktop(p->desktop);
         break;
     case CMD_RESTART:
         p->menu->wm_->restart();

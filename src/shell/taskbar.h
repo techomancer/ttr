@@ -43,6 +43,8 @@ private:
         const Icon* icon;
         bool minimized;
         ActionMask allowed;
+        int desktop;
+        bool on_current;
     };
 
     static void start_press(Widget w, XtPointer closure, XEvent* ev,
@@ -54,7 +56,8 @@ private:
     static void tray_resized(void* closure);
 
     int find(ToplevelId id);
-    Rect button_rect(int i, int w, int h);
+    int visible_count();
+    Rect button_rect(int slot, int count, int w, int h);
     int hit(int x, int y);
     void paint_tasks();
     void activate(Task* t);

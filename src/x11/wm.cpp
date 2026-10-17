@@ -57,7 +57,11 @@ enum KeyCommand {
     KC_NEXT,        /* circulate the stack */
     KC_PREV,
     KC_MENU,        /* window menu */
-    KC_START        /* start menu */
+    KC_START,       /* start menu */
+    KC_DESK_PREV,   /* switch desktop */
+    KC_DESK_NEXT,
+    KC_TAKE_PREV,   /* move the active window along, and follow it */
+    KC_TAKE_NEXT
 };
 
 struct KeyBinding {
@@ -84,8 +88,20 @@ static const KeyBinding k_keys[] = {
     { "space", Mod1Mask, KC_MENU, ACT_COUNT },
     { "Escape", ControlMask, KC_START, ACT_COUNT },
     { "Super_L", 0, KC_START, ACT_COUNT },
-    { "Super_R", 0, KC_START, ACT_COUNT }
+    { "Super_R", 0, KC_START, ACT_COUNT },
+    { "Left", ControlMask | Mod1Mask, KC_DESK_PREV, ACT_COUNT },
+    { "Right", ControlMask | Mod1Mask, KC_DESK_NEXT, ACT_COUNT },
+    { "Left", Mod1Mask | ShiftMask, KC_TAKE_PREV, ACT_COUNT },
+    { "Right", Mod1Mask | ShiftMask, KC_TAKE_NEXT, ACT_COUNT },
+    { "Left", ControlMask | Mod1Mask | ShiftMask, KC_TAKE_PREV, ACT_COUNT },
+    { "Right", ControlMask | Mod1Mask | ShiftMask, KC_TAKE_NEXT, ACT_COUNT }
 };
+
+/* How long the desktop name stays up after a switch. */
+static const unsigned long k_osd_ms = 900;
+
+/* _NET_WM_DESKTOP for "all desktops". */
+static const long k_net_all_desktops = 0xFFFFFFFFL;
 static const int k_nkeys = (int)(sizeof(k_keys) / sizeof(k_keys[0]));
 static KeySym g_key_syms[sizeof(k_keys) / sizeof(k_keys[0])];
 
@@ -100,7 +116,8 @@ Client::Client()
       old_bw(0), gravity(GRAV_NW), icon(0), type(WT_NORMAL),
       actions(all_actions()), accepts_input(true), take_focus(false),
       delete_window(false), maximized(false), fullscreen(false),
-      minimized(false), listed(false), ignore_unmap(0), pressed(FP_NONE),
+      minimized(false), listed(false), desktop(0), ignore_unmap(0),
+      pressed(FP_NONE),
       cursor_part(FP_NONE)
 {
 }
@@ -116,6 +133,7 @@ Wm::Wm()
       running_(true), restart_(false), painter_(0), shell_(0), panel_(None),
       cursor_normal_(None), cursor_move_(None), active_(0), place_x_(0),
       place_y_(0), last_click_time_(0), last_click_win_(None),
+      desktops_(1), current_(0), osd_win_(None), osd_timer_(0),
       switching_(false), switch_win_(None), switch_sel_(0)
 {
     signal_pipe_[0] = signal_pipe_[1] = -1;
@@ -236,6 +254,16 @@ bool Wm::init(int* argc, char** argv)
                                 InputOutput, CopyFromParent,
                                 CWOverrideRedirect | CWSaveUnder |
                                 CWEventMask, &sa);
+    osd_win_ = XCreateWindow(dpy_, root_, 0, 0, 1, 1, 0, CopyFromParent,
+                             InputOutput, CopyFromParent,
+                             CWOverrideRedirect | CWSaveUnder | CWEventMask,
+                             &sa);
+
+    /* Keep the desktop we were on across a restart. */
+    desktops_ = config_.desktops;
+    current_ = (int)read_cardinal(dpy_, root_, atoms_.net_current_desktop, 0);
+    if (current_ < 0 || current_ >= desktops_)
+        current_ = 0;
 
     if (pipe(signal_pipe_) == 0) {
         close_on_exec(signal_pipe_[0]);
@@ -259,6 +287,8 @@ bool Wm::init(int* argc, char** argv)
 
 void Wm::start()
 {
+    if (shell_)
+        shell_->desktop_changed(current_, desktops_);
     adopt_existing();
 }
 
@@ -314,7 +344,10 @@ void Wm::setup_ewmh()
         atoms_.net_wm_state, atoms_.net_wm_state_fullscreen,
         atoms_.net_wm_state_maximized_vert,
         atoms_.net_wm_state_maximized_horz, atoms_.net_wm_state_hidden,
-        atoms_.net_wm_window_type,
+        atoms_.net_wm_window_type, atoms_.net_number_of_desktops,
+        atoms_.net_current_desktop, atoms_.net_wm_desktop,
+        atoms_.net_desktop_names, atoms_.net_desktop_geometry,
+        atoms_.net_desktop_viewport,
         atoms_.net_type_desktop, atoms_.net_type_dock,
         atoms_.net_type_toolbar, atoms_.net_type_menu,
         atoms_.net_type_utility, atoms_.net_type_splash,
@@ -325,7 +358,7 @@ void Wm::setup_ewmh()
                     PropModeReplace, (unsigned char*)supported,
                     (int)(sizeof(supported) / sizeof(supported[0])));
     update_client_lists();
-    update_workarea();
+    publish_desktops();
 }
 
 void Wm::grab_keys()
@@ -374,7 +407,7 @@ void Wm::adopt_existing()
             if (!XGetWindowAttributes(dpy_, w, &attr))
                 continue;
             if (attr.override_redirect || w == XtWindow(toplevel_) ||
-                w == check_win_ || w == switch_win_)
+                w == check_win_ || w == switch_win_ || w == osd_win_)
                 continue;
             if (attr.map_state == IsViewable)
                 manage(w, MANAGE_MAPPED);
@@ -417,8 +450,16 @@ void Wm::restore_all()
     XDeleteProperty(dpy_, root_, atoms_.net_client_list);
     XDeleteProperty(dpy_, root_, atoms_.net_client_list_stacking);
     XDeleteProperty(dpy_, root_, atoms_.net_workarea);
+    if (!restart_) {
+        /* A restart keeps the current desktop; windows keep their
+         * _NET_WM_DESKTOP either way, for whoever manages them next. */
+        XDeleteProperty(dpy_, root_, atoms_.net_current_desktop);
+        XDeleteProperty(dpy_, root_, atoms_.net_number_of_desktops);
+        XDeleteProperty(dpy_, root_, atoms_.net_desktop_names);
+    }
     XDestroyWindow(dpy_, check_win_);
     XDestroyWindow(dpy_, switch_win_);
+    XDestroyWindow(dpy_, osd_win_);
 }
 
 int Wm::on_startup_error(Display* dpy, XErrorEvent* ev)
@@ -512,7 +553,8 @@ bool Wm::on_map_notify(XMapEvent* ev)
         return false;
     Window w = ev->window;
     if (find_client(w) || find_frame(w) || w == check_win_ ||
-        w == switch_win_ || w == panel_ || w == XtWindow(toplevel_))
+        w == switch_win_ || w == osd_win_ || w == panel_ ||
+        w == XtWindow(toplevel_))
         return false;
     manage(w, MANAGE_OWN);
     return false;   /* Xt tracks mapping of its own shells */
@@ -621,12 +663,24 @@ bool Wm::on_property(XPropertyEvent* ev)
 
 bool Wm::on_client_message(XClientMessageEvent* ev)
 {
+    if (ev->window == root_) {
+        if (ev->message_type == atoms_.net_current_desktop) {
+            switch_desktop((int)ev->data.l[0]);
+            return true;
+        }
+        return false;
+    }
+
     Client* c = find_client(ev->window);
     if (!c)
         return false;
 
     if (ev->message_type == atoms_.net_active_window) {
         activate(c, ev->data.l[1] ? (Time)ev->data.l[1] : CurrentTime);
+    } else if (ev->message_type == atoms_.net_wm_desktop) {
+        long d = ev->data.l[0];
+        set_desktop(c, (d & 0xFFFFFFFFL) == k_net_all_desktops ? ALL_DESKTOPS
+                                                               : (int)d);
     } else if (ev->message_type == atoms_.net_close_window) {
         if (action_allowed(c->actions, ACT_CLOSE))
             close(c);
@@ -814,6 +868,11 @@ bool Wm::on_expose(XExposeEvent* ev)
             paint_switch();
         return true;
     }
+    if (ev->window == osd_win_) {
+        if (ev->count == 0)
+            paint_osd();
+        return true;
+    }
     Client* c = find_frame(ev->window);
     if (!c)
         return false;
@@ -900,6 +959,23 @@ bool Wm::on_key_press(XKeyEvent* ev)
             if (shell_)
                 shell_->show_start_menu(ev->time);
             break;
+        case KC_DESK_PREV:
+            switch_desktop(current_ - 1);
+            break;
+        case KC_DESK_NEXT:
+            switch_desktop(current_ + 1);
+            break;
+        case KC_TAKE_PREV:
+        case KC_TAKE_NEXT: {
+            int d = current_ + (k_keys[i].cmd == KC_TAKE_NEXT ? 1 : -1);
+            if (active_ && cycles(active_) && d >= 0 && d < desktops_) {
+                Client* c = active_;
+                set_desktop(c, d);
+                switch_desktop(d);
+                activate(c, ev->time);
+            }
+            break;
+        }
         }
         return true;
     }
@@ -1021,6 +1097,23 @@ void Wm::manage(Window w, ManageMode mode)
     XReparentWindow(dpy_, w, c->frame, e.left, e.top);
     XResizeWindow(dpy_, w, c->w, c->h);
 
+    /* Desktop: kept from before a restart, else the parent's (for
+     * transients) or the current one. Panels and the like are on all. */
+    long d = read_cardinal(dpy_, w, atoms_.net_wm_desktop, -2);
+    if (!cycles(c))
+        c->desktop = ALL_DESKTOPS;
+    else if ((d & 0xFFFFFFFFL) == k_net_all_desktops)
+        c->desktop = ALL_DESKTOPS;
+    else if (d >= 0)
+        c->desktop = d < desktops_ ? (int)d : desktops_ - 1;
+    else if (parent)
+        c->desktop = parent->desktop;
+    else
+        c->desktop = current_;
+    long nd = c->desktop == ALL_DESKTOPS ? k_net_all_desktops : c->desktop;
+    XChangeProperty(dpy_, w, atoms_.net_wm_desktop, XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char*)&nd, 1);
+
     clients_.push_back(c);
     mapped_.push_back(c);
     mru_.push_back(c);
@@ -1045,7 +1138,8 @@ void Wm::manage(Window w, ManageMode mode)
         set_wm_state(w, IconicState);
     } else {
         XMapWindow(dpy_, w);
-        XMapWindow(dpy_, c->frame);
+        if (on_current(c))
+            XMapWindow(dpy_, c->frame);
         set_wm_state(w, NormalState);
     }
 
@@ -1062,7 +1156,7 @@ void Wm::manage(Window w, ManageMode mode)
     update_client_lists();
 
     notify(c);
-    if (!iconic && (cycles(c) || c->type == WT_SPLASH))
+    if (!iconic && on_current(c) && (cycles(c) || c->type == WT_SPLASH))
         focus(c, CurrentTime);
 }
 
@@ -1299,7 +1393,7 @@ Client* Wm::next_focus(Client* except)
     int i;
     for (i = 0; i < mru_.size(); i++) {
         Client* c = mru_[i];
-        if (c != except && !c->minimized && cycles(c))
+        if (c != except && !c->minimized && cycles(c) && on_current(c))
             return c;
     }
     return 0;
@@ -1354,6 +1448,8 @@ void Wm::focus(Client* c, Time t)
 
 void Wm::activate(Client* c, Time t)
 {
+    if (!on_current(c))
+        switch_desktop(c->desktop);
     set_minimized(c, false);
     raise(c);
     focus(c, t);
@@ -1382,6 +1478,11 @@ void Wm::raise(Client* c)
 
     if (panel_ != None && !c->fullscreen)
         XRaiseWindow(dpy_, panel_);
+    /* Transient popups of our own stay above everything while shown. */
+    if (osd_timer_)
+        XRaiseWindow(dpy_, osd_win_);
+    if (switching_)
+        XRaiseWindow(dpy_, switch_win_);
     update_client_lists();
 }
 
@@ -1418,7 +1519,8 @@ void Wm::cycle(bool forward, Time t)
     Client* top = 0;
     int i, n = 0;
     for (i = 0; i < clients_.size(); i++) {
-        if (!cycles(clients_[i]) || clients_[i]->minimized)
+        if (!cycles(clients_[i]) || clients_[i]->minimized ||
+            !on_current(clients_[i]))
             continue;
         if (!bottom)
             bottom = clients_[i];
@@ -1436,7 +1538,8 @@ void Wm::cycle(bool forward, Time t)
     if (n > 1)
         lower(top);
     for (i = clients_.size() - 1; i >= 0; i--) {
-        if (cycles(clients_[i]) && !clients_[i]->minimized) {
+        if (cycles(clients_[i]) && !clients_[i]->minimized &&
+            on_current(clients_[i])) {
             focus(clients_[i], t);
             break;
         }
@@ -1485,7 +1588,7 @@ void Wm::close(Client* c)
 void Wm::post_menu(Client* c, int x, int y, Time t)
 {
     if (shell_)
-        shell_->show_window_menu(c->win, x, y, t, allowed(c));
+        shell_->show_window_menu(c->win, x, y, t, allowed(c), c->desktop);
 }
 
 /* Post the window menu below the menu button, or at the frame's top left
@@ -1616,7 +1719,8 @@ void Wm::set_minimized(Client* c, bool on)
         }
     } else {
         XMapWindow(dpy_, c->win);
-        XMapWindow(dpy_, c->frame);
+        if (on_current(c))
+            XMapWindow(dpy_, c->frame);
         set_wm_state(c->win, NormalState);
     }
 
@@ -1660,6 +1764,149 @@ void Wm::apply_state(Client* c, bool restore)
 }
 
 /* ------------------------------------------------------------------ */
+/* Virtual desktops                                                    */
+
+bool Wm::on_current(const Client* c) const
+{
+    return c->desktop == ALL_DESKTOPS || c->desktop == current_;
+}
+
+void Wm::publish_desktops()
+{
+    long v[2];
+    v[0] = desktops_;
+    XChangeProperty(dpy_, root_, atoms_.net_number_of_desktops, XA_CARDINAL,
+                    32, PropModeReplace, (unsigned char*)v, 1);
+    v[0] = current_;
+    XChangeProperty(dpy_, root_, atoms_.net_current_desktop, XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char*)v, 1);
+    v[0] = screen_w_;
+    v[1] = screen_h_;
+    XChangeProperty(dpy_, root_, atoms_.net_desktop_geometry, XA_CARDINAL,
+                    32, PropModeReplace, (unsigned char*)v, 2);
+    long vp[2 * k_max_desktops];
+    memset(vp, 0, sizeof(vp));
+    XChangeProperty(dpy_, root_, atoms_.net_desktop_viewport, XA_CARDINAL,
+                    32, PropModeReplace, (unsigned char*)vp, 2 * desktops_);
+
+    /* "Desktop 1\0Desktop 2\0..." */
+    char names[16 * k_max_desktops];
+    int len = 0, i;
+    for (i = 0; i < desktops_; i++) {
+        sprintf(names + len, "Desktop %d", i + 1);
+        len += (int)strlen(names + len) + 1;
+    }
+    XChangeProperty(dpy_, root_, atoms_.net_desktop_names,
+                    atoms_.utf8_string, 8, PropModeReplace,
+                    (unsigned char*)names, len);
+    update_workarea();
+}
+
+/* Frames of other desktops are unmapped; their clients stay mapped inside,
+ * so applications do not see an iconify. */
+void Wm::switch_desktop(int desktop)
+{
+    if (desktop < 0 || desktop >= desktops_ || desktop == current_)
+        return;
+    if (switching_)
+        end_switch(false, CurrentTime);
+    current_ = desktop;
+
+    /* Map the new desktop first, then unmap the old, to avoid a flash of
+     * empty root window. */
+    int i;
+    for (i = clients_.size() - 1; i >= 0; i--)
+        if (!clients_[i]->minimized && on_current(clients_[i]))
+            XMapWindow(dpy_, clients_[i]->frame);
+    for (i = 0; i < clients_.size(); i++)
+        if (!on_current(clients_[i]))
+            XUnmapWindow(dpy_, clients_[i]->frame);
+
+    publish_desktops();
+    if (active_ && !on_current(active_))
+        active_ = 0;
+    focus(active_ ? active_ : next_focus(0), CurrentTime);
+    for (i = 0; i < clients_.size(); i++)
+        notify(clients_[i]);
+    if (shell_)
+        shell_->desktop_changed(current_, desktops_);
+    show_osd();
+}
+
+void Wm::move_to_desktop(ToplevelId id, int desktop)
+{
+    Client* c = find_id(id);
+    if (c)
+        set_desktop(c, desktop);
+}
+
+/* Move a window (and its transients) to another desktop, or all. */
+void Wm::set_desktop(Client* c, int desktop)
+{
+    if (desktop != ALL_DESKTOPS && (desktop < 0 || desktop >= desktops_))
+        return;
+    if (!cycles(c) || c->desktop == desktop)
+        return;
+    c->desktop = desktop;
+    long nd = desktop == ALL_DESKTOPS ? k_net_all_desktops : desktop;
+    XChangeProperty(dpy_, c->win, atoms_.net_wm_desktop, XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char*)&nd, 1);
+    if (!c->minimized) {
+        if (on_current(c))
+            XMapWindow(dpy_, c->frame);
+        else
+            XUnmapWindow(dpy_, c->frame);
+    }
+
+    int i;
+    Vector<Client*> transients;
+    for (i = 0; i < clients_.size(); i++)
+        if (clients_[i]->transient_for == c->win && clients_[i] != c)
+            transients.push_back(clients_[i]);
+    for (i = 0; i < transients.size(); i++)
+        set_desktop(transients[i], desktop);
+
+    if (active_ == c && !on_current(c)) {
+        active_ = 0;
+        focus(next_focus(c), CurrentTime);
+    }
+    notify(c);
+}
+
+void Wm::show_osd()
+{
+    int w, h;
+    desktop_osd_size(*painter_, desktops_, &w, &h);
+    XMoveResizeWindow(dpy_, osd_win_, work_.x + (work_.w - w) / 2,
+                      work_.y + (work_.h - h) / 2, w, h);
+    XMapRaised(dpy_, osd_win_);
+    paint_osd();
+    if (osd_timer_)
+        XtRemoveTimeOut(osd_timer_);
+    osd_timer_ = XtAppAddTimeOut(app_, k_osd_ms, osd_timeout, (XtPointer)this);
+}
+
+void Wm::paint_osd()
+{
+    int w, h;
+    desktop_osd_size(*painter_, desktops_, &w, &h);
+    char name[32];
+    sprintf(name, "Desktop %d", current_ + 1);
+    painter_->begin(osd_win_, w, h);
+    paint_desktop_osd(*painter_, theme_.inactive, name, current_, desktops_,
+                      w, h);
+    painter_->end();
+}
+
+void Wm::osd_timeout(XtPointer closure, XtIntervalId* id)
+{
+    (void)id;
+    Wm* self = (Wm*)closure;
+    self->osd_timer_ = 0;
+    XUnmapWindow(self->dpy_, self->osd_win_);
+}
+
+/* ------------------------------------------------------------------ */
 /* Windows-style Alt+Tab                                               */
 
 void Wm::begin_switch(bool forward, Time t)
@@ -1667,7 +1914,7 @@ void Wm::begin_switch(bool forward, Time t)
     switch_list_.clear();
     int i;
     for (i = 0; i < mru_.size(); i++)
-        if (cycles(mru_[i]))
+        if (cycles(mru_[i]) && on_current(mru_[i]))
             switch_list_.push_back(mru_[i]);
     if (switch_list_.empty())
         return;
@@ -1748,6 +1995,8 @@ void Wm::notify(Client* c)
     t.icon = c->icon;
     t.minimized = c->minimized;
     t.allowed = allowed(c);
+    t.desktop = c->desktop;
+    t.on_current = on_current(c);
     if (c->listed) {
         shell_->task_changed(t);
     } else {
@@ -1841,15 +2090,19 @@ void Wm::update_client_lists()
     delete [] list;
 }
 
+/* One work area per desktop, as EWMH asks; they are all the same. */
 void Wm::update_workarea()
 {
-    long v[4];
-    v[0] = work_.x;
-    v[1] = work_.y;
-    v[2] = work_.w;
-    v[3] = work_.h;
+    long v[4 * k_max_desktops];
+    int i;
+    for (i = 0; i < desktops_; i++) {
+        v[i * 4 + 0] = work_.x;
+        v[i * 4 + 1] = work_.y;
+        v[i * 4 + 2] = work_.w;
+        v[i * 4 + 3] = work_.h;
+    }
     XChangeProperty(dpy_, root_, atoms_.net_workarea, XA_CARDINAL, 32,
-                    PropModeReplace, (unsigned char*)v, 4);
+                    PropModeReplace, (unsigned char*)v, 4 * desktops_);
 }
 
 void Wm::paint(Client* c)

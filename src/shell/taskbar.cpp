@@ -181,6 +181,8 @@ void Taskbar::change(const TaskInfo& t)
     task->icon = t.icon;
     task->minimized = t.minimized;
     task->allowed = t.allowed;
+    task->desktop = t.desktop;
+    task->on_current = t.on_current;
     paint_tasks();
 }
 
@@ -239,17 +241,27 @@ void Taskbar::start_unposted(void* closure)
     XmToggleButtonSetState(((Taskbar*)closure)->start_, False, False);
 }
 
-Rect Taskbar::button_rect(int i, int w, int h)
+/* Only the current desktop's windows have buttons. */
+int Taskbar::visible_count()
 {
-    int n = list_.size();
-    int bw = k_max_button;
-    if (n > 0 && (w + k_button_gap) / n - k_button_gap < bw)
-        bw = (w + k_button_gap) / n - k_button_gap;
-    if (bw < 24)
-        bw = 24;
-    return Rect(i * (bw + k_button_gap), 0, bw, h);
+    int i, n = 0;
+    for (i = 0; i < list_.size(); i++)
+        if (list_[i]->on_current)
+            n++;
+    return n;
 }
 
+Rect Taskbar::button_rect(int slot, int count, int w, int h)
+{
+    int bw = k_max_button;
+    if (count > 0 && (w + k_button_gap) / count - k_button_gap < bw)
+        bw = (w + k_button_gap) / count - k_button_gap;
+    if (bw < 24)
+        bw = 24;
+    return Rect(slot * (bw + k_button_gap), 0, bw, h);
+}
+
+/* Index into list_ of the button at (x, y), or -1. */
 int Taskbar::hit(int x, int y)
 {
     Dimension w = 0, h = 0;
@@ -257,10 +269,14 @@ int Taskbar::hit(int x, int y)
     XtSetArg(args[0], XmNwidth, &w);
     XtSetArg(args[1], XmNheight, &h);
     XtGetValues(tasks_, args, 2);
-    int i;
-    for (i = 0; i < list_.size(); i++)
-        if (button_rect(i, w, h).contains(x, y))
+    int count = visible_count(), slot = 0, i;
+    for (i = 0; i < list_.size(); i++) {
+        if (!list_[i]->on_current)
+            continue;
+        if (button_rect(slot, count, w, h).contains(x, y))
             return i;
+        slot++;
+    }
     return -1;
 }
 
@@ -283,10 +299,12 @@ void Taskbar::paint_tasks()
 
     painter_->begin(XtWindow(tasks_), w, h);
     painter_->fill(Rect(0, 0, w, h), cs_.bg);
-    int i;
+    int i, slot = 0, count = visible_count();
     for (i = 0; i < list_.size(); i++) {
         Task* t = list_[i];
-        Rect r = button_rect(i, w, h);
+        if (!t->on_current)
+            continue;
+        Rect r = button_rect(slot++, count, w, h);
         bool is_down = (t->id == active_ && !t->minimized) || i == pressed_;
         const ColorSet& c = is_down ? down : cs_;
         painter_->fill(r, c.bg);
@@ -346,7 +364,7 @@ void Taskbar::tasks_input_cb(Widget w, XtPointer closure, XtPointer call)
         if (i >= 0) {
             Task* t = self->list_[i];
             self->winmenu_->post(t->id, ev->xbutton.x_root, ev->xbutton.y_root,
-                                 0, ev->xbutton.time, t->allowed);
+                                 0, ev->xbutton.time, t->allowed, t->desktop);
         }
     } else if (ev->type == ButtonRelease && ev->xbutton.button == Button1) {
         int i = self->hit(ev->xbutton.x, ev->xbutton.y);

@@ -55,6 +55,7 @@ private:
     Widget dialog_;
     Widget click_focus_;
     Widget windows_switch_;
+    Widget desktops_;
     FontRow title_, menu_, taskbar_;
     Widget clock_;
     Widget source_;

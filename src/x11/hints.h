@@ -25,6 +25,8 @@ struct Atoms {
     Atom net_wm_state, net_wm_state_fullscreen;
     Atom net_wm_state_maximized_vert, net_wm_state_maximized_horz;
     Atom net_wm_state_hidden, net_wm_icon, net_workarea;
+    Atom net_number_of_desktops, net_current_desktop, net_wm_desktop;
+    Atom net_desktop_names, net_desktop_geometry, net_desktop_viewport;
     Atom net_wm_window_type;
     Atom net_type_desktop, net_type_dock, net_type_toolbar, net_type_menu;
     Atom net_type_utility, net_type_splash, net_type_dialog;
@@ -56,6 +58,9 @@ class Icon;
 /* The window's icon: the _NET_WM_ICON image closest to 32x32, else the
  * WM_HINTS icon pixmap. Null if neither; the caller owns the result. */
 Icon* read_icon(Display* dpy, const Atoms& a, Window w);
+
+/* A CARDINAL property's first value, or 'def' if absent. */
+long read_cardinal(Display* dpy, Window w, Atom prop, long def);
 
 void read_net_wm_state(Display* dpy, const Atoms& a, Window w,
                        bool* fullscreen, bool* maximized);

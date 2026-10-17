@@ -42,6 +42,7 @@ struct Client {
     bool fullscreen;
     bool minimized;
     bool listed;        /* has a taskbar entry */
+    int desktop;        /* or ALL_DESKTOPS */
     Rect saved;         /* frame x/y and client w/h in the normal state */
     int ignore_unmap;
     FramePart pressed;
@@ -68,6 +69,8 @@ public:
 
     /* WmLink */
     void request(ToplevelId id, WmAction action);
+    void switch_desktop(int desktop);
+    void move_to_desktop(ToplevelId id, int desktop);
     void set_panel(unsigned long window, const Rect& r);
     void quit();
     void restart();
@@ -151,6 +154,13 @@ private:
     void set_minimized(Client* c, bool on);
     void apply_state(Client* c, bool restore);
 
+    bool on_current(const Client* c) const;
+    void set_desktop(Client* c, int desktop);
+    void publish_desktops();
+    void show_osd();
+    void paint_osd();
+    static void osd_timeout(XtPointer closure, XtIntervalId* id);
+
     void begin_switch(bool forward, Time t);
     void step_switch(int dir);
     void end_switch(bool commit, Time t);
@@ -203,6 +213,12 @@ private:
     int place_x_, place_y_;
     Time last_click_time_;      /* title bar double click detection */
     Window last_click_win_;
+
+    /* Virtual desktops */
+    int desktops_;
+    int current_;
+    Window osd_win_;
+    XtIntervalId osd_timer_;
 
     /* Windows-style Alt+Tab */
     bool switching_;

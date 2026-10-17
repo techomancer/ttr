@@ -13,6 +13,7 @@
  *   Ttr*titleFont:      core X font (XLFD) for window titles
  *   Ttr*menuFont:       for menus and dialogs (Motif)
  *   Ttr*taskbarFont:    for task buttons and the clock
+ *   Ttr*desktops:       number of virtual desktops, 1 .. 16
  */
 #ifndef TTR_X11_CONFIG_H
 #define TTR_X11_CONFIG_H
@@ -26,6 +27,8 @@ namespace ttr {
 /* Background of Motif widgets and our panels (0xRRGGBB). Keep in sync
  * with the "*background" fallback resource in config.cpp. */
 static const unsigned long k_widget_bg = 0xb8b8b8;
+
+static const int k_max_desktops = 16;
 
 struct Config {
     enum FocusPolicy { FOCUS_CLICK, FOCUS_POINTER };
@@ -43,6 +46,7 @@ struct Config {
     Str title_font;
     Str menu_font;
     Str taskbar_font;
+    int desktops;
 
     Config();
 };

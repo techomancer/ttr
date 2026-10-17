@@ -376,6 +376,7 @@ widgets only when they are created. See [src/x11/config.h](../src/x11/config.h):
 | `Ttr*titleFont` | core X font (XLFD) for window titles and Alt+Tab | Helvetica bold 12 |
 | `Ttr*menuFont` | for Motif menus and dialogs (`*fontList`) | Helvetica bold 12 |
 | `Ttr*taskbarFont` | for task buttons and the clock | Helvetica medium 12 |
+| `Ttr*desktops` | number of virtual desktops, 1 to 16 | 4 |
 
 The start menu reads applications through the `AppSource` interface
 ([src/core/apps.h](../src/core/apps.h)): `DesktopAppSource` reads XDG
@@ -389,7 +390,30 @@ a pixmap, so each label is drawn by us into one pixmap (icon, then text, in
 the menu's own colors) and set with `XmNlabelType: XmPIXMAP`. This costs the
 mnemonic underline on those entries.
 
-### 5.4 Wayland mode (`ttr-wayland`, later)
+### 5.4 Virtual desktops
+
+Each window is on one desktop or on all of them (docks and other panels
+always are). Switching desktops unmaps the frames of the other desktops'
+windows; their clients stay mapped inside, so applications do not see an
+iconify. The taskbar and Alt+Tab show only the current desktop, as on
+Windows, and focus returns to the most recently used window there.
+Activating a window on another desktop (`_NET_ACTIVE_WINDOW`) switches to
+it.
+
+| Keys | Action |
+|---|---|
+| Ctrl+Alt+Left/Right | previous / next desktop (no wrap-around) |
+| Alt+Shift+Left/Right, Ctrl+Alt+Shift+Left/Right | move the active window to the previous / next desktop and follow it |
+
+The window menu has "Move to Desktop" (including All Desktops), and the start
+menu has "Desktops". A small display names the new desktop for a moment
+after each switch; there is deliberately no permanent pager. Desktops are
+published through EWMH (`_NET_NUMBER_OF_DESKTOPS`, `_NET_CURRENT_DESKTOP`,
+`_NET_WM_DESKTOP`, `_NET_DESKTOP_NAMES`, per-desktop `_NET_WORKAREA`), so
+external pagers and `wmctrl` work. Windows keep their `_NET_WM_DESKTOP`, and
+a restart keeps the current desktop.
+
+### 5.5 Wayland mode (`ttr-wayland`, later)
 
 1. Bring up DRM/KMS, libinput and the scene graph, then create the Wayland
    socket.

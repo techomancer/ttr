@@ -21,6 +21,9 @@ void Atoms::init(Display* dpy)
         "_NET_WM_STATE", "_NET_WM_STATE_FULLSCREEN",
         "_NET_WM_STATE_MAXIMIZED_VERT", "_NET_WM_STATE_MAXIMIZED_HORZ",
         "_NET_WM_STATE_HIDDEN", "_NET_WM_ICON", "_NET_WORKAREA",
+        "_NET_NUMBER_OF_DESKTOPS", "_NET_CURRENT_DESKTOP", "_NET_WM_DESKTOP",
+        "_NET_DESKTOP_NAMES", "_NET_DESKTOP_GEOMETRY",
+        "_NET_DESKTOP_VIEWPORT",
         "_NET_WM_WINDOW_TYPE",
         "_NET_WM_WINDOW_TYPE_DESKTOP", "_NET_WM_WINDOW_TYPE_DOCK",
         "_NET_WM_WINDOW_TYPE_TOOLBAR", "_NET_WM_WINDOW_TYPE_MENU",
@@ -39,6 +42,9 @@ void Atoms::init(Display* dpy)
         &net_wm_state, &net_wm_state_fullscreen,
         &net_wm_state_maximized_vert, &net_wm_state_maximized_horz,
         &net_wm_state_hidden, &net_wm_icon, &net_workarea,
+        &net_number_of_desktops, &net_current_desktop, &net_wm_desktop,
+        &net_desktop_names, &net_desktop_geometry,
+        &net_desktop_viewport,
         &net_wm_window_type,
         &net_type_desktop, &net_type_dock,
         &net_type_toolbar, &net_type_menu,
@@ -186,6 +192,17 @@ void apply_motif_hints(Display* dpy, const Atoms& a, Window w,
         if (!decor->border)
             decor->resizeh = false;
     }
+}
+
+long read_cardinal(Display* dpy, Window w, Atom prop, long def)
+{
+    unsigned char* data;
+    unsigned long n = get_property(dpy, w, prop, XA_CARDINAL, 32, &data);
+    if (n == 0)
+        return def;
+    long v = ((long*)data)[0];
+    XFree(data);
+    return v;
 }
 
 void read_net_wm_state(Display* dpy, const Atoms& a, Window w,

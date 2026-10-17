@@ -27,7 +27,9 @@ public:
     void task_removed(ToplevelId id);
     void active_changed(ToplevelId id);
     void show_window_menu(ToplevelId id, int x_root, int y_root,
-                          unsigned long time, ActionMask allowed);
+                          unsigned long time, ActionMask allowed,
+                          int desktop);
+    void desktop_changed(int current, int count);
     void show_start_menu(unsigned long time);
     void shutdown();
 

@@ -22,6 +22,12 @@ void switcher_size(Painter& p, int count, int* w, int* h);
 void paint_switcher(Painter& p, const ColorSet& cs, const SwitchItem* items,
                     int count, int selected, int w, int h);
 
+/* Brief feedback after switching desktops: one small box per desktop with
+ * the current one pushed in, and its name underneath. Not a minimap. */
+void desktop_osd_size(Painter& p, int count, int* w, int* h);
+void paint_desktop_osd(Painter& p, const ColorSet& cs, const char* name,
+                       int current, int count, int w, int h);
+
 }
 
 #endif

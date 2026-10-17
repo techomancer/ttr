@@ -30,6 +30,13 @@ static const int k_nsizes = (int)(sizeof(k_sizes) / sizeof(k_sizes[0]));
 
 static const char* const k_sources[] = { "auto", "desktop", "toolchest" };
 
+static const char* const k_desktop_counts[] = {
+    "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
+    "15", "16"
+};
+static const int k_ncounts =
+    (int)(sizeof(k_desktop_counts) / sizeof(k_desktop_counts[0]));
+
 static XmString xmstr(const char* s)
 {
     return XmStringCreateLocalized((char*)s);
@@ -401,6 +408,12 @@ void SettingsDialog::build()
     XmToggleButtonSetState(cfg_.switch_style == Config::SWITCH_WINDOWS
                                ? windows_switch_ : unused, True, True);
 
+    desktops_ = drop_down(row(f, "Virtual desktops:"), "desktops",
+                          k_desktop_counts, k_ncounts, 8, 3);
+    char count[16];
+    sprintf(count, "%d", cfg_.desktops);
+    select_item(desktops_, count);
+
     f = frame(content, "Fonts");
     font_row(&title_, f, "Window titles:", cfg_.title_font.c_str());
     font_row(&menu_, f, "Menus and dialogs:", cfg_.menu_font.c_str());
@@ -488,6 +501,8 @@ void SettingsDialog::save()
                                                                  : "pointer");
     file.set("switchStyle", XmToggleButtonGetState(windows_switch_)
                                 ? "windows" : "stack");
+    file.set("desktops",
+             selected_item(desktops_, k_desktop_counts, k_ncounts).c_str());
     file.set("titleFont", font_name(&title_).c_str());
     file.set("menuFont", font_name(&menu_).c_str());
     file.set("taskbarFont", font_name(&taskbar_).c_str());

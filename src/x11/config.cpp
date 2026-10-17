@@ -45,6 +45,7 @@ struct Resources {
     String title_font;
     String menu_font;
     String taskbar_font;
+    String desktops;
 };
 
 #define RES(name, cls, field, def) \
@@ -61,7 +62,8 @@ static XtResource k_resources[] = {
     RES("clockFormat", "ClockFormat", clock_format, "%H:%M"),
     RES("titleFont", "Font", title_font, BOLD_12),
     RES("menuFont", "Font", menu_font, BOLD_12),
-    RES("taskbarFont", "Font", taskbar_font, MEDIUM_12)
+    RES("taskbarFont", "Font", taskbar_font, MEDIUM_12),
+    RES("desktops", "Desktops", desktops, "4")
 };
 
 #undef RES
@@ -70,7 +72,7 @@ Config::Config()
     : focus(FOCUS_CLICK), switch_style(SWITCH_WINDOWS),
       app_source(APPS_DESKTOP), app_source_name("auto"),
       terminal("xterm -e"), clock_format("%H:%M"), title_font(BOLD_12),
-      menu_font(BOLD_12), taskbar_font(MEDIUM_12)
+      menu_font(BOLD_12), taskbar_font(MEDIUM_12), desktops(4)
 {
 }
 
@@ -216,6 +218,12 @@ void read_config(Widget toplevel, Config* cfg)
     cfg->toolchest_files = expand_home(r.toolchest_files);
     cfg->terminal = r.terminal;
     cfg->clock_format = r.clock_format;
+
+    cfg->desktops = r.desktops ? atoi(r.desktops) : 4;
+    if (cfg->desktops < 1)
+        cfg->desktops = 1;
+    if (cfg->desktops > k_max_desktops)
+        cfg->desktops = k_max_desktops;
 
     Display* dpy = XtDisplay(toplevel);
     cfg->title_font = usable_font(dpy, r.title_font, BOLD_12);

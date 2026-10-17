@@ -31,18 +31,29 @@ public:
     void post(int x, int y_bottom, unsigned long time);
     /* Called whenever the menu goes away. */
     void on_unpost(void (*fn)(void*), void* closure);
+    /* Mark the current desktop in the Desktops submenu. */
+    void set_desktop(int desktop);
 
 private:
-    enum Command { CMD_APP, CMD_RUN, CMD_SETTINGS, CMD_RESTART, CMD_EXIT };
+    enum Command {
+        CMD_APP, CMD_RUN, CMD_SETTINGS, CMD_RESTART, CMD_EXIT, CMD_DESKTOP
+    };
     struct Pending {
         StartMenu* menu;
         Command cmd;
         AppNode* app;
+        int desktop;
+    };
+    struct DeskItem {
+        StartMenu* menu;
+        int desktop;
+        Widget button;
     };
 
     /* Menu callbacks only queue the command; it runs once the menu has
      * popped down, so the focus Motif restores does not undo ours. */
-    void defer(Command cmd, AppNode* app);
+    void defer(Command cmd, AppNode* app, int desktop = 0);
+    static void desktop_cb(Widget w, XtPointer closure, XtPointer call);
     static void deferred_cb(XtPointer closure, XtIntervalId* id);
     void run_dialog();
     void exit_dialog();
@@ -71,6 +82,8 @@ private:
     Widget run_dialog_;
     Widget exit_dialog_;
     SettingsDialog* settings_;
+    int desktops_;
+    DeskItem* desk_items_;
     AppFolder* apps_;
     XPainter* painter_;
     IconLoader* icons_;
