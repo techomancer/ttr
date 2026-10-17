@@ -1,172 +1,483 @@
-# Design Document: Integrated Wayland Compositor / X11 Window Manager
-### Motif decorations · integrated taskbar, launcher, notification area · IRIX-portable core
+# Design Document: To The Roots (ttr)
+### mwm-style window manager · Windows 2000-style taskbar · Motif widgets · C++ that MIPSpro 7.4 can build
 
-*Status: draft — captures initial architecture discussion. Living document.*
+*Status: draft, revision 2. The implementation language changed from Rust to a
+conservative C++ subset, and Motif now provides every real widget. This is a
+living document.*
 
 ---
 
 ## 1. Vision
 
-A single integrated desktop shell in the CDE/Motif tradition, running as:
+A small, consistent desktop shell in the CDE/mwm tradition: a reparenting window
+manager with Motif-style frames, plus a Windows 2000-style taskbar (start menu,
+task buttons, notification area, clock). It is built for readability and
+predictability, not for visual effects.
 
-1. **A Wayland compositor** on modern Linux (with XWayland for X11 clients), and
-2. **A native X11 reparenting window manager** — same binary family, second backend — running on Xorg today and, eventually, on IRIX.
+It runs in two modes, built from one source tree:
+
+1. **X11 mode**: a native reparenting window manager on Xorg (Linux) and,
+   later, on IRIX. It is a single monolithic process, the same as mwm.
+2. **Wayland mode** (later, Linux only): a Wayland compositor that hosts
+   XWayland. The shell UI (taskbar and menus) is the same Motif code, running
+   as an X11 client of XWayland. See §4.
 
 Design goals, in priority order:
 
-- **X11-first semantics.** The abstractions are designed around X11's asynchronous, server-authoritative model; Wayland fits into that shape, not the reverse.
-- **Seamless remote X11.** Clients from remote machines (IRIX workstations over TCP) must feel native. In X11 mode this is free (core protocol). In Wayland mode, XWayland listens on TCP.
-- **In-process chrome.** Decorations, taskbar, launcher/start menu, and notification area are compositor-internal — scene nodes / owned X windows, not separate shell clients. No layer-shell, no foreign-toplevel-management plumbing for our own UI.
-- **User sovereignty.** No permission dialogs. The machine belongs to its owner; clients the owner runs are trusted. X11's trust model, deliberately chosen.
-- **IRIX as a real target.** The portable core (widgets + X11 backend) must remain buildable for IRIX once a Rust toolchain exists there. This constrains dependencies, not ambition.
+- **Builds with old compilers.** The portable code compiles with MIPSpro 7.4,
+  with g++/clang in `-std=c++98` mode, and with whatever gcc an older
+  distribution ships. This is a firm constraint (§2).
+- **Motif for widgets.** Menus, the taskbar, dialogs and the configuration UI
+  are Motif/Xt widgets, so they look and behave like a Motif desktop without
+  any toolkit of our own.
+- **X11-first semantics.** The abstractions follow X11's asynchronous,
+  server-authoritative model. Wayland is fitted to that model.
+- **Seamless remote X11.** Clients from remote machines (such as IRIX
+  workstations over TCP) must feel native. X11 mode gets this from the core
+  protocol. Wayland mode gets it from XWayland listening on TCP.
+- **User sovereignty.** No permission dialogs. Clients the owner runs are
+  trusted, which is X11's trust model, chosen on purpose (§6).
+- **IRIX as a real target.** The X11 mode binary must build and run on IRIX
+  6.5 with MIPSpro. This limits which dependencies we use and how the code is
+  written.
 
 ---
 
-## 2. Architecture
+## 2. Language and build constraints
 
-Three layers. The key insight: do **not** abstract "a window" at the protocol level. On X11 a WM is a privileged client reparenting other clients' windows; on Wayland the WM *is* the display server and client surfaces are textures. There is no common "bare window." Instead we abstract (a) client toplevels as an interface, and (b) "a rectangle we own and can paint."
+### 2.1 The C++ dialect: "MIPSpro C++"
 
-### 2.1 Widget / chrome layer (portable core)
+Portable code is written in a conservative subset of C++98. The rule is simple:
+**if MIPSpro 7.4 or `g++ -std=c++98 -pedantic` rejects it, or behaves
+differently on it, it is not allowed.**
 
-- Titlebars, Motif bevels, buttons, taskbar, start menu/launcher, notification area, window menus.
-- Written against **cairo** for rendering (image-buffer target on Wayland, xlib/xcb target on X11) and **pango** for text.
-- Consumes an abstract input event stream and a damage/redraw callback.
-- **This code never knows which backend it is running under.**
-- Taskbar reconfiguration, layout, etc. all live here — in-process, simple, dies and restarts with the compositor.
+Allowed:
+- Classes, single inheritance, abstract interfaces made of pure virtual
+  functions.
+- Simple templates, used for containers and small helpers only. No template
+  metaprogramming, partial specialization tricks, or template template
+  parameters.
+- Namespaces (one project namespace, `ttr`). `const`, references, `static_cast`
+  and `reinterpret_cast`.
+- C library headers in the `<string.h>` form, not `<cstring>`, because that form
+  is the most reliable across old compilers.
 
-### 2.2 `FrameHost` — "a rectangle I own"
+Not allowed:
+- **Anything from C++11 or later**: `auto`, `nullptr`, `override`, range-for,
+  `enum class`, `static_assert`, lambdas, rvalue references, `>>` closing two
+  template lists, `long long` literals without a typedef, `<stdint.h>`.
+- **Exceptions.** Build with `-fno-exceptions` (gcc/clang) or
+  `-LANG:exceptions=OFF` (MIPSpro). Errors are reported through return values.
+- **RTTI and `dynamic_cast`.** Build with `-fno-rtti`. Use explicit type tags
+  where they are needed.
+- **The standard library (STL, iostreams, `std::string`) in portable code.**
+  MIPSpro needs `-LANG:std` for the new-style library, the old and new
+  iostreams do not mix well, and SGI STL and libstdc++ differ in small ways.
+  We need very few containers, so `core/` provides small ones (`Vector<T>`,
+  `String`, `IntMap<T>`) that behave the same on every compiler.
+- Reusing a `for`-loop variable name after the loop in the same scope. Older
+  compilers disagree about `for`-init scoping, so declare the variable before
+  the loop if you need it afterwards.
+- Variable-length arrays, designated initializers, `#pragma once`, and other
+  compiler extensions.
 
-The honest low-level abstraction: a paintable, input-receiving surface controlled by us.
+Portability helpers live in `core/port.h`: fixed-width integer typedefs (from
+`<inttypes.h>` on IRIX and `<stdint.h>` elsewhere), a C++98 compile-time assert
+(the `typedef char x[cond ? 1 : -1]` trick), `TTR_UNUSED`, and endian
+detection.
 
-| Concern | Wayland impl | X11 impl |
+### 2.2 C for the Wayland glue
+
+wlroots headers are C11 and do not compile cleanly as C++. Translation units
+that include wlroots are therefore written in **C** (`*.c`, compiled as C11).
+They expose a small `extern "C"` API to the C++ side. This code is Linux-only,
+so C11 is acceptable there. The C++ in `wayland/` still follows §2.1 so the
+code base reads the same throughout.
+
+### 2.3 Build system
+
+- **POSIX `make`** with a single hand-written `Makefile`, plus a per-platform
+  `config/<platform>.mk` (for example `linux-gcc.mk`, `linux-clang.mk`,
+  `irix-mipspro.mk`). There is no CMake, autotools or pkg-config dependency on
+  the portable path. Linux configs may call `pkg-config` to find flags.
+- The `make wayland` target is optional and Linux-only. The default target
+  builds the X11 mode binary only.
+
+### 2.4 Dialect enforcement in CI
+
+- `g++ -std=c++98 -pedantic -Werror -fno-exceptions -fno-rtti` and the same
+  with clang. This catches most C++11 drift.
+- A scheduled **MIPSpro build on emulated IRIX** (our Indy emulator), which
+  also runs the unit tests there. Cross-compile on fast hardware where
+  possible.
+- A **big-endian job** (qemu-system-mips or the IRIX run itself). Pixel formats,
+  X11 property parsing and any reinterpret casts are where little-endian
+  assumptions hide.
+
+---
+
+## 3. Architecture
+
+### 3.1 Layers
+
+```
+            +-----------------------------------------------+
+  shell/    |  Motif/Xt shell: taskbar, start menu, window  |  portable C++98
+            |  menu, tray, run dialog, config UI            |  + Xt + Motif
+            +-------------------+---------------------------+
+                                | WmLink (interface, §3.4)
+            +-------------------+---------------------------+
+  core/     |  window model, focus/stacking policy,         |  portable C++98
+            |  ToplevelHandle, Painter, frame layout/theme  |  (no X, no Wayland)
+            +-----------+-----------------------+-----------+
+                        |                       |
+            +-----------+-----------+   +-------+-----------------------+
+  x11/      | X11 WM backend:       |   | wayland/: compositor          |  Linux only
+            | reparenting, ICCCM,   |   | (wlroots), XWayland xwm,      |  C11 glue +
+            | EWMH, Motif hints,    |   | software Painter, WmLink      |  C++98
+            | XlibPainter           |   | server                        |
+            +-----------------------+   +-------------------------------+
+```
+
+The key point, unchanged from the first draft: do **not** abstract "a window"
+at the protocol level. On X11 the WM is a privileged client that reparents other
+clients' windows. On Wayland the WM *is* the display server, and client
+surfaces are textures. Instead we abstract (a) client toplevels as an interface
+(`ToplevelHandle`) and (b) drawing our own decorations (`Painter`).
+
+### 3.2 Who draws what
+
+| UI element | Drawn by | Why |
 |---|---|---|
-| Backing | scene-graph node with shm-buffer texture | real X window (frame window, dock window) |
-| Painting | cairo → shm buffer → texture upload | cairo-xcb; server draws, Expose-driven |
-| Input | scene hit-testing; we own the seat | core events on our windows |
-| Taskbar reservation | our own layout policy | `_NET_WM_STRUT_PARTIAL` |
-| Compositing | yes (we are the compositor) | none — server-side drawing, which is exactly why remote clients feel native |
+| Window frames (border, title bar, buttons) | our own `Painter` code, in the WM or compositor process | Frames must resize in step with the client. mwm also draws frames itself instead of using widgets. |
+| Taskbar, start menu, window menu, tray, dialogs, config UI | **Motif widgets** in the shell | These are real widgets with focus, keyboard navigation and menus. Motif already does this well. |
 
-On the Wayland side this corresponds to `wlr_scene`-style nodes (or the Smithay equivalent). Our own UI never goes through a window protocol — no round-trips, no self-client weirdness. Input dispatch is scene hit-testing: frame node → we handle it; surface content → forward to client.
+The frame theme (colors, bevel widths, title font) is defined once in `core/`.
+Shadow and highlight colors are computed with the same algorithm Motif uses
+(`XmGetColors`), reimplemented in `core/`, so frames and Motif widgets match.
 
-### 2.3 `ToplevelHandle` — client windows
+### 3.3 `Painter`: drawing our decorations
 
-Interface representing any client toplevel: geometry, title, app id, states (maximized / fullscreen / activated / minimized), size hints, and **requests** (close, move, resize, minimize, activate).
+`Painter` is a small abstract interface: fill a rectangle, draw a Motif bevel
+(raised or sunken, with a given thickness), draw clipped text, and draw an
+icon or pixmap.
 
-Three implementations:
+| | X11 mode: `XlibPainter` | Wayland mode: `PixelPainter` |
+|---|---|---|
+| Target | frame window, through a GC | shm buffer used as a scene texture |
+| Text | core X fonts (IRIX); Xft optional on Linux | FreeType + fontconfig (cairo/pango are acceptable, since this path is Linux-only) |
+| Colors | `XAllocColor`, so 8-bit PseudoColor visuals work (an Indy is commonly 8-bit) | direct 32-bit ARGB |
+| Redraw | `Expose`-driven, drawn by the server | damage-driven |
 
-1. **`XdgToplevel`** — xdg-shell clients.
-2. **`XWaylandToplevel`** — X11 clients under XWayland; appear as surfaces in the same scene, so decoration code is byte-identical.
-3. **`X11Toplevel`** — native reparenting WM path: SubstructureRedirect on root, MapRequest / ConfigureRequest handling, `WM_PROTOCOLS` / `WM_DELETE_WINDOW`, ICCCM hints, EWMH essentials, and `_MOTIF_WM_HINTS` — which here is the *primary* decoration hint source, not a legacy shim. `xdg-decoration` and `_MOTIF_WM_HINTS` both collapse into one "wants server-side decorations?" property.
+### 3.4 `ToplevelHandle`: client windows
 
-**X11-first interface rules** (so the X11 impl is never a lie):
+An interface for any client toplevel: geometry, title, class or app id, states
+(maximized, fullscreen, activated, minimized), size hints, and **requests**
+(close, move, resize, minimize, activate).
 
-- State changes are **asynchronous requests with confirmation**, never settable properties. Geometry may be overridden by the client; stacking is server-authoritative in X11 mode.
-- No frame-perfect atomicity assumptions leak into the core.
-- Grab semantics are abstracted as *"exclusive pointer/keyboard until released"*: realized as `XGrabPointer`/`XGrabKeyboard` on X11, and as plain input routing on Wayland (we own the seat). Menus and interactive move/resize are built on this.
+Implementations:
+
+1. **`X11Toplevel`** (X11 mode): SubstructureRedirect on the root window,
+   MapRequest and ConfigureRequest handling, `WM_PROTOCOLS`/`WM_DELETE_WINDOW`,
+   ICCCM hints, the essential EWMH properties, and `_MOTIF_WM_HINTS`, which is a
+   primary decoration hint here rather than a legacy shim.
+2. **`XdgToplevel`** (Wayland mode): xdg-shell clients.
+3. **`XWaylandToplevel`** (Wayland mode): X11 clients running under XWayland.
+   They appear as surfaces in the same scene, so the frame code is identical to
+   the code for native clients.
+
+`xdg-decoration` and `_MOTIF_WM_HINTS` both reduce to one property: "does this
+client want server-side decorations?"
+
+The ICCCM, EWMH and Motif-hints parsing code in `x11/` is written so that the
+XWayland xwm path in Wayland mode can reuse it.
+
+Rules that keep the X11 implementation honest:
+- State changes are **asynchronous requests that get a confirmation**, never
+  properties you can simply set. The client may override geometry, and the X
+  server decides stacking in X11 mode.
+- The core makes no frame-perfect atomicity assumptions.
+- Grabs are modelled as *"exclusive pointer/keyboard until released"*. On X11
+  that is `XGrabPointer`/`XGrabKeyboard`. On Wayland it is input routing,
+  because we own the seat.
+
+### 3.5 `WmLink`: the shell ↔ WM boundary
+
+The shell never touches the window model directly. It talks to the WM through
+`WmLink`, a message interface:
+
+- **WM → shell:** toplevel added, updated or removed (id, title, icon,
+  states), focus changed, output layout changed, show the window menu
+  (toplevel, x, y), show the start menu (hotkey), reload config.
+- **Shell → WM:** activate, minimize, restore, maximize, close, start a
+  keyboard move/resize, register one of our X windows with a role (panel, menu,
+  dialog), and grab begin/end (§4.4).
+
+There are two implementations:
+- **In-process** (X11 mode): direct calls queued onto the event loop.
+- **Socket** (Wayland mode): length-prefixed binary records over a
+  `socketpair` that the compositor creates when it spawns the shell. Both ends
+  run on the same host, so native byte order is fine. The first message is a
+  versioned hello.
+
+Toplevel ids are opaque to the shell. In X11 mode they are X window ids. In
+Wayland mode they are compositor-assigned, which is how the X11 taskbar can list
+**native Wayland windows**.
 
 ---
 
-## 3. Wayland protocol surface
+## 4. Wayland mode and Motif: how they fit
 
-Because chrome is in-process, most "advanced features" are just our own code. Protocols exist to serve **third-party clients**.
+### 4.1 The problem
 
-### 3.1 Table stakes
+Motif is Xt/Xlib and can only draw to an X server, so it cannot render to a
+Wayland surface. XWayland *is* an X server, though, and the compositor is
+already an X client of it: every compositor that supports XWayland runs an
+"xwm" that connects to XWayland to manage X windows. So the question is not
+*whether* the compositor can use XWayland for our Motif UI. It is **which
+process holds the Motif connection**.
+
+### 4.2 Options considered
+
+**A. Motif inside the compositor process, on the main thread.**
+Rejected. Xlib and Motif make blocking round-trips all the time
+(`XGetWindowProperty`, `XGrabPointer`, `XSync`, and so on). XWayland is itself a
+Wayland client of the compositor and sometimes waits on it. If both wait on each
+other the session deadlocks.
+
+**B. Motif inside the compositor process, on a separate thread.**
+This avoids the deadlock, but:
+- An Xlib I/O error (for example when XWayland restarts) calls `exit()` by
+  default, which would kill the compositor and, with it, **every Wayland client
+  in the session**. Workarounds exist (`XSetIOErrorExitHandler`, `longjmp`), but
+  Motif cannot be reliably torn down and re-initialized after the display is
+  lost.
+- Any crash in Motif or the shell takes down the whole session.
+
+**C. Motif in a separate shell process connected to XWayland.** **Chosen.**
+- The shell is an ordinary X11 client of XWayland. Its windows are XWayland
+  surfaces that the compositor recognizes and places specially.
+- If the shell crashes, the compositor respawns it and no client is lost. If
+  XWayland restarts, the compositor restarts it and then the shell.
+- The shell binary is **the IRIX-portable X11 mode binary**, run as
+  `ttr --shell-only --link-fd N`. Wayland mode adds no second copy of the shell
+  code.
+
+**D. Our X11 WM managing XWayland, with native Wayland clients drawn inside
+proxy X frame windows.** Rejected. It needs cross-process resize
+synchronization between the frame and the client surface for every native
+client, and it creates two frame-drawing paths for no visible benefit.
+
+### 4.3 What "monolithic" means now
+
+- **X11 mode:** one process, one Xt application context, single-threaded:
+  the WM, frames and Motif shell together, the same as mwm. This is the binary
+  that ships on IRIX.
+- **Wayland mode:** one *project* and one shell codebase, but two processes:
+  `ttr-wayland` (the compositor, Linux-only) supervises XWayland and
+  `ttr --shell-only`. The shell code is the same; only the `WmLink`
+  implementation differs.
+
+### 4.4 Making Motif behave under the compositor
+
+- **Unspoofable identification.** The shell sends its X window ids over the
+  private `socketpair` with a role (panel, menu, dialog). The compositor's xwm
+  matches XWayland surfaces against that list. We do not rely on window
+  properties, which any client could set.
+- **Panel placement.** A panel-role window is placed by the compositor at the
+  screen edge, its area is excluded from the work area, and it never takes
+  keyboard focus unless the start menu is open.
+- **Menus and grabs.** Motif menus are override-redirect windows that call
+  `XGrabPointer`/`XGrabKeyboard`. The shell hooks the menu shells'
+  popup/popdown callbacks and sends `GRAB_BEGIN(window)` and `GRAB_END`. While
+  a grab is active, the compositor routes all pointer and keyboard input to that
+  XWayland surface, including clicks outside it. XWayland turns those into
+  root-relative events, and Motif sees the click outside and closes the menu,
+  exactly as on X11. *This must be verified early (milestone 4).*
+- **Window menu from a frame.** A click on a frame's menu button (drawn by the
+  compositor) sends `SHOW_WINDOW_MENU(id, x, y)`. The shell posts the Motif menu
+  there and sends the chosen action back. The local IPC round-trip is well under
+  a millisecond.
+- **Coordinates.** Rootless XWayland uses the compositor's global layout
+  coordinates, so menu positions line up. HiDPI is handled by running XWayland
+  unscaled and choosing larger fonts in the theme (see §9).
+- **Launching applications.** The shell has both `DISPLAY` and
+  `WAYLAND_DISPLAY` set, so programs it starts use native Wayland when they
+  support it.
+- **Notification area.** XEmbed is X11, so the Motif tray works unchanged for
+  X11 and XWayland applications. StatusNotifierItem (D-Bus) is an optional,
+  Linux-only module.
+
+---
+
+## 5. Startup
+
+### 5.1 X11 mode (`ttr`)
+
+1. `XtOpenApplication`, then check that a Motif-capable visual and colormap
+   exist.
+2. Take over window management: claim the ICCCM `WM_S<n>` selection (`--replace`
+   asks the running WM to exit), then select SubstructureRedirect on the root
+   window. If another WM holds it, print a clear message and exit.
+3. Adopt existing windows (`XQueryTree`, then reparent the viewable ones).
+4. Create the Motif shell (taskbar, menus) using the in-process `WmLink`, and set
+   the panel strut.
+5. Run the Xt main loop. WM events for frame windows and the root window are
+   routed through Xt itself (`XtRegisterDrawable`/`XtSetEventDispatcher`,
+   available since X11R6), so they are dispatched even inside Motif's nested
+   loops. We do not filter events in a custom loop in front of
+   `XtDispatchEvent`.
+
+On exit or crash, clients survive: they are in our save-set and are reparented
+back to the root window.
+
+### 5.2 Wayland mode (`ttr-wayland`, later)
+
+1. Bring up DRM/KMS, libinput and the scene graph, then create the Wayland
+   socket.
+2. Start XWayland **eagerly** (not lazily), with `-listen tcp` if remote X
+   clients are enabled. Start the xwm.
+3. When XWayland is ready, create a `socketpair` and spawn
+   `ttr --shell-only --link-fd N` with `DISPLAY` and `WAYLAND_DISPLAY` set.
+4. The shell sends its hello and registers its windows. The compositor then
+   publishes the toplevel list.
+5. Supervision: if the shell dies it is respawned with backoff. If XWayland
+   dies, XWayland is restarted, and then the shell.
+
+---
+
+## 6. Wayland protocol surface (Wayland mode)
+
+Our own UI does not use Wayland protocols (frames are scene nodes, and the
+shell uses X11 through XWayland). Protocols exist to serve **third-party
+clients**.
+
+### 6.1 Table stakes
 - `xdg-shell`
-- `xdg-decoration` (advertise server-side preferred)
-- `wp-primary-selection` — middle-click paste; XWayland bridges to real PRIMARY
-- `ext-data-control` — clipboard managers
-- `xdg-activation` — focus/raise with token (`wmctrl`-style workflows)
+- `xdg-decoration` (advertise server-side as preferred)
+- `wp-primary-selection`: middle-click paste. XWayland bridges it to the real
+  PRIMARY selection.
+- `ext-data-control`: clipboard managers.
+- `xdg-activation`: focus and raise with a token.
 
-### 3.2 X11-parity restoration package
-- `ext-image-copy-capture` (+ `ext-foreign-toplevel-list` for per-window capture) — screenshots/recording without portals; grim/slurp/OBS-native-capture work directly
-- `wp-relative-pointer` + `wp-pointer-constraints` — pointer warp/confine for games
-- `wp-keyboard-shortcuts-inhibit` — VNC viewers / VMs receive hotkeys
-- `zwp-xwayland-keyboard-grab` — X11 apps doing `XGrabKeyboard` (VirtualBox, x11vnc, old games)
-- `ext-session-lock` — locking done right
-- `ext-idle-notify` + `zwp-idle-inhibit` — blanking timers and inhibition
+### 6.2 Restoring X11 parity
+- `ext-image-copy-capture` (+ `ext-foreign-toplevel-list`): screenshots and
+  recording without portals.
+- `wp-relative-pointer` + `wp-pointer-constraints`: pointer warp and confine.
+- `wp-keyboard-shortcuts-inhibit`: VNC viewers and VMs receive hotkeys.
+- `zwp-xwayland-keyboard-grab`: X11 applications that call `XGrabKeyboard`.
+- `ext-session-lock`, `ext-idle-notify` + `zwp-idle-inhibit`.
 
-### 3.3 Quality of life
-- `wp-viewporter`, `wp-fractional-scale`, `wp-presentation-time`
-- `wp-tearing-control` — restores the *option* of tearing for latency
-- Gamma / color temperature: in-process preferred; `wlr-gamma-control` optional
-- Output config: in-process xrandr-equivalent UI preferred; `wlr-output-management` optional
-- `zwp-text-input` + `zwp-input-method` — stub the seat plumbing early; miserable to retrofit
+### 6.3 Quality of life
+- `wp-viewporter`, `wp-fractional-scale`, `wp-presentation-time`,
+  `wp-tearing-control`.
+- `zwp-text-input` + `zwp-input-method`: stub the seat plumbing early, because
+  it is painful to retrofit.
 
-### 3.4 Explicitly skipped
-- `wlr-layer-shell` (chrome is in-process)
-- foreign-toplevel-*management* (list only, for capture)
-- xdg-desktop-portal as a requirement — later, a thin optional backend exists solely so browsers can screen-share, and it **auto-approves**.
-
----
-
-## 4. Security & permission model
-
-- **Policy: any client on our socket gets everything** — screencopy, data-control, output config. No dialogs, no dbus detours. This is X11's standing policy and a coherent single-user trust model; the portal model targets a Flatpak-shaped threat model this environment doesn't have.
-- **Two carve-outs (logic, not dialogs):**
-  1. **A lock is a lock.** While `ext-session-lock` is active, screencopy and input observation return nothing.
-  2. **Unconditional escape chord.** A compositor-level SAK that no `keyboard-shortcuts-inhibit` can capture, so no client can ever trap input.
-- Utilities (screenshot, color picker, window list) are either in-process hotkey functions or dumb clients speaking our protocols directly.
-- X11-mode semantic twins: screencopy ↔ XGetImage/XShm; idle ↔ XScreenSaver ext; activation ↔ `_NET_ACTIVE_WINDOW`; constraints ↔ grab+warp. These live as capabilities on seat/output abstractions, not Wayland-side warts.
+### 6.4 Explicitly skipped
+- `wlr-layer-shell`: our panel goes through XWayland and `WmLink`.
+- foreign-toplevel-*management*: we implement only the list, for capture.
+- xdg-desktop-portal as a requirement. Later, a thin optional backend may exist
+  so browsers can share the screen, and it **auto-approves**.
 
 ---
 
-## 5. Implementation language: Rust
+## 7. Security and permission model
 
-**Decision: Rust**, with the IRIX port promoted from "hedge" to **subproject** (see §6).
-
-Rationale:
-- Smithay provides a Rust-native compositor foundation.
-- Memory safety matters for a long-running process parsing hostile client input all day.
-- MIPSPro 7.4 C++ is rejected: partial C++98, temperamental templates; it would infect the entire codebase to serve one target that mogrix's modern GCC makes unnecessary anyway.
-- Enthusiasm is the project's critical resource, and Rust is where it is.
-
-**Portability discipline for the core crates:**
-- Stable channel only; no exotic nightly features in portable code.
-- Minimal proc-macro and dependency trees; no heavy async runtime (no tokio) in the core.
-- FFI surface limited to **libc + xcb + cairo (+ pango)** — all of which existed in nekoware-era IRIX.
-- **Physical workspace split, enforced in CI:**
-  - `core-widgets` — no Linux-isms, no Wayland
-  - `backend-x11` — no Linux-isms beyond xcb/cairo
-  - `backend-wayland` — DRM/KMS/libinput/GBM/Smithay; Linux-only, and *stays that way* (this half has no IRIX analog and never needs porting)
-- **Big-endian correctness from day one**: BE cross-check / qemu-system-mips job in CI. Pixel formats, X11 wire structs, and byte transmutes are where LE assumptions hide. Find them on the Ryzen, not on the Octane.
+- **Policy: any client on our socket gets everything**: screencopy, data
+  control, output configuration. There are no dialogs. This is X11's standing
+  policy and a coherent single-user trust model.
+- **Two exceptions, enforced by logic rather than dialogs:**
+  1. **A lock is a lock.** While `ext-session-lock` is active, screencopy and
+     input observation return nothing.
+  2. **Unconditional escape chord.** A compositor-level secure attention key
+     that no `keyboard-shortcuts-inhibit` can capture, so no client can trap
+     input.
+- The shell's privileged role is granted through the `socketpair` the
+  compositor created (§4.4), not through anything a client can claim.
+- X11 mode equivalents: screencopy ↔ `XGetImage`/MIT-SHM; idle ↔ the
+  XScreenSaver extension; activation ↔ `_NET_ACTIVE_WINDOW`; constraints ↔
+  grab + warp.
 
 ---
 
-## 6. IRIX port plan
+## 8. Dependencies
 
-Only `core-widgets` + `backend-x11` go to IRIX. The Wayland backend is Linux plumbing forever.
+| Component | Portable (X11 mode, IRIX) | Linux-only extras |
+|---|---|---|
+| X protocol | Xlib (not xcb: Motif is Xlib-based, and IRIX has no xcb) | — |
+| Toolkit | Xt + Motif. Baseline is the **Motif 2.1 API**, which IRIX 6.5 ships (IRIS IM) | Open Motif 2.3 (`x11-libs/motif` on Gentoo). Xft fonts through render tables are optional. |
+| GL widget | `GLwMDrawingArea` from SGI's libGLw | `GLwMDrawingArea` from Mesa's libGLw, built against Motif |
+| Extensions | SHAPE; Xinerama/RandR optional | RandR 1.2+, XFixes |
+| Wayland mode | — | wlroots, libinput, xkbcommon, FreeType/fontconfig (or cairo/pango), XWayland |
 
-### 6.1 Toolchain
-- No `mips-sgi-irix` rustc target exists. LLVM's MIPS ISA support is fine; the gap is the triple: n32/n64 ABI details, IRIX ELF quirks, what `rld` expects from dynamic objects, TLS story (or absence).
-- **Route: native LLVM target** (preferred over `rustc_codegen_gcc` — one compiler's output to debug, not two compilers' disagreements). mogrix's toolchain work is the reference and resource base.
-- Characterization: grind, not research — "make the linker and runtime agree with a 2006 OS."
+### 8.1 Motif feature rules
 
-### 6.2 std port
-- `sys`/PAL is a finite catalog: threads (IRIX pthreads, decent), files, sockets, time, env, process spawn. Each item: read the man page, write the shim, discover the one cursed detail.
-- Known cursed details to expect: `stat64`/LFS story, pthread stack-size and TLS quirks, `dlopen` tolerance, signals on a pre-POSIX-2008 kernel.
-- **Unwinding is the boss fight**: libunwind doesn't know IRIX. Bring-up mode is `panic=abort`; full unwinding is a later trophy.
-- Milestone ladder: `no_std + alloc` first (widget core could theoretically already run), then full `std`.
+- **Motif 2.1 is the floor.** We may use anything in the 2.1 API without guards,
+  for example `XmComboBox`, `XmSpinBox`, `XmNotebook`, `XmContainer`, render
+  tables and the 2.x drag-and-drop. Features added after 2.1 (in 2.2/2.3) go
+  behind `#ifdef` and need a 2.1 fallback.
+- **SGI extension widgets are IRIX-only.** These are IRIS IM's `Sg*` widgets
+  (`SgThumbWheel`, `SgDropPocket`, `SgFinder` and others) and the Schemes
+  look-and-feel. Code that uses them must be behind `#ifdef TTR_HAVE_SGI_WIDGETS`
+  and have a plain Motif fallback, or be reimplemented as one of our own small
+  widgets in `shell/`, so that Linux builds keep the same features.
+- **`GLwMDrawingArea` is portable.** It exists on IRIX and in Mesa's libGLw on
+  Linux, so a GL area can be used on both. Nothing in the WM needs GL. It is
+  available for optional extras such as a fancy clock or applet. Under Wayland
+  mode it runs through XWayland's GLX. The X11 mode binary must never *require*
+  it: an 8-bit Indy without suitable GL visuals still has to work.
 
-### 6.3 CI
-- **Our Indy emulator runs CI.** Cross-compile on fast hardware; execute the std test suite nightly on emulated IRIX; bisect against reproducible machine state. Better infrastructure than some tier-2 Rust targets have — most exotic ports die from untestability, not difficulty.
+### 8.2 Source layout
+
+```
+src/core/      portable C++98: port.h, containers, geometry, config parser,
+               window model, focus/stacking policy, theme + Motif color algorithm,
+               Painter and ToplevelHandle interfaces, WmLink messages
+src/x11/       portable C++98 + Xlib: X11 WM backend, ICCCM/EWMH/Motif hints,
+               XlibPainter
+src/shell/     portable C++98 + Xt/Motif: taskbar, start menu, window menu,
+               XEmbed tray, run dialog, config UI
+src/wayland/   Linux only: compositor (C11 wlroots glue + C++98), xwm integration,
+               PixelPainter, WmLink socket server
+config/        per-platform make fragments
+```
 
 ---
 
-## 7. Milestones
+## 9. Milestones
 
-1. **"It's alive":** X11 backend on Gentoo/Xorg — reparent an xterm into a Motif frame. Bevels, titlebar, the works. Exercises the exact codepath IRIX will someday run.
-2. Full X11 WM: ICCCM/EWMH, move/resize, focus policy, `_MOTIF_WM_HINTS`, struts, taskbar + launcher + notification area in-process.
-3. Wayland backend via Smithay: scene graph, xdg-shell, XWayland; identical chrome.
-4. Protocol surface of §3; permission model of §4; XWayland TCP for remote IRIX clients.
-5. Toolchain campaign (§6) with the WM as its concrete payload.
-6. **Target screenshot: Motif bevels on the Indy, drawn by rustc's output.**
+1. **"It's alive"** (X11 mode, Linux): reparent an xterm into a Motif-style
+   frame with bevels and a title bar, and post a Motif window menu from the
+   frame. **Build it with MIPSpro on emulated IRIX in the same milestone**, so
+   dialect drift is caught from the first commit.
+2. **Full X11 WM:** ICCCM/EWMH, move/resize, focus policy, `_MOTIF_WM_HINTS`,
+   struts, `WM_S<n>` and `--replace`.
+3. **Motif shell in-process:** taskbar with task buttons, start menu, clock,
+   XEmbed tray, run dialog. **Runs on the Indy.**
+4. **Wayland spike:** a minimal wlroots compositor plus XWayland plus
+   `ttr --shell-only`, to prove the menu-grab routing in §4.4 before building
+   anything else on it.
+5. **Wayland mode proper:** scene-graph frames with `PixelPainter`, xdg-shell
+   and XWayland toplevels, native Wayland windows in the Motif taskbar.
+6. Protocol surface (§6), permission model (§7), XWayland over TCP for remote
+   IRIX clients.
+7. **Target screenshot:** the same taskbar on Xorg, on IRIX, and on the Wayland
+   compositor.
 
 ---
 
-## 8. Open questions
+## 10. Open questions
 
-- Exact EWMH subset for the native X11 WM (enough for modern toolkits; scope TBD).
-- Notification area: XEmbed systray (X11 legacy) vs StatusNotifier/dbus vs both.
-- Config format and in-process reconfiguration UI for taskbar/launcher.
-- Multi-head policy details per backend (RandR vs our output abstraction).
-- Session management (XSMP on X11 side?) — optional, decide later.
+- The exact EWMH subset for X11 mode (enough for modern toolkits; scope to be
+  decided).
+- Which `Sg*` widgets, if any, are worth a portable reimplementation (the thumb
+  wheel and drop pocket are the obvious candidates).
+- Font story: core fonts everywhere for consistency, or Xft on Linux and core
+  fonts on IRIX?
+- HiDPI in Wayland mode: Motif does not scale. Is unscaled XWayland with larger
+  fonts acceptable?
+- Configuration format and how the Motif config UI reloads it live.
+- Multi-head policy per backend (RandR, Xinerama, IRIX multi-head, our output
+  abstraction).
+- Whether to support session management (XSMP). Optional, decide later.
