@@ -65,6 +65,7 @@ private:
     static void restart_cb(Widget w, XtPointer closure, XtPointer call);
     static void exit_cb(Widget w, XtPointer closure, XtPointer call);
     static void exit_ok_cb(Widget w, XtPointer closure, XtPointer call);
+    static void map_cb(Widget w, XtPointer closure, XtPointer call);
     static void unmap_cb(Widget w, XtPointer closure, XtPointer call);
 
     enum Glyph { GLYPH_NONE, GLYPH_APP, GLYPH_FOLDER };

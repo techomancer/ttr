@@ -149,6 +149,7 @@ StartMenu::StartMenu(Widget parent, WmLink* wm, const Config& cfg)
     item(menu_, "Exit...", "system-log-out", GLYPH_NONE, exit_cb,
          (XtPointer)this, 0);
 
+    XtAddCallback(menu_, XmNmapCallback, map_cb, (XtPointer)this);
     XtAddCallback(menu_, XmNunmapCallback, unmap_cb, (XtPointer)this);
 
     /* Realize now so post() knows the menu height. */
@@ -277,11 +278,19 @@ void StartMenu::on_unpost(void (*fn)(void*), void* closure)
     unpost_closure_ = closure;
 }
 
+void StartMenu::map_cb(Widget w, XtPointer closure, XtPointer call)
+{
+    (void)w;
+    (void)call;
+    ((StartMenu*)closure)->wm_->menu_shown(true);
+}
+
 void StartMenu::unmap_cb(Widget w, XtPointer closure, XtPointer call)
 {
     (void)w;
     (void)call;
     StartMenu* self = (StartMenu*)closure;
+    self->wm_->menu_shown(false);
     if (self->unpost_)
         self->unpost_(self->unpost_closure_);
 }

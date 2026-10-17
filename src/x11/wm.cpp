@@ -133,7 +133,9 @@ Wm::Wm()
       running_(true), restart_(false), painter_(0), shell_(0), panel_(None),
       cursor_normal_(None), cursor_move_(None), active_(0), place_x_(0),
       place_y_(0), last_click_time_(0), last_click_win_(None),
-      desktops_(1), current_(0), osd_win_(None), osd_timer_(0),
+      menu_up_(false), menu_click_time_(0), menu_click_win_(None),
+      close_after_menu_(None), desktops_(1), current_(0), osd_win_(None),
+      osd_timer_(0),
       switching_(false), switch_win_(None), switch_sel_(0)
 {
     signal_pipe_[0] = signal_pipe_[1] = -1;
@@ -495,6 +497,24 @@ Boolean Wm::dispatch(XEvent* ev)
 
 bool Wm::handle(XEvent* ev)
 {
+    /* While one of the shell's Motif menus is up, pointer and key events
+     * belong to it. Xt passes clicks on our frames (not widgets) to the
+     * menu's grab, which pops it down; taking them ourselves would leave
+     * Motif's grab in a broken state. */
+    if (menu_up_) {
+        switch (ev->type) {
+        case ButtonPress:
+            menu_double_click(&ev->xbutton);
+            return false;
+        case ButtonRelease:
+        case MotionNotify:
+        case EnterNotify:
+        case KeyPress:
+        case KeyRelease:
+            return false;
+        }
+    }
+
     switch (ev->type) {
     case MapRequest:
         on_map_request(&ev->xmaprequest);
@@ -741,6 +761,8 @@ bool Wm::on_button_press(XButtonEvent* ev)
 
         if (part == FP_MENU) {
             c->pressed = FP_MENU;
+            menu_click_win_ = c->win;
+            menu_click_time_ = ev->time;
             paint(c);
         } else if (part == FP_TITLE) {
             bool dbl = last_click_win_ == c->win &&
@@ -1761,6 +1783,37 @@ void Wm::apply_state(Client* c, bool restore)
     set_frame_extents(c);
     send_configure(c);
     notify(c);
+}
+
+/* ------------------------------------------------------------------ */
+/* Shell menus                                                         */
+
+void Wm::menu_shown(bool shown)
+{
+    menu_up_ = shown;
+    if (shown || close_after_menu_ == None)
+        return;
+    /* The menu has released its grab; now act on the double click. */
+    Client* c = find_client(close_after_menu_);
+    close_after_menu_ = None;
+    if (c && action_allowed(allowed(c), ACT_CLOSE))
+        close(c);
+}
+
+/* mwm: double clicking the window menu button closes the window. The
+ * first click posted the menu, so the second arrives while it is up; the
+ * menu still gets the click (and pops down), and we close afterwards. */
+void Wm::menu_double_click(XButtonEvent* ev)
+{
+    Client* c = find_frame(ev->window);
+    if (!c || ev->button != Button1 || c->win != menu_click_win_ ||
+        ev->time - menu_click_time_ >= k_double_click_ms)
+        return;
+    if (theme_.hit(decor_of(c), frame_w(c), frame_h(c), ev->x, ev->y) !=
+        FP_MENU)
+        return;
+    menu_click_win_ = None;
+    close_after_menu_ = c->win;
 }
 
 /* ------------------------------------------------------------------ */

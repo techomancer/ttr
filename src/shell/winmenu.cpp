@@ -53,6 +53,23 @@ WindowMenu::WindowMenu(Widget parent, WmLink* link, int desktops)
 
     XtManageChild(XmCreateSeparatorGadget(menu_, (char*)"sep", 0, 0));
     add_item(ACT_CLOSE, "Close", 'C', "Alt+F4");
+
+    XtAddCallback(menu_, XmNmapCallback, map_cb, (XtPointer)this);
+    XtAddCallback(menu_, XmNunmapCallback, unmap_cb, (XtPointer)this);
+}
+
+void WindowMenu::map_cb(Widget w, XtPointer closure, XtPointer call)
+{
+    (void)w;
+    (void)call;
+    ((WindowMenu*)closure)->link_->menu_shown(true);
+}
+
+void WindowMenu::unmap_cb(Widget w, XtPointer closure, XtPointer call)
+{
+    (void)w;
+    (void)call;
+    ((WindowMenu*)closure)->link_->menu_shown(false);
 }
 
 WindowMenu::~WindowMenu()

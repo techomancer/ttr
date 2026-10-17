@@ -34,6 +34,8 @@ private:
     };
 
     static void activate_cb(Widget w, XtPointer closure, XtPointer call);
+    static void map_cb(Widget w, XtPointer closure, XtPointer call);
+    static void unmap_cb(Widget w, XtPointer closure, XtPointer call);
     static void desktop_cb(Widget w, XtPointer closure, XtPointer call);
     static void deliver_cb(XtPointer closure, XtIntervalId* id);
 

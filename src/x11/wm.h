@@ -71,6 +71,7 @@ public:
     void request(ToplevelId id, WmAction action);
     void switch_desktop(int desktop);
     void move_to_desktop(ToplevelId id, int desktop);
+    void menu_shown(bool shown);
     void set_panel(unsigned long window, const Rect& r);
     void quit();
     void restart();
@@ -154,6 +155,7 @@ private:
     void set_minimized(Client* c, bool on);
     void apply_state(Client* c, bool restore);
 
+    void menu_double_click(XButtonEvent* ev);
     bool on_current(const Client* c) const;
     void set_desktop(Client* c, int desktop);
     void publish_desktops();
@@ -213,6 +215,12 @@ private:
     int place_x_, place_y_;
     Time last_click_time_;      /* title bar double click detection */
     Window last_click_win_;
+
+    /* A shell menu is posted and owns the pointer and keyboard. */
+    bool menu_up_;
+    Time menu_click_time_;      /* last press on a window menu button */
+    Window menu_click_win_;
+    Window close_after_menu_;   /* double click on the menu button */
 
     /* Virtual desktops */
     int desktops_;
