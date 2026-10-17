@@ -22,5 +22,7 @@ Design principles:
   as an X11 client of XWayland, in a separate supervised process.
 - Only src/wayland/ may use Linux-only APIs, and only its wlroots glue is
   written in C11. Everything else must build on IRIX.
+- Third-party code goes in third_party/ as pinned git submodules, compiled
+  through one wrapper file each; never edit it in place.
 
 The design decisions are recorded in docs/wm-design.md.

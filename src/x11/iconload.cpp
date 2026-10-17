@@ -8,6 +8,9 @@
 #if defined(TTR_HAVE_PNG)
 #include <png.h>
 #endif
+#if defined(TTR_HAVE_SVG)
+#include "x11/svg.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -198,8 +201,17 @@ IconLoader::IconLoader(Display* dpy) : dpy_(dpy)
              "/icons");
 }
 
-Icon* IconLoader::load_file(const char* path)
+Icon* IconLoader::load_file(const char* path, int size)
 {
+#if defined(TTR_HAVE_SVG)
+    if (ends_with(path, ".svg")) {
+        Icon* ic = new Icon(size, size);
+        if (svg_render(path, size, ic->pixels()))
+            return ic;
+        delete ic;
+        return 0;
+    }
+#endif
 #if defined(TTR_HAVE_PNG)
     if (ends_with(path, ".png"))
         return load_png(path);
@@ -209,66 +221,101 @@ Icon* IconLoader::load_file(const char* path)
         return load_xpm(dpy_, path);
 #endif
     (void)path;
+    (void)size;
     return 0;
 }
 
-/* Search the hicolor theme (every theme's fallback) and a couple of
- * common themes, then the legacy pixmaps directories. */
+/* hicolor is every theme's fallback; the others are common on Linux.
+ * (Following each theme's Inherits= chain would be more thorough.) */
+static const char* const k_themes[] = {
+    "hicolor", "Adwaita", "AdwaitaLegacy", "Tango", 0
+};
+static const char* const k_contexts[] = {
+    "apps", "places", "actions", "categories", "devices", "status",
+    "legacy", 0
+};
+static const char* const k_bitmap_exts[] = {
+#if defined(TTR_HAVE_PNG)
+    ".png",
+#endif
+#if defined(TTR_HAVE_XPM)
+    ".xpm",
+#endif
+    0
+};
+
+/* Look for name in <base>/<theme>/<dir>/<context>/ with one of exts. */
+bool IconLoader::find_in(const char* dir, const char* name,
+                         const char* const* exts, char* path, int len)
+{
+    char buf[1200];
+    int b, t, c, e;
+    for (b = 0; b < bases_.size(); b++) {
+        const char* base = bases_[b].c_str();
+        if (strlen(base) + strlen(dir) + strlen(name) + 64 > sizeof(buf))
+            continue;
+        for (t = 0; k_themes[t]; t++)
+            for (c = 0; k_contexts[c]; c++)
+                for (e = 0; exts[e]; e++) {
+                    sprintf(buf, "%s/%s/%s/%s/%s%s", base, k_themes[t], dir,
+                            k_contexts[c], name, exts[e]);
+                    if (access(buf, R_OK) == 0 && (int)strlen(buf) < len) {
+                        strcpy(path, buf);
+                        return true;
+                    }
+                }
+    }
+    return false;
+}
+
+/* Bitmaps drawn for the exact size first (artists tune small sizes by
+ * hand), then scalable SVG, then other bitmap sizes scaled down, then the
+ * legacy pixmaps directories. */
 bool IconLoader::find(const char* name, int size, char* path, int len)
 {
-    static const char* const themes[] = { "hicolor", "Adwaita", "Tango", 0 };
-    static const char* const contexts[] = {
-        "apps", "places", "actions", "categories", "devices", "status", 0
-    };
-    static const char* const exts[] = {
+    char dir[32];
+    sprintf(dir, "%dx%d", size, size);
+    if (find_in(dir, name, k_bitmap_exts, path, len))
+        return true;
+#if defined(TTR_HAVE_SVG)
+    static const char* const svg[] = { ".svg", 0 };
+    if (find_in("scalable", name, svg, path, len))
+        return true;
+#endif
+    static const int sizes[] = { 22, 24, 32, 48, 64, 128, 256, 16 };
+    int k;
+    for (k = 0; k < (int)(sizeof(sizes) / sizeof(sizes[0])); k++) {
+        if (sizes[k] == size)
+            continue;
+        sprintf(dir, "%dx%d", sizes[k], sizes[k]);
+        if (find_in(dir, name, k_bitmap_exts, path, len))
+            return true;
+    }
+
+    /* <datadir>/pixmaps, next to each <datadir>/icons. */
+    static const char* const pixmap_exts[] = {
 #if defined(TTR_HAVE_PNG)
         ".png",
 #endif
 #if defined(TTR_HAVE_XPM)
         ".xpm",
 #endif
+#if defined(TTR_HAVE_SVG)
+        ".svg",
+#endif
         0
     };
-    /* The requested size first, then larger ones (scaled down), then 16. */
-    int sizes[10];
-    int nsizes = 0;
-    static const int candidates[] = { 22, 24, 32, 48, 64, 128, 256, 16 };
-    sizes[nsizes++] = size;
-    int k;
-    for (k = 0; k < (int)(sizeof(candidates) / sizeof(candidates[0])); k++)
-        if (candidates[k] != size)
-            sizes[nsizes++] = candidates[k];
-
     char buf[1200];
-    int b, t, s, c, e;
-    for (b = 0; b < bases_.size(); b++) {
-        const char* base = bases_[b].c_str();
-        if (strlen(base) + strlen(name) + 64 > sizeof(buf))
-            continue;
-        for (t = 0; themes[t]; t++)
-            for (s = 0; s < nsizes; s++)
-                for (c = 0; contexts[c]; c++)
-                    for (e = 0; exts[e]; e++) {
-                        sprintf(buf, "%s/%s/%dx%d/%s/%s%s", base, themes[t],
-                                sizes[s], sizes[s], contexts[c], name,
-                                exts[e]);
-                        if (access(buf, R_OK) == 0 &&
-                            (int)strlen(buf) < len) {
-                            strcpy(path, buf);
-                            return true;
-                        }
-                    }
-    }
-
-    /* <datadir>/pixmaps, next to each <datadir>/icons. */
+    int b, e;
     for (b = 0; b < bases_.size(); b++) {
         const char* base = bases_[b].c_str();
         int n = (int)strlen(base);
         if (n < 6 || strcmp(base + n - 6, "/icons") != 0 ||
             n + strlen(name) + 16 > sizeof(buf))
             continue;
-        for (e = 0; exts[e]; e++) {
-            sprintf(buf, "%.*s/pixmaps/%s%s", n - 6, base, name, exts[e]);
+        for (e = 0; pixmap_exts[e]; e++) {
+            sprintf(buf, "%.*s/pixmaps/%s%s", n - 6, base, name,
+                    pixmap_exts[e]);
             if (access(buf, R_OK) == 0 && (int)strlen(buf) < len) {
                 strcpy(path, buf);
                 return true;
@@ -283,7 +330,7 @@ Icon* IconLoader::load(const char* name, int size)
     if (!name || !*name)
         return 0;
     if (strchr(name, '/'))
-        return access(name, R_OK) == 0 ? load_file(name) : 0;
+        return access(name, R_OK) == 0 ? load_file(name, size) : 0;
 
     /* Names sometimes carry an extension they should not have. */
     char base[256];
@@ -298,7 +345,7 @@ Icon* IconLoader::load(const char* name, int size)
     char path[1200];
     if (!find(base, size, path, sizeof(path)))
         return 0;
-    return load_file(path);
+    return load_file(path, size);
 }
 
 }

@@ -7,11 +7,13 @@
 #
 #   make CXX=clang++
 #   make CXX=CC CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF" WARNFLAGS= \
-#        CPPFLAGS="-Isrc -DTTR_HAVE_XPM" LIBS="-lXm -lXt -lXpm -lX11"
+#        CPPFLAGS="-Isrc -DTTR_HAVE_XPM -DTTR_HAVE_SVG" \
+#        LIBS="-lXm -lXt -lXpm -lX11 -lm"
 #                                                             (IRIX, MIPSpro)
 #
-# TTR_HAVE_PNG and TTR_HAVE_XPM enable icon files in those formats; drop the
-# define and the library to build without one.
+# TTR_HAVE_PNG, TTR_HAVE_XPM and TTR_HAVE_SVG enable icon files in those
+# formats; drop the define (and library) to build without one. SVG uses the
+# nanosvg submodule: git submodule update --init
 #
 # Every object has an explicit rule. When you add a source file, add its
 # object to OBJS and give it a rule listing the headers it includes.
@@ -19,9 +21,9 @@
 CXX = g++
 CXXFLAGS = -std=c++98 -O2 -g -fno-exceptions -fno-rtti
 WARNFLAGS = -pedantic -Wall -Wextra
-CPPFLAGS = -Isrc -DTTR_HAVE_PNG -DTTR_HAVE_XPM
+CPPFLAGS = -Isrc -DTTR_HAVE_PNG -DTTR_HAVE_XPM -DTTR_HAVE_SVG
 LDFLAGS =
-LIBS = -lXm -lXt -lXpm -lpng -lX11
+LIBS = -lXm -lXt -lXpm -lpng -lX11 -lm
 
 B = build
 COMPILE = $(CXX) $(CPPFLAGS) $(CXXFLAGS) $(WARNFLAGS)
@@ -45,6 +47,7 @@ OBJS = $(B)/main.o \
 	$(B)/x11_config.o \
 	$(B)/x11_hints.o \
 	$(B)/x11_iconload.o \
+	$(B)/x11_svg.o \
 	$(B)/x11_wm.o \
 	$(B)/x11_xpainter.o
 
@@ -62,7 +65,7 @@ CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
 	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h
 X11_H = src/x11/wm.h src/x11/hints.h src/x11/config.h src/x11/xpainter.h \
-	src/x11/iconload.h \
+	src/x11/iconload.h src/x11/svg.h \
 	$(CORE_H)
 SHELL_H = src/shell/shell.h src/shell/startmenu.h src/shell/taskbar.h \
 	src/shell/tray.h src/shell/winmenu.h src/shell/launch.h
@@ -123,6 +126,12 @@ $(B)/x11_hints.o: $(B)/.dir src/x11/hints.cpp $(X11_H)
 
 $(B)/x11_iconload.o: $(B)/.dir src/x11/iconload.cpp $(X11_H)
 	$(COMPILE) -c src/x11/iconload.cpp -o $@
+
+# Vendored code: our flags, but not our warnings.
+NANOSVG = third_party/nanosvg/src
+$(B)/x11_svg.o: $(B)/.dir src/x11/svg.cpp src/x11/svg.h src/core/port.h \
+		$(NANOSVG)/nanosvg.h $(NANOSVG)/nanosvgrast.h
+	$(CXX) $(CPPFLAGS) -I$(NANOSVG) $(CXXFLAGS) -c src/x11/svg.cpp -o $@
 
 $(B)/x11_wm.o: $(B)/.dir src/x11/wm.cpp $(X11_H)
 	$(COMPILE) -c src/x11/wm.cpp -o $@

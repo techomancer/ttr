@@ -458,7 +458,15 @@ clients**.
 | Toolkit | Xt + Motif. Baseline is the **Motif 2.1 API**, which IRIX 6.5 ships (IRIS IM) | Open Motif 2.3 (`x11-libs/motif` on Gentoo). Xft fonts through render tables are optional. |
 | GL widget | `GLwMDrawingArea` from SGI's libGLw | `GLwMDrawingArea` from Mesa's libGLw, built against Motif |
 | Extensions | SHAPE; Xinerama/RandR optional | RandR 1.2+, XFixes |
-| Icon files | libXpm (`TTR_HAVE_XPM`) | libpng 1.6+ (`TTR_HAVE_PNG`); themes in `$XDG_DATA_DIRS/icons` |
+| Icon files | libXpm (`TTR_HAVE_XPM`); SVG via vendored nanosvg (`TTR_HAVE_SVG`) | libpng 1.6+ (`TTR_HAVE_PNG`); themes in `$XDG_DATA_DIRS/icons` |
+
+Vendored code lives in `third_party/` as git submodules pinned to a commit
+(`git submodule update --init`). It is built with our compiler flags but
+without our warning flags, and only through a single wrapper file each:
+nanosvg (zlib license) through [src/x11/svg.cpp](../src/x11/svg.cpp),
+which also maps the C99 float math nanosvg uses onto C89 math on IRIX.
+nanosvg was chosen over lunasvg (needs C++17) and svgpp (needs Boost, and
+only parses).
 | Wayland mode | — | wlroots, libinput, xkbcommon, FreeType/fontconfig (or cairo/pango), XWayland |
 
 ### 8.1 Motif feature rules

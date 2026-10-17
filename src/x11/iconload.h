@@ -3,7 +3,8 @@
  * icon files looked up by name in the XDG icon theme directories.
  *
  * Optional formats, enabled by defines so other platforms can leave the
- * libraries out: TTR_HAVE_PNG (libpng 1.6+), TTR_HAVE_XPM (libXpm).
+ * libraries out: TTR_HAVE_PNG (libpng 1.6+), TTR_HAVE_XPM (libXpm),
+ * TTR_HAVE_SVG (vendored nanosvg, no library needed).
  */
 #ifndef TTR_X11_ICONLOAD_H
 #define TTR_X11_ICONLOAD_H
@@ -31,8 +32,10 @@ public:
     Icon* load(const char* name, int size);
 
 private:
-    Icon* load_file(const char* path);
+    Icon* load_file(const char* path, int size);
     bool find(const char* name, int size, char* path, int len);
+    bool find_in(const char* dir, const char* name, const char* const* exts,
+                 char* path, int len);
 
     Display* dpy_;
     Vector<Str> bases_;     /* .../icons and pixmap directories */
