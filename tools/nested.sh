@@ -31,4 +31,11 @@ while ! xdpyinfo -display "$DPY" >/dev/null 2>&1; do
     sleep 0.1
 done
 
-DISPLAY=$DPY "$TTR"
+# A session bus of our own: single-instance D-Bus apps (gnome-terminal,
+# file managers) would otherwise hand the request to their server on the
+# outer desktop, and the window would open there.
+if command -v dbus-run-session >/dev/null 2>&1; then
+    DISPLAY=$DPY dbus-run-session -- "$TTR"
+else
+    DISPLAY=$DPY "$TTR"
+fi
