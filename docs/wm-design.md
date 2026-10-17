@@ -96,10 +96,16 @@ code base reads the same throughout.
 
 ### 2.3 Build system
 
-- **POSIX `make`** with a single hand-written `Makefile`, plus a per-platform
-  `config/<platform>.mk` (for example `linux-gcc.mk`, `linux-clang.mk`,
-  `irix-mipspro.mk`). There is no CMake, autotools or pkg-config dependency on
-  the portable path. Linux configs may call `pkg-config` to find flags.
+- **Plain `make`** with a single hand-written `Makefile` that also works with
+  IRIX `smake` and BSD make. It uses no pattern rules, conditionals,
+  functions, `include`, or automatic variables other than `$@`.
+- Every object has an explicit rule that lists its headers. Objects go flat
+  into `build/` (`src/x11/wm.cpp` becomes `build/x11_wm.o`).
+- Defaults are for Linux and gcc. Other platforms override variables on the
+  command line (`make CXX=CC CXXFLAGS=... WARNFLAGS= LIBS=...`), as shown at
+  the top of the Makefile. There is no CMake, autotools or pkg-config.
+- `tools/nested.sh [xephyr|xnest]` runs `build/ttr` in a nested X server for
+  testing.
 - The `make wayland` target is optional and Linux-only. The default target
   builds the X11 mode binary only.
 
