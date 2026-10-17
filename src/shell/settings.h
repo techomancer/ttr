@@ -14,11 +14,15 @@
 
 namespace ttr {
 
+class ShortcutsDialog;
+struct AppFolder;
 struct Config;
 
 class SettingsDialog {
 public:
-    SettingsDialog(Widget parent, WmLink* wm, const Config& cfg);
+    SettingsDialog(Widget parent, WmLink* wm, const Config& cfg,
+                   const AppFolder* apps);
+    ~SettingsDialog();
     void show();
 
 private:
@@ -47,6 +51,7 @@ private:
 
     static void font_changed_cb(Widget w, XtPointer closure, XtPointer call);
     static void ok_cb(Widget w, XtPointer closure, XtPointer call);
+    static void shortcuts_cb(Widget w, XtPointer closure, XtPointer call);
     static void cancel_cb(Widget w, XtPointer closure, XtPointer call);
 
     Widget parent_;
@@ -62,6 +67,7 @@ private:
     Widget toolchest_;
     Widget terminal_;
     Vector<Str> families_;
+    ShortcutsDialog* shortcuts_;
 };
 
 }

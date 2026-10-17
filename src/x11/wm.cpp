@@ -1,6 +1,9 @@
 #include "x11/wm.h"
 #include "x11/xpainter.h"
 #include "core/icon.h"
+#include "core/launch.h"
+#include "core/shortcuts.h"
+#include "x11/keys.h"
 #include "core/switcher.h"
 
 #include <Xm/Xm.h>
@@ -105,6 +108,11 @@ static const long k_net_all_desktops = 0xFFFFFFFFL;
 static const int k_nkeys = (int)(sizeof(k_keys) / sizeof(k_keys[0]));
 static KeySym g_key_syms[sizeof(k_keys) / sizeof(k_keys[0])];
 
+static bool is_super_key(KeySym ks)
+{
+    return ks == XK_Super_L || ks == XK_Super_R;
+}
+
 static bool is_alt_key(KeySym ks)
 {
     return ks == XK_Alt_L || ks == XK_Alt_R || ks == XK_Meta_L ||
@@ -133,7 +141,8 @@ Wm::Wm()
       running_(true), restart_(false), painter_(0), shell_(0), panel_(None),
       cursor_normal_(None), cursor_move_(None), active_(0), place_x_(0),
       place_y_(0), last_click_time_(0), last_click_win_(None),
-      menu_up_(false), menu_click_time_(0), menu_click_win_(None),
+      super_pending_(false), menu_up_(false), menu_click_time_(0),
+      menu_click_win_(None),
       close_after_menu_(None), desktops_(1), current_(0), osd_win_(None),
       osd_timer_(0),
       switching_(false), switch_win_(None), switch_sel_(0)
@@ -283,6 +292,7 @@ bool Wm::init(int* argc, char** argv)
             XtSetEventDispatcher(dpy_, k_wm_events[i], dispatch);
 
     setup_ewmh();
+    load_user_keys();
     grab_keys();
     return true;
 }
@@ -363,6 +373,23 @@ void Wm::setup_ewmh()
     publish_desktops();
 }
 
+void Wm::load_user_keys()
+{
+    ShortcutList list;
+    Str path = ShortcutList::default_path();
+    list.load(path.c_str());
+    user_keys_.clear();
+    int i;
+    for (i = 0; i < list.size(); i++) {
+        const Shortcut* s = list.at(i);
+        UserKey k;
+        if (s->key.empty() || !parse_key_spec(s->key.c_str(), &k.sym, &k.mods))
+            continue;
+        k.command = s->command;
+        user_keys_.push_back(k);
+    }
+}
+
 void Wm::grab_keys()
 {
     XUngrabKey(dpy_, AnyKey, AnyModifier, root_);
@@ -374,6 +401,14 @@ void Wm::grab_keys()
             continue;
         for (j = 0; j < 4; j++)
             XGrabKey(dpy_, kc, k_keys[i].mods | k_lock_masks[j], root_,
+                     False, GrabModeAsync, GrabModeAsync);
+    }
+    for (i = 0; i < user_keys_.size(); i++) {
+        KeyCode kc = XKeysymToKeycode(dpy_, user_keys_[i].sym);
+        if (!kc)
+            continue;
+        for (j = 0; j < 4; j++)
+            XGrabKey(dpy_, kc, user_keys_[i].mods | k_lock_masks[j], root_,
                      False, GrabModeAsync, GrabModeAsync);
     }
 }
@@ -943,6 +978,9 @@ bool Wm::on_key_press(XKeyEvent* ev)
     if (ev->window != root_)
         return false;
 
+    /* Any key pressed with the Windows key held makes it a modifier. */
+    super_pending_ = false;
+
     unsigned int mods = ev->state & k_binding_mods;
     bool windows = config_.switch_style == Config::SWITCH_WINDOWS;
     int i;
@@ -978,7 +1016,9 @@ bool Wm::on_key_press(XKeyEvent* ev)
                 post_menu_at_button(active_, ev->time);
             break;
         case KC_START:
-            if (shell_)
+            if (is_super_key(ks))
+                super_pending_ = true;      /* opens on release */
+            else if (shell_)
                 shell_->show_start_menu(ev->time);
             break;
         case KC_DESK_PREV:
@@ -1001,14 +1041,30 @@ bool Wm::on_key_press(XKeyEvent* ev)
         }
         return true;
     }
+
+    /* Shortcut keys; built-in bindings above take precedence. Keysyms
+     * are compared by their unshifted form, so Shift+letter matches. */
+    for (i = 0; i < user_keys_.size(); i++) {
+        if (user_keys_[i].sym == ks && user_keys_[i].mods == mods) {
+            spawn(user_keys_[i].command.c_str());
+            return true;
+        }
+    }
     return true;
 }
 
 bool Wm::on_key_release(XKeyEvent* ev)
 {
+    KeySym ks = XLookupKeysym(ev, 0);
+    if (super_pending_ && is_super_key(ks)) {
+        super_pending_ = false;
+        if (shell_)
+            shell_->show_start_menu(ev->time);
+        return true;
+    }
     if (!switching_)
         return false;
-    if (is_alt_key(XLookupKeysym(ev, 0)))
+    if (is_alt_key(ks))
         end_switch(true, ev->time);
     return true;
 }

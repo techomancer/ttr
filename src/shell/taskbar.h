@@ -17,6 +17,8 @@
 
 namespace ttr {
 
+class IconLoader;
+class QuickLaunch;
 class StartMenu;
 class Tray;
 class WindowMenu;
@@ -67,8 +69,10 @@ private:
     WindowMenu* winmenu_;
     XPainter* painter_;
     ColorSet cs_;
-    Widget shell_, form_, start_, tasks_, tray_area_;
+    Widget shell_, form_, start_, quick_area_, tasks_, tray_area_;
     Tray* tray_;
+    IconLoader* icons_;
+    QuickLaunch* quick_;
     Rect geom_;             /* root coordinates of the bar */
     Vector<Task*> list_;
     ToplevelId active_;

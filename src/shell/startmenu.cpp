@@ -1,5 +1,5 @@
 #include "shell/startmenu.h"
-#include "shell/launch.h"
+#include "core/launch.h"
 #include "shell/settings.h"
 #include "core/apps.h"
 #include "core/icon.h"
@@ -80,13 +80,13 @@ static Rgb pixel_rgb(Display* dpy, Pixel p)
 
 StartMenu::StartMenu(Widget parent, WmLink* wm, const Config& cfg)
     : parent_(parent), wm_(wm), run_dialog_(0), exit_dialog_(0),
-      settings_(new SettingsDialog(parent, wm, cfg)),
-      desktops_(cfg.desktops), desk_items_(0), unpost_(0),
+      settings_(0), desktops_(cfg.desktops), desk_items_(0), unpost_(0),
       unpost_closure_(0)
 {
     Display* dpy = XtDisplay(parent);
     apps_ = new AppFolder("Programs");
     load_apps(cfg, apps_);
+    settings_ = new SettingsDialog(parent, wm, cfg, apps_);
     painter_ = new XPainter(dpy, DefaultScreen(dpy));
     const char* fonts[6];
     fonts[0] = cfg.menu_font.c_str();

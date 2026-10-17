@@ -1,5 +1,5 @@
-#ifndef TTR_SHELL_LAUNCH_H
-#define TTR_SHELL_LAUNCH_H
+#ifndef TTR_CORE_LAUNCH_H
+#define TTR_CORE_LAUNCH_H
 
 namespace ttr {
 

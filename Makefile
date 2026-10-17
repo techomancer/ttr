@@ -34,14 +34,17 @@ OBJS = $(B)/main.o \
 	$(B)/core_frame.o \
 	$(B)/core_geom.o \
 	$(B)/core_icon.o \
+	$(B)/core_launch.o \
 	$(B)/core_painter.o \
 	$(B)/core_settings.o \
+	$(B)/core_shortcuts.o \
 	$(B)/core_str.o \
 	$(B)/core_switcher.o \
 	$(B)/core_text.o \
-	$(B)/shell_launch.o \
+	$(B)/shell_quicklaunch.o \
 	$(B)/shell_settings.o \
 	$(B)/shell_shell.o \
+	$(B)/shell_shortcutsdlg.o \
 	$(B)/shell_startmenu.o \
 	$(B)/shell_taskbar.o \
 	$(B)/shell_tray.o \
@@ -49,6 +52,7 @@ OBJS = $(B)/main.o \
 	$(B)/x11_config.o \
 	$(B)/x11_hints.o \
 	$(B)/x11_iconload.o \
+	$(B)/x11_keys.o \
 	$(B)/x11_svg.o \
 	$(B)/x11_wm.o \
 	$(B)/x11_xpainter.o
@@ -66,13 +70,13 @@ $(B)/.dir:
 CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
 	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h \
-	src/core/settings.h
+	src/core/settings.h src/core/shortcuts.h src/core/launch.h
 X11_H = src/x11/wm.h src/x11/hints.h src/x11/config.h src/x11/xpainter.h \
-	src/x11/iconload.h src/x11/svg.h \
+	src/x11/iconload.h src/x11/svg.h src/x11/keys.h \
 	$(CORE_H)
 SHELL_H = src/shell/shell.h src/shell/startmenu.h src/shell/taskbar.h \
-	src/shell/tray.h src/shell/winmenu.h src/shell/launch.h \
-	src/shell/settings.h
+	src/shell/tray.h src/shell/winmenu.h src/shell/quicklaunch.h \
+	src/shell/settings.h src/shell/shortcutsdlg.h
 
 $(B)/main.o: $(B)/.dir src/main.cpp $(X11_H) $(SHELL_H)
 	$(COMPILE) -c src/main.cpp -o $@
@@ -92,11 +96,17 @@ $(B)/core_geom.o: $(B)/.dir src/core/geom.cpp $(CORE_H)
 $(B)/core_icon.o: $(B)/.dir src/core/icon.cpp $(CORE_H)
 	$(COMPILE) -c src/core/icon.cpp -o $@
 
+$(B)/core_launch.o: $(B)/.dir src/core/launch.cpp $(CORE_H)
+	$(COMPILE) -c src/core/launch.cpp -o $@
+
 $(B)/core_painter.o: $(B)/.dir src/core/painter.cpp $(CORE_H)
 	$(COMPILE) -c src/core/painter.cpp -o $@
 
 $(B)/core_settings.o: $(B)/.dir src/core/settings.cpp $(CORE_H)
 	$(COMPILE) -c src/core/settings.cpp -o $@
+
+$(B)/core_shortcuts.o: $(B)/.dir src/core/shortcuts.cpp $(CORE_H)
+	$(COMPILE) -c src/core/shortcuts.cpp -o $@
 
 $(B)/core_str.o: $(B)/.dir src/core/str.cpp $(CORE_H)
 	$(COMPILE) -c src/core/str.cpp -o $@
@@ -107,14 +117,19 @@ $(B)/core_switcher.o: $(B)/.dir src/core/switcher.cpp $(CORE_H)
 $(B)/core_text.o: $(B)/.dir src/core/text.cpp $(CORE_H)
 	$(COMPILE) -c src/core/text.cpp -o $@
 
-$(B)/shell_launch.o: $(B)/.dir src/shell/launch.cpp $(SHELL_H)
-	$(COMPILE) -c src/shell/launch.cpp -o $@
+$(B)/shell_quicklaunch.o: $(B)/.dir src/shell/quicklaunch.cpp $(SHELL_H) \
+		$(X11_H)
+	$(COMPILE) -c src/shell/quicklaunch.cpp -o $@
 
 $(B)/shell_settings.o: $(B)/.dir src/shell/settings.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/settings.cpp -o $@
 
 $(B)/shell_shell.o: $(B)/.dir src/shell/shell.cpp $(SHELL_H) $(CORE_H)
 	$(COMPILE) -c src/shell/shell.cpp -o $@
+
+$(B)/shell_shortcutsdlg.o: $(B)/.dir src/shell/shortcutsdlg.cpp $(SHELL_H) \
+		$(X11_H)
+	$(COMPILE) -c src/shell/shortcutsdlg.cpp -o $@
 
 $(B)/shell_startmenu.o: $(B)/.dir src/shell/startmenu.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/startmenu.cpp -o $@
@@ -142,6 +157,9 @@ NANOSVG = third_party/nanosvg/src
 $(B)/x11_svg.o: $(B)/.dir src/x11/svg.cpp src/x11/svg.h src/core/port.h \
 		$(NANOSVG)/nanosvg.h $(NANOSVG)/nanosvgrast.h
 	$(CXX) $(CPPFLAGS) -I$(NANOSVG) $(CXXFLAGS) -c src/x11/svg.cpp -o $@
+
+$(B)/x11_keys.o: $(B)/.dir src/x11/keys.cpp $(X11_H)
+	$(COMPILE) -c src/x11/keys.cpp -o $@
 
 $(B)/x11_wm.o: $(B)/.dir src/x11/wm.cpp $(X11_H)
 	$(COMPILE) -c src/x11/wm.cpp -o $@

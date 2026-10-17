@@ -79,8 +79,7 @@ bool SettingsFile::load(const char* path)
     return true;
 }
 
-/* mkdir -p for the directory part of 'path'. */
-static void make_parents(const char* path)
+void make_parent_dirs(const char* path)
 {
     char buf[1024];
     if (strlen(path) >= sizeof(buf))
@@ -99,7 +98,7 @@ static void make_parents(const char* path)
 
 bool SettingsFile::save(const char* path) const
 {
-    make_parents(path);
+    make_parent_dirs(path);
     char tmp[1100];
     if (strlen(path) > 1000)
         return false;

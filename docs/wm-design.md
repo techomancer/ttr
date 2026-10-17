@@ -413,7 +413,26 @@ published through EWMH (`_NET_NUMBER_OF_DESKTOPS`, `_NET_CURRENT_DESKTOP`,
 external pagers and `wmctrl` work. Windows keep their `_NET_WM_DESKTOP`, and
 a restart keeps the current desktop.
 
-### 5.5 Wayland mode (`ttr-wayland`, later)
+### 5.5 Shortcuts and quick launch
+
+Program shortcuts live in `~/.config/ttr/shortcuts`, in order, one
+`[shortcut]` block each with `name`, `command`, optional `icon` (theme name or
+file) and `key` (e.g. `Ctrl+Alt+T`, `Super+E`; see
+[src/x11/keys.h](../src/x11/keys.h)), and `quicklaunch: true|false`. The
+WM grabs the keys; built-in bindings take precedence. Shortcuts marked
+quicklaunch appear as flat 16 pixel icons right of Start, between grooves,
+with a tooltip (Motif 2.1 has none, so we draw it).
+
+Settings > Edit Shortcuts... edits the list: add from the start menu's
+programs (an `XmSelectionDialog`) or by hand, browse for commands and icons
+(`XmFileSelectionDialog`), reorder with Move Up / Move Down, with a live
+icon preview. OK checks every key, saves, and restarts ttr. The dialog
+rewrites the file, so comments in it do not survive a save from there.
+
+The Windows key opens Start when released, and only if no other key was
+pressed with it, so Super+key shortcuts work.
+
+### 5.6 Wayland mode (`ttr-wayland`, later)
 
 1. Bring up DRM/KMS, libinput and the scene graph, then create the Wayland
    socket.

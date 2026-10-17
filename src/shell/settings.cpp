@@ -1,4 +1,5 @@
 #include "shell/settings.h"
+#include "shell/shortcutsdlg.h"
 #include "core/settings.h"
 #include "x11/config.h"
 
@@ -78,9 +79,24 @@ static Str xlfd_field(const char* name, int i)
     return Str(buf);
 }
 
-SettingsDialog::SettingsDialog(Widget parent, WmLink* wm, const Config& cfg)
-    : parent_(parent), wm_(wm), cfg_(cfg), dialog_(0)
+SettingsDialog::SettingsDialog(Widget parent, WmLink* wm, const Config& cfg,
+                               const AppFolder* apps)
+    : parent_(parent), wm_(wm), cfg_(cfg), dialog_(0),
+      shortcuts_(new ShortcutsDialog(parent, wm, apps))
 {
+}
+
+SettingsDialog::~SettingsDialog()
+{
+    delete shortcuts_;
+}
+
+void SettingsDialog::shortcuts_cb(Widget w, XtPointer closure,
+                                  XtPointer call)
+{
+    (void)w;
+    (void)call;
+    ((SettingsDialog*)closure)->shortcuts_->show();
 }
 
 void SettingsDialog::show()
@@ -422,6 +438,16 @@ void SettingsDialog::build()
     f = frame(content, "Taskbar");
     clock_ = text_field(row(f, "Clock format:"), cfg_.clock_format.c_str(),
                         12);
+
+    f = frame(content, "Shortcuts");
+    Widget srow = row(f, "Programs to launch:");
+    XmString sl = xmstr("Edit Shortcuts...");
+    Arg sargs[1];
+    XtSetArg(sargs[0], XmNlabelString, sl);
+    Widget sb = XmCreatePushButton(srow, (char*)"shortcuts", sargs, 1);
+    XmStringFree(sl);
+    XtAddCallback(sb, XmNactivateCallback, shortcuts_cb, (XtPointer)this);
+    XtManageChild(sb);
 
     f = frame(content, "Start menu");
     source_ = drop_down(row(f, "Programs from:"), "source", k_sources, 3, 3,

@@ -12,6 +12,9 @@
 
 namespace ttr {
 
+/* mkdir -p for the directory part of 'path'. */
+void make_parent_dirs(const char* path);
+
 class SettingsFile {
 public:
     SettingsFile();

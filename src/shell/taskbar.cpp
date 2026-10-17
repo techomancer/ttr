@@ -1,9 +1,11 @@
 #include "shell/taskbar.h"
+#include "shell/quicklaunch.h"
 #include "shell/startmenu.h"
 #include "shell/tray.h"
 #include "shell/winmenu.h"
 #include "core/painter.h"
 #include "x11/config.h"
+#include "x11/iconload.h"
 #include "x11/xpainter.h"
 
 #include <Xm/Xm.h>
@@ -31,8 +33,8 @@ static const int k_margin = 2;
 
 Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
                  StartMenu* start, WindowMenu* winmenu)
-    : wm_(wm), start_menu_(start), winmenu_(winmenu), tray_(0), active_(0),
-      pressed_(-1)
+    : wm_(wm), start_menu_(start), winmenu_(winmenu), tray_(0), icons_(0),
+      quick_(0), active_(0), pressed_(-1)
 {
     Display* dpy = XtDisplay(parent);
     int screen = DefaultScreen(dpy);
@@ -102,9 +104,25 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     XtAddCallback(tray_area_, XmNexposeCallback, tray_expose_cb,
                   (XtPointer)this);
 
+    /* Quick launch icons between Start and the task buttons. */
     n = 0;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNleftWidget, start_); n++;
+    XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
+    XtSetArg(args[n], XmNbottomAttachment, XmATTACH_FORM); n++;
+    XtSetArg(args[n], XmNleftOffset, 3); n++;
+    XtSetArg(args[n], XmNtopOffset, k_margin); n++;
+    XtSetArg(args[n], XmNbottomOffset, k_margin); n++;
+    XtSetArg(args[n], XmNwidth, 2); n++;
+    XtSetArg(args[n], XmNresizePolicy, XmRESIZE_NONE); n++;
+    XtSetArg(args[n], XmNtraversalOn, False); n++;
+    XtSetArg(args[n], XmNmarginWidth, 0); n++;
+    XtSetArg(args[n], XmNmarginHeight, 0); n++;
+    quick_area_ = XmCreateDrawingArea(form_, (char*)"quickLaunch", args, n);
+
+    n = 0;
+    XtSetArg(args[n], XmNleftAttachment, XmATTACH_WIDGET); n++;
+    XtSetArg(args[n], XmNleftWidget, quick_area_); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNrightWidget, tray_area_); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
@@ -123,6 +141,7 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     XtAddCallback(tasks_, XmNinputCallback, tasks_input_cb, (XtPointer)this);
 
     XtManageChild(start_);
+    XtManageChild(quick_area_);
     XtManageChild(tray_area_);
     XtManageChild(tasks_);
     XtManageChild(form_);
@@ -132,11 +151,19 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
                      tray_resized, (void*)this);
     tray_resized((void*)this);
 
+    icons_ = new IconLoader(dpy);
+    quick_ = new QuickLaunch(quick_area_, painter_, cs_, icons_);
+    Arg qargs[1];
+    XtSetArg(qargs[0], XmNwidth, quick_->preferred_width());
+    XtSetValues(quick_area_, qargs, 1);
+
     wm_->set_panel(XtWindow(shell_), geom_);
 }
 
 Taskbar::~Taskbar()
 {
+    delete quick_;
+    delete icons_;
     delete tray_;
     int i;
     for (i = 0; i < list_.size(); i++)

@@ -216,6 +216,18 @@ private:
     Time last_click_time_;      /* title bar double click detection */
     Window last_click_win_;
 
+    /* Shortcut keys from ~/.config/ttr/shortcuts. */
+    struct UserKey {
+        KeySym sym;
+        unsigned int mods;
+        Str command;
+    };
+    void load_user_keys();
+    Vector<UserKey> user_keys_;
+    /* The Windows key opens Start when released, unless used with
+     * another key in the meantime. */
+    bool super_pending_;
+
     /* A shell menu is posted and owns the pointer and keyboard. */
     bool menu_up_;
     Time menu_click_time_;      /* last press on a window menu button */
