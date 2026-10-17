@@ -432,7 +432,38 @@ rewrites the file, so comments in it do not survive a save from there.
 The Windows key opens Start when released, and only if no other key was
 pressed with it, so Super+key shortcuts work.
 
-### 5.6 Wayland mode (`ttr-wayland`, later)
+### 5.6 Volume
+
+The notification area shows the default output's master volume, through
+the sound server's own tools so ttr links no audio library
+([src/core/audio.h](../src/core/audio.h)). At start the shell probes, in
+order, `pactl info` (PulseAudio, or PipeWire through pipewire-pulse),
+`wpctl get-volume` (PipeWire without the Pulse layer) and `amixer get
+Master` (ALSA); the first that answers is used, and with none there is no
+icon. A socket check alone is not enough: a system can have a `pipewire-0`
+socket with audio on real PulseAudio.
+
+Every tool runs asynchronously (`CommandRunner`: output read through an Xt
+input, killed after a timeout), so a hung sound server cannot hang the
+desktop. Changes are fire and forget, then read back; the volume is also
+polled every 3 seconds to follow other programs.
+
+Left click opens a Volume dialog (slider, Mute, a choice of sound panel and
+Open); right click a menu with Mute, Volume Control... and every installed
+panel; middle click toggles mute; the wheel steps by 5%. Panels are found
+on `$PATH`: pavucontrol, pwvucontrol, pavucontrol-qt, GNOME and KDE sound
+settings, MATE, Helvum and qpwgraph (PipeWire graphs), alsamixer and
+pulsemixer (in the configured terminal), and apanel for IRIX.
+
+IRIX: a libaudio backend (`ALgetparams` / `ALsetparams` on the default
+output) behind the same interface, with apanel as the panel.
+
+Our own Motif popups (menus, option menus, combo box lists) all take a
+pointer grab. Besides menus the shell reports, the WM treats any of our own
+override-redirect shells being mapped as a popup being up, and keeps out of
+pointer and key events until it is gone.
+
+### 5.7 Wayland mode (`ttr-wayland`, later)
 
 1. Bring up DRM/KMS, libinput and the scene graph, then create the Wayland
    socket.

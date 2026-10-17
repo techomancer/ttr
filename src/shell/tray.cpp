@@ -1,8 +1,10 @@
 #include "shell/tray.h"
 #include "core/painter.h"
+#include "shell/volume.h"
 #include "x11/xpainter.h"
 
 #include <Xm/Xm.h>
+#include <Xm/DrawingA.h>
 #include <X11/Xatom.h>
 
 #include <stdio.h>
@@ -26,7 +28,8 @@ Tray::Tray(Widget area, XPainter* painter, const ColorSet& cs,
            const char* clock_format, void (*resized)(void*), void* closure)
     : area_(area), dpy_(XtDisplay(area)), win_(XtWindow(area)),
       painter_(painter), cs_(cs), clock_format_(clock_format),
-      resized_(resized), closure_(closure), owner_(false), last_width_(0)
+      resized_(resized), closure_(closure), owner_(false), last_width_(0),
+      volume_(0)
 {
     char name[64];
     sprintf(name, "_NET_SYSTEM_TRAY_S%d", DefaultScreen(dpy_));
@@ -42,6 +45,7 @@ Tray::Tray(Widget area, XPainter* painter, const ColorSet& cs,
      * messages and SelectionClear are non-maskable. */
     XtAddEventHandler(area_, SubstructureNotifyMask, True, event_cb,
                       (XtPointer)this);
+    XtAddCallback(area_, XmNinputCallback, input_cb, (XtPointer)this);
     acquire();
     schedule_clock();
 }
@@ -210,6 +214,35 @@ void Tray::clock_text(char* buf, int size)
         buf[0] = 0;
 }
 
+void Tray::set_volume(VolumeControl* v)
+{
+    volume_ = v;
+    layout();
+}
+
+/* The built-in volume icon comes first, then the docked icons. */
+Rect Tray::volume_rect()
+{
+    Dimension h = 0;
+    Arg args[1];
+    XtSetArg(args[0], XmNheight, &h);
+    XtGetValues(area_, args, 1);
+    if (!volume_ || !volume_->available())
+        return Rect();
+    return Rect(PAD, ((int)h - ICON) / 2, ICON, ICON);
+}
+
+void Tray::input_cb(Widget w, XtPointer closure, XtPointer call)
+{
+    (void)w;
+    Tray* self = (Tray*)closure;
+    XEvent* ev = ((XmDrawingAreaCallbackStruct*)call)->event;
+    if (!ev || (ev->type != ButtonPress && ev->type != ButtonRelease))
+        return;
+    if (self->volume_rect().contains(ev->xbutton.x, ev->xbutton.y))
+        self->volume_->button(&ev->xbutton);
+}
+
 int Tray::preferred_width()
 {
     char buf[64];
@@ -218,6 +251,8 @@ int Tray::preferred_width()
     for (i = 0; i < items_.size(); i++)
         if (items_[i].mapped)
             n++;
+    if (volume_ && volume_->available())
+        n++;
     int w = PAD + painter_->text_width(buf, (int)strlen(buf)) + 2 * PAD;
     if (n > 0)
         w += n * (ICON + GAP) + PAD;
@@ -231,6 +266,8 @@ void Tray::layout()
     XtSetArg(args[0], XmNheight, &h);
     XtGetValues(area_, args, 1);
     int x = PAD, i;
+    if (volume_ && volume_->available())
+        x += ICON + GAP;
     for (i = 0; i < items_.size(); i++) {
         if (!items_[i].mapped)
             continue;
@@ -267,6 +304,9 @@ void Tray::paint()
     int asc = painter_->text_ascent(), desc = painter_->text_descent();
     painter_->text(w - PAD - tw - PAD, (h - asc - desc) / 2 + asc, buf, len,
                    cs_.fg);
+    Rect vr = volume_rect();
+    if (vr.w > 0)
+        volume_->paint(*painter_, vr);
     painter_->end();
 }
 

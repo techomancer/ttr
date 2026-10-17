@@ -228,8 +228,12 @@ private:
      * another key in the meantime. */
     bool super_pending_;
 
-    /* A shell menu is posted and owns the pointer and keyboard. */
-    bool menu_up_;
+    /* A shell menu is posted and owns the pointer and keyboard: one the
+     * shell told us about, or any of our own Motif popup shells mapped. */
+    bool menu_up() const;
+    void popups_changed();
+    bool shell_menu_up_;
+    Vector<Window> own_popups_;
     Time menu_click_time_;      /* last press on a window menu button */
     Window menu_click_win_;
     Window close_after_menu_;   /* double click on the menu button */

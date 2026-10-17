@@ -38,6 +38,36 @@ void draw_app_icon(Painter& p, const Icon* ic, int x, int y, int size,
            Rgb(0xffff, 0xffff, 0xffff));
 }
 
+void draw_speaker_icon(Painter& p, int x, int y, int size, int level,
+                       bool muted, const ColorSet& cs)
+{
+    int u = size / 8 > 1 ? size / 8 : 1;    /* one unit */
+    int cy = y + size / 2;
+    /* Box and cone, filled column by column. */
+    p.fill(Rect(x + u, cy - u, 2 * u, 2 * u + 1), cs.fg);
+    int i;
+    for (i = 0; i < 3 * u; i++) {
+        int half = u + (i * 2 * u) / (3 * u);
+        p.fill(Rect(x + 3 * u + i, cy - half, 1, 2 * half + 1), cs.fg);
+    }
+    /* Waves: short vertical arcs right of the cone. */
+    int k;
+    for (k = 0; k < level && k < 3; k++) {
+        int wx = x + 7 * u + k * 2 * u;
+        int h = 2 * u + k * 2 * u;
+        p.fill(Rect(wx, cy - h + u, u, 2 * h - 2 * u + 1), cs.fg);
+        p.fill(Rect(wx - u, cy - h, u, u), cs.fg);
+        p.fill(Rect(wx - u, cy + h, u, u), cs.fg);
+    }
+    if (muted) {
+        Rgb red = Rgb::hex(0xc00000);
+        for (i = 0; i < 4 * u; i++) {
+            p.fill(Rect(x + size - 5 * u + i, cy - 2 * u + i, u, u), red);
+            p.fill(Rect(x + size - 5 * u + i, cy + 2 * u - i, u, u), red);
+        }
+    }
+}
+
 void draw_folder_icon(Painter& p, int x, int y, int size)
 {
     Rgb edge = Rgb::hex(0x806010), face = Rgb::hex(0xf0d060),

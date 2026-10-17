@@ -141,7 +141,7 @@ Wm::Wm()
       running_(true), restart_(false), painter_(0), shell_(0), panel_(None),
       cursor_normal_(None), cursor_move_(None), active_(0), place_x_(0),
       place_y_(0), last_click_time_(0), last_click_win_(None),
-      super_pending_(false), menu_up_(false), menu_click_time_(0),
+      super_pending_(false), shell_menu_up_(false), menu_click_time_(0),
       menu_click_win_(None),
       close_after_menu_(None), desktops_(1), current_(0), osd_win_(None),
       osd_timer_(0),
@@ -536,7 +536,7 @@ bool Wm::handle(XEvent* ev)
      * belong to it. Xt passes clicks on our frames (not widgets) to the
      * menu's grab, which pops it down; taking them ourselves would leave
      * Motif's grab in a broken state. */
-    if (menu_up_) {
+    if (menu_up()) {
         switch (ev->type) {
         case ButtonPress:
             menu_double_click(&ev->xbutton);
@@ -604,8 +604,18 @@ void Wm::on_map_request(XMapRequestEvent* ev)
  * requests. Pick them up when they appear. */
 bool Wm::on_map_notify(XMapEvent* ev)
 {
-    if (ev->event != root_ || ev->override_redirect)
+    if (ev->event != root_)
         return false;
+    if (ev->override_redirect) {
+        /* One of our own Motif popups (menu, option menu, combo box list):
+         * it grabs the pointer, so keep out of its way while it is up. */
+        Widget w = XtWindowToWidget(dpy_, ev->window);
+        if (w && XtIsShell(w) && own_popups_.find(ev->window) < 0) {
+            own_popups_.push_back(ev->window);
+            popups_changed();
+        }
+        return false;
+    }
     Window w = ev->window;
     if (find_client(w) || find_frame(w) || w == check_win_ ||
         w == switch_win_ || w == osd_win_ || w == panel_ ||
@@ -653,6 +663,12 @@ void Wm::on_configure_request(XConfigureRequestEvent* ev)
 
 bool Wm::on_unmap(XUnmapEvent* ev)
 {
+    int p = own_popups_.find(ev->window);
+    if (p >= 0 && ev->event == root_) {
+        own_popups_.remove_at(p);
+        popups_changed();
+        return false;
+    }
     /* Our own shell windows also report their unmapping to themselves;
      * that copy belongs to Xt. We act on the one reported to the frame
      * (or root), and on the synthetic ICCCM withdrawal sent to root. */
@@ -1846,8 +1862,18 @@ void Wm::apply_state(Client* c, bool restore)
 
 void Wm::menu_shown(bool shown)
 {
-    menu_up_ = shown;
-    if (shown || close_after_menu_ == None)
+    shell_menu_up_ = shown;
+    popups_changed();
+}
+
+bool Wm::menu_up() const
+{
+    return shell_menu_up_ || !own_popups_.empty();
+}
+
+void Wm::popups_changed()
+{
+    if (menu_up() || close_after_menu_ == None)
         return;
     /* The menu has released its grab; now act on the double click. */
     Client* c = find_client(close_after_menu_);

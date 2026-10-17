@@ -33,6 +33,10 @@ public:
 void draw_app_icon(Painter& p, const Icon* ic, int x, int y, int size,
                    const ColorSet& cs);
 
+/* A loudspeaker with 'level' sound waves (0..3), struck out if muted. */
+void draw_speaker_icon(Painter& p, int x, int y, int size, int level,
+                       bool muted, const ColorSet& cs);
+
 /* A closed folder, for menus. */
 void draw_folder_icon(Painter& p, int x, int y, int size);
 

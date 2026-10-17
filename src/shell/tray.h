@@ -6,6 +6,7 @@
 #define TTR_SHELL_TRAY_H
 
 #include "core/color.h"
+#include "core/geom.h"
 #include "core/str.h"
 #include "core/vector.h"
 
@@ -13,6 +14,7 @@
 
 namespace ttr {
 
+class VolumeControl;
 class XPainter;
 
 class Tray {
@@ -25,6 +27,10 @@ public:
 
     int preferred_width();
     void paint();
+    /* Show this control's icon first in the area (0: none). */
+    void set_volume(VolumeControl* v);
+    /* Something about the built-in icons changed. */
+    void relayout() { layout(); }
     /* Hand docked icons back to the root window. */
     void release();
 
@@ -37,6 +43,8 @@ private:
     static void event_cb(Widget w, XtPointer closure, XEvent* ev,
                          Boolean* cont);
     static void clock_cb(XtPointer closure, XtIntervalId* id);
+    static void input_cb(Widget w, XtPointer closure, XtPointer call);
+    Rect volume_rect();
 
     void acquire();
     void dock(Window icon);
@@ -59,6 +67,7 @@ private:
     Atom orientation_, visual_;
     Vector<Item> items_;
     int last_width_;
+    VolumeControl* volume_;
 };
 
 }

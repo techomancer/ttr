@@ -2,6 +2,7 @@
 #include "shell/quicklaunch.h"
 #include "shell/startmenu.h"
 #include "shell/tray.h"
+#include "shell/volume.h"
 #include "shell/winmenu.h"
 #include "core/painter.h"
 #include "x11/config.h"
@@ -34,7 +35,7 @@ static const int k_margin = 2;
 Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
                  StartMenu* start, WindowMenu* winmenu)
     : wm_(wm), start_menu_(start), winmenu_(winmenu), tray_(0), icons_(0),
-      quick_(0), active_(0), pressed_(-1)
+      quick_(0), volume_(0), active_(0), pressed_(-1)
 {
     Display* dpy = XtDisplay(parent);
     int screen = DefaultScreen(dpy);
@@ -157,11 +158,18 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     XtSetArg(qargs[0], XmNwidth, quick_->preferred_width());
     XtSetValues(quick_area_, qargs, 1);
 
+    volume_ = new VolumeControl(parent, wm, cfg, icons_, cs_, volume_changed,
+                                (void*)this);
+    tray_->set_volume(volume_);
+
     wm_->set_panel(XtWindow(shell_), geom_);
 }
 
 Taskbar::~Taskbar()
 {
+    if (tray_)
+        tray_->set_volume(0);
+    delete volume_;
     delete quick_;
     delete icons_;
     delete tray_;
@@ -410,6 +418,14 @@ void Taskbar::tray_expose_cb(Widget w, XtPointer closure, XtPointer call)
     Taskbar* self = (Taskbar*)closure;
     if (self->tray_)
         self->tray_->paint();
+}
+
+/* The volume icon appeared or changed. */
+void Taskbar::volume_changed(void* closure)
+{
+    Taskbar* self = (Taskbar*)closure;
+    if (self->tray_)
+        self->tray_->relayout();
 }
 
 void Taskbar::tray_resized(void* closure)

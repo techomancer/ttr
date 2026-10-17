@@ -30,6 +30,7 @@ COMPILE = $(CXX) $(CPPFLAGS) $(CXXFLAGS) $(WARNFLAGS)
 
 OBJS = $(B)/main.o \
 	$(B)/core_apps.o \
+	$(B)/core_audio.o \
 	$(B)/core_color.o \
 	$(B)/core_frame.o \
 	$(B)/core_geom.o \
@@ -42,12 +43,14 @@ OBJS = $(B)/main.o \
 	$(B)/core_switcher.o \
 	$(B)/core_text.o \
 	$(B)/shell_quicklaunch.o \
+	$(B)/shell_runcmd.o \
 	$(B)/shell_settings.o \
 	$(B)/shell_shell.o \
 	$(B)/shell_shortcutsdlg.o \
 	$(B)/shell_startmenu.o \
 	$(B)/shell_taskbar.o \
 	$(B)/shell_tray.o \
+	$(B)/shell_volume.o \
 	$(B)/shell_winmenu.o \
 	$(B)/x11_config.o \
 	$(B)/x11_hints.o \
@@ -70,19 +73,24 @@ $(B)/.dir:
 CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
 	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h \
-	src/core/settings.h src/core/shortcuts.h src/core/launch.h
+	src/core/settings.h src/core/shortcuts.h src/core/launch.h \
+	src/core/audio.h
 X11_H = src/x11/wm.h src/x11/hints.h src/x11/config.h src/x11/xpainter.h \
 	src/x11/iconload.h src/x11/svg.h src/x11/keys.h \
 	$(CORE_H)
 SHELL_H = src/shell/shell.h src/shell/startmenu.h src/shell/taskbar.h \
 	src/shell/tray.h src/shell/winmenu.h src/shell/quicklaunch.h \
-	src/shell/settings.h src/shell/shortcutsdlg.h
+	src/shell/settings.h src/shell/shortcutsdlg.h src/shell/runcmd.h \
+	src/shell/volume.h
 
 $(B)/main.o: $(B)/.dir src/main.cpp $(X11_H) $(SHELL_H)
 	$(COMPILE) -c src/main.cpp -o $@
 
 $(B)/core_apps.o: $(B)/.dir src/core/apps.cpp $(CORE_H)
 	$(COMPILE) -c src/core/apps.cpp -o $@
+
+$(B)/core_audio.o: $(B)/.dir src/core/audio.cpp $(CORE_H)
+	$(COMPILE) -c src/core/audio.cpp -o $@
 
 $(B)/core_color.o: $(B)/.dir src/core/color.cpp $(CORE_H)
 	$(COMPILE) -c src/core/color.cpp -o $@
@@ -121,6 +129,9 @@ $(B)/shell_quicklaunch.o: $(B)/.dir src/shell/quicklaunch.cpp $(SHELL_H) \
 		$(X11_H)
 	$(COMPILE) -c src/shell/quicklaunch.cpp -o $@
 
+$(B)/shell_runcmd.o: $(B)/.dir src/shell/runcmd.cpp $(SHELL_H) $(X11_H)
+	$(COMPILE) -c src/shell/runcmd.cpp -o $@
+
 $(B)/shell_settings.o: $(B)/.dir src/shell/settings.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/settings.cpp -o $@
 
@@ -139,6 +150,9 @@ $(B)/shell_taskbar.o: $(B)/.dir src/shell/taskbar.cpp $(SHELL_H) $(X11_H)
 
 $(B)/shell_tray.o: $(B)/.dir src/shell/tray.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/tray.cpp -o $@
+
+$(B)/shell_volume.o: $(B)/.dir src/shell/volume.cpp $(SHELL_H) $(X11_H)
+	$(COMPILE) -c src/shell/volume.cpp -o $@
 
 $(B)/shell_winmenu.o: $(B)/.dir src/shell/winmenu.cpp $(SHELL_H) $(CORE_H)
 	$(COMPILE) -c src/shell/winmenu.cpp -o $@
