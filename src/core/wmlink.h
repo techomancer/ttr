@@ -25,6 +25,11 @@ enum WmAction {
     ACT_LOWER,
     ACT_CLOSE,
     ACT_ACTIVATE,   /* restore if minimized, raise and focus */
+    ACT_DOCK_LEFT,  /* full height, dockWidth wide */
+    ACT_DOCK_CENTER,
+    ACT_DOCK_RIGHT,
+    ACT_SNAP_TOP,   /* full width, dockWidth of the height */
+    ACT_SNAP_BOTTOM,
     ACT_COUNT
 };
 

@@ -99,8 +99,25 @@ static const KeyBinding k_keys[] = {
     { "Left", Mod1Mask | ShiftMask, KC_TAKE_PREV, ACT_COUNT },
     { "Right", Mod1Mask | ShiftMask, KC_TAKE_NEXT, ACT_COUNT },
     { "Left", ControlMask | Mod1Mask | ShiftMask, KC_TAKE_PREV, ACT_COUNT },
-    { "Right", ControlMask | Mod1Mask | ShiftMask, KC_TAKE_NEXT, ACT_COUNT }
+    { "Right", ControlMask | Mod1Mask | ShiftMask, KC_TAKE_NEXT, ACT_COUNT },
+    /* Docking and snapping. CDE never used the Windows key, so these do
+     * not collide with its Alt+function key window operations. */
+    { "1", Mod4Mask, KC_ACTION, ACT_DOCK_LEFT },
+    { "2", Mod4Mask, KC_ACTION, ACT_DOCK_CENTER },
+    { "3", Mod4Mask, KC_ACTION, ACT_DOCK_RIGHT },
+    { "Left", Mod4Mask, KC_ACTION, ACT_DOCK_LEFT },
+    { "Right", Mod4Mask, KC_ACTION, ACT_DOCK_RIGHT },
+    { "Up", Mod4Mask, KC_ACTION, ACT_SNAP_TOP },
+    { "Down", Mod4Mask, KC_ACTION, ACT_SNAP_BOTTOM }
 };
+
+/* Snap zones: how close to a screen edge the pointer must be. */
+static const int k_snap_edge = 2;
+static const int k_preview_line = 4;
+
+static const ActionMask k_snap_actions =
+    (1u << ACT_DOCK_LEFT) | (1u << ACT_DOCK_CENTER) | (1u << ACT_DOCK_RIGHT) |
+    (1u << ACT_SNAP_TOP) | (1u << ACT_SNAP_BOTTOM);
 
 /* How long the desktop name stays up after a switch. */
 static const unsigned long k_osd_ms = 900;
@@ -135,7 +152,8 @@ Client::Client()
       old_bw(0), gravity(GRAV_NW), icon(0), type(WT_NORMAL),
       actions(all_actions()), accepts_input(true), take_focus(false),
       delete_window(false), maximized(false), fullscreen(false),
-      minimized(false), listed(false), desktop(0), ignore_unmap(0),
+      minimized(false), listed(false), desktop(0), snap(SNAP_NONE),
+      ignore_unmap(0),
       pressed(FP_NONE),
       cursor_part(FP_NONE)
 {
@@ -280,6 +298,15 @@ bool Wm::init(int* argc, char** argv)
                              InputOutput, CopyFromParent,
                              CWOverrideRedirect | CWSaveUnder | CWEventMask,
                              &sa);
+    XSetWindowAttributes pa;
+    pa.override_redirect = True;
+    pa.background_pixel = painter_->pixel(theme_.active.bg);
+    for (i = 0; i < 4; i++)
+        snap_preview_[i] = XCreateWindow(dpy_, root_, 0, 0, 1, 1, 0,
+                                         CopyFromParent, InputOutput,
+                                         CopyFromParent,
+                                         CWOverrideRedirect | CWBackPixel,
+                                         &pa);
 
     /* Keep the desktop we were on across a restart. */
     desktops_ = config_.desktops;
@@ -455,7 +482,9 @@ void Wm::adopt_existing()
             if (!XGetWindowAttributes(dpy_, w, &attr))
                 continue;
             if (attr.override_redirect || w == XtWindow(toplevel_) ||
-                w == check_win_ || w == switch_win_ || w == osd_win_)
+                w == check_win_ || w == switch_win_ || w == osd_win_ ||
+                w == snap_preview_[0] || w == snap_preview_[1] ||
+                w == snap_preview_[2] || w == snap_preview_[3])
                 continue;
             if (attr.map_state == IsViewable)
                 manage(w, MANAGE_MAPPED);
@@ -508,6 +537,8 @@ void Wm::restore_all()
     XDestroyWindow(dpy_, check_win_);
     XDestroyWindow(dpy_, switch_win_);
     XDestroyWindow(dpy_, osd_win_);
+    for (i = 0; i < 4; i++)
+        XDestroyWindow(dpy_, snap_preview_[i]);
 }
 
 int Wm::on_startup_error(Display* dpy, XErrorEvent* ev)
@@ -1463,9 +1494,15 @@ ActionMask Wm::allowed(const Client* c) const
     if (c->maximized || c->fullscreen) {
         m &= ~((1u << ACT_MOVE) | (1u << ACT_SIZE) | (1u << ACT_MAXIMIZE));
         m |= 1u << ACT_RESTORE;
+    } else if (c->snap != SNAP_NONE) {
+        m |= 1u << ACT_RESTORE;     /* moving or sizing it undocks it */
     } else {
         m &= ~(1u << ACT_RESTORE);
     }
+    /* Docking places and sizes the window. */
+    if (!action_allowed(c->actions, ACT_MOVE) ||
+        !action_allowed(c->actions, ACT_SIZE) || c->fullscreen)
+        m &= ~k_snap_actions;
     return m;
 }
 
@@ -1723,9 +1760,24 @@ void Wm::request(ToplevelId id, WmAction action)
     case ACT_RESTORE:
         if (c->fullscreen)
             set_fullscreen(c, false);
-        else
+        else if (c->maximized)
             set_maximized(c, false);
+        else
+            set_snap(c, SNAP_NONE);
         break;
+    case ACT_DOCK_LEFT:
+    case ACT_DOCK_CENTER:
+    case ACT_DOCK_RIGHT:
+    case ACT_SNAP_TOP:
+    case ACT_SNAP_BOTTOM: {
+        int snap = action == ACT_DOCK_LEFT ? SNAP_LEFT
+                 : action == ACT_DOCK_CENTER ? SNAP_CENTER
+                 : action == ACT_DOCK_RIGHT ? SNAP_RIGHT
+                 : action == ACT_SNAP_TOP ? SNAP_TOP : SNAP_BOTTOM;
+        /* The same dock again undocks, like a toggle. */
+        set_snap(c, c->snap == snap && !c->maximized ? (int)SNAP_NONE : snap);
+        break;
+    }
     case ACT_MAXIMIZE:
         set_maximized(c, true);
         break;
@@ -1784,9 +1836,10 @@ void Wm::set_maximized(Client* c, bool on)
 {
     if (c->maximized == on)
         return;
-    if (!c->maximized && !c->fullscreen)
+    if (!c->maximized && !c->fullscreen && c->snap == SNAP_NONE)
         c->saved = Rect(c->x, c->y, c->w, c->h);
     c->maximized = on;
+    c->snap = SNAP_NONE;    /* maximizing ends docking */
     apply_state(c, true);
 }
 
@@ -1794,7 +1847,7 @@ void Wm::set_fullscreen(Client* c, bool on)
 {
     if (c->fullscreen == on)
         return;
-    if (!c->maximized && !c->fullscreen)
+    if (!c->maximized && !c->fullscreen && c->snap == SNAP_NONE)
         c->saved = Rect(c->x, c->y, c->w, c->h);
     c->fullscreen = on;
     if (on)
@@ -1802,6 +1855,81 @@ void Wm::set_fullscreen(Client* c, bool on)
     else if (panel_ != None)
         XRaiseWindow(dpy_, panel_);
     apply_state(c, true);
+}
+
+/* Frame rectangle for a dock or snap position: columns are full height
+ * and dockWidth (a third or half) wide; top and bottom are full width and
+ * the same fraction of the height. */
+Rect Wm::snap_rect(int snap) const
+{
+    int div = config_.dock_div;
+    int w = work_.w / div, h = work_.h / div;
+    switch (snap) {
+    case SNAP_LEFT:
+        return Rect(work_.x, work_.y, w, work_.h);
+    case SNAP_CENTER:
+        return Rect(work_.x + (work_.w - w) / 2, work_.y, w, work_.h);
+    case SNAP_RIGHT:
+        return Rect(work_.x + work_.w - w, work_.y, w, work_.h);
+    case SNAP_TOP:
+        return Rect(work_.x, work_.y, work_.w, h);
+    case SNAP_BOTTOM:
+        return Rect(work_.x, work_.y + work_.h - h, work_.w, h);
+    }
+    return Rect();
+}
+
+/* Dock or snap a window (SNAP_NONE restores it). Like maximize, the
+ * normal geometry is kept to come back to. */
+void Wm::set_snap(Client* c, int snap)
+{
+    if (c->fullscreen)
+        return;
+    if (snap != SNAP_NONE &&
+        !action_allowed(allowed(c), (WmAction)(ACT_DOCK_LEFT + snap -
+                                                SNAP_LEFT)))
+        return;
+    if (!c->maximized && c->snap == SNAP_NONE)
+        c->saved = Rect(c->x, c->y, c->w, c->h);
+    bool restore = snap == SNAP_NONE && (c->snap != SNAP_NONE || c->maximized);
+    c->maximized = false;
+    c->snap = snap;
+    if (snap != SNAP_NONE || restore)
+        apply_state(c, true);
+}
+
+/* Which snap zone (screen edge) the pointer is in while moving. */
+int Wm::snap_zone(int x_root, int y_root) const
+{
+    if (x_root <= k_snap_edge)
+        return SNAP_LEFT;
+    if (x_root >= screen_w_ - 1 - k_snap_edge)
+        return SNAP_RIGHT;
+    if (y_root <= k_snap_edge)
+        return SNAP_TOP;
+    if (y_root >= screen_h_ - 1 - k_snap_edge)
+        return SNAP_BOTTOM;
+    return SNAP_NONE;
+}
+
+/* Four thin windows outline the target, so nothing is drawn on the
+ * windows underneath. */
+void Wm::show_snap_preview(int snap)
+{
+    int i;
+    if (snap == SNAP_NONE) {
+        for (i = 0; i < 4; i++)
+            XUnmapWindow(dpy_, snap_preview_[i]);
+        return;
+    }
+    Rect r = snap_rect(snap);
+    int t = k_preview_line;
+    XMoveResizeWindow(dpy_, snap_preview_[0], r.x, r.y, r.w, t);
+    XMoveResizeWindow(dpy_, snap_preview_[1], r.x, r.y + r.h - t, r.w, t);
+    XMoveResizeWindow(dpy_, snap_preview_[2], r.x, r.y, t, r.h);
+    XMoveResizeWindow(dpy_, snap_preview_[3], r.x + r.w - t, r.y, t, r.h);
+    for (i = 0; i < 4; i++)
+        XMapRaised(dpy_, snap_preview_[i]);
 }
 
 /* Minimized windows are unmapped and live on as taskbar buttons. Their
@@ -1856,6 +1984,12 @@ void Wm::apply_state(Client* c, bool restore)
         int w = work_.w - e.width(), h = work_.h - e.height();
         c->size.apply(&w, &h);
         set_geometry(c, work_.x, work_.y, w, h);
+    } else if (c->snap != SNAP_NONE) {
+        Rect r = snap_rect(c->snap);
+        FrameExtents e = extents_of(c);
+        int w = r.w - e.width(), h = r.h - e.height();
+        c->size.apply(&w, &h);
+        set_geometry(c, r.x, r.y, w, h);
     } else if (restore) {
         set_geometry(c, c->saved.x, c->saved.y, c->saved.w, c->saved.h);
     } else {
@@ -2202,6 +2336,11 @@ void Wm::set_net_state(Client* c)
     if (c->maximized) {
         state[n++] = atoms_.net_wm_state_maximized_vert;
         state[n++] = atoms_.net_wm_state_maximized_horz;
+    } else if (c->snap == SNAP_LEFT || c->snap == SNAP_CENTER ||
+               c->snap == SNAP_RIGHT) {
+        state[n++] = atoms_.net_wm_state_maximized_vert;
+    } else if (c->snap == SNAP_TOP || c->snap == SNAP_BOTTOM) {
+        state[n++] = atoms_.net_wm_state_maximized_horz;
     }
     if (c->minimized)
         state[n++] = atoms_.net_wm_state_hidden;
@@ -2289,6 +2428,24 @@ void Wm::begin_drag(Client* c, DragMode mode, FramePart part,
     /* Keyboard for Escape (cancel), Return (done) and arrow keys. */
     XGrabKeyboard(dpy_, root_, False, GrabModeAsync, GrabModeAsync, t);
 
+    drag_.was_snap = c->snap;
+    if (c->snap != SNAP_NONE) {
+        if (mode == DRAG_MOVE) {
+            /* Pull it out at its old size, keeping the same spot of the
+             * title bar under the pointer. */
+            int fw = frame_w(c);
+            int nfw = c->saved.w + extents_of(c).width();
+            int nx = x_root - (x_root - c->x) * nfw / (fw > 0 ? fw : 1);
+            c->snap = SNAP_NONE;
+            set_geometry(c, nx, c->y, c->saved.w, c->saved.h);
+        } else {
+            c->snap = SNAP_NONE;    /* resized from where it is */
+        }
+        paint(c);
+        set_net_state(c);
+        notify(c);
+    }
+
     drag_.mode = mode;
     drag_.client = c;
     drag_.part = part;
@@ -2299,6 +2456,8 @@ void Wm::begin_drag(Client* c, DragMode mode, FramePart part,
     drag_.orig_y = c->y;
     drag_.orig_w = c->w;
     drag_.orig_h = c->h;
+    drag_.zone = SNAP_NONE;
+    /* begin_drag() sets was_snap before undocking; keep it. */
 }
 
 void Wm::update_drag(int x_root, int y_root)
@@ -2309,6 +2468,12 @@ void Wm::update_drag(int x_root, int y_root)
 
     if (drag_.mode == DRAG_MOVE) {
         set_geometry(c, drag_.orig_x + dx, drag_.orig_y + dy, c->w, c->h);
+        int zone = (allowed(c) & k_snap_actions) ? snap_zone(x_root, y_root)
+                                                 : (int)SNAP_NONE;
+        if (zone != drag_.zone) {
+            drag_.zone = zone;
+            show_snap_preview(zone);
+        }
         return;
     }
 
@@ -2335,9 +2500,19 @@ void Wm::end_drag(Time t, bool cancel)
     XUngrabKeyboard(dpy_, t);
     if (drag_.explicit_grab)
         XUngrabPointer(dpy_, t);
+    int zone = drag_.zone;
+    if (zone != SNAP_NONE)
+        show_snap_preview(SNAP_NONE);
     drag_.mode = DRAG_NONE;
     drag_.client = 0;
-    if (c)
+    drag_.zone = SNAP_NONE;
+    int was_snap = drag_.was_snap;
+    drag_.was_snap = SNAP_NONE;
+    if (c && !cancel && zone != SNAP_NONE)
+        set_snap(c, zone);
+    else if (c && cancel && was_snap != SNAP_NONE)
+        set_snap(c, was_snap);      /* back where it was docked */
+    else if (c)
         send_configure(c);
 }
 

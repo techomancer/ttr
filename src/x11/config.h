@@ -14,6 +14,7 @@
  *   Ttr*menuFont:       for menus and dialogs (Motif)
  *   Ttr*taskbarFont:    for task buttons and the clock
  *   Ttr*desktops:       number of virtual desktops, 1 .. 16
+ *   Ttr*dockWidth:      third | half (docked and snapped windows)
  */
 #ifndef TTR_X11_CONFIG_H
 #define TTR_X11_CONFIG_H
@@ -47,6 +48,7 @@ struct Config {
     Str menu_font;
     Str taskbar_font;
     int desktops;
+    int dock_div;           /* 3: thirds, 2: halves */
 
     Config();
 };

@@ -40,7 +40,7 @@ private:
     static void deliver_cb(XtPointer closure, XtIntervalId* id);
 
     void add_item(WmAction action, const char* label, char mnemonic,
-                  const char* accel);
+                  const char* accel, Widget menu = 0);
     void add_desktop_item(Widget menu, int index, int desktop,
                           const char* label);
 

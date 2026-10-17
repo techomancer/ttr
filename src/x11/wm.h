@@ -43,6 +43,7 @@ struct Client {
     bool minimized;
     bool listed;        /* has a taskbar entry */
     int desktop;        /* or ALL_DESKTOPS */
+    int snap;           /* SNAP_*: docked or snapped to an edge */
     Rect saved;         /* frame x/y and client w/h in the normal state */
     int ignore_unmap;
     FramePart pressed;
@@ -50,6 +51,10 @@ struct Client {
 
     Client();
     ~Client();
+};
+
+enum SnapPos {
+    SNAP_NONE, SNAP_LEFT, SNAP_CENTER, SNAP_RIGHT, SNAP_TOP, SNAP_BOTTOM
 };
 
 class Wm : public WmLink {
@@ -88,6 +93,8 @@ private:
         int start_x, start_y;   /* pointer, root coordinates */
         int orig_x, orig_y;     /* frame position */
         int orig_w, orig_h;     /* client size */
+        int zone;               /* SNAP_* under the pointer while moving */
+        int was_snap;           /* docked before the drag; Escape restores */
     };
 
     static Boolean dispatch(XEvent* ev);
@@ -150,6 +157,10 @@ private:
     void post_menu(Client* c, int x, int y, Time t);
     void post_menu_at_button(Client* c, Time t);
 
+    Rect snap_rect(int snap) const;
+    void set_snap(Client* c, int snap);
+    int snap_zone(int x_root, int y_root) const;
+    void show_snap_preview(int snap);
     void set_maximized(Client* c, bool on);
     void set_fullscreen(Client* c, bool on);
     void set_minimized(Client* c, bool on);
@@ -243,6 +254,9 @@ private:
     int current_;
     Window osd_win_;
     XtIntervalId osd_timer_;
+
+    /* Outline of where a window will snap, while dragging. */
+    Window snap_preview_[4];
 
     /* Windows-style Alt+Tab */
     bool switching_;

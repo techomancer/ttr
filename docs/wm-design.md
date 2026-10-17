@@ -377,6 +377,7 @@ widgets only when they are created. See [src/x11/config.h](../src/x11/config.h):
 | `Ttr*menuFont` | for Motif menus and dialogs (`*fontList`) | Helvetica bold 12 |
 | `Ttr*taskbarFont` | for task buttons and the clock | Helvetica medium 12 |
 | `Ttr*desktops` | number of virtual desktops, 1 to 16 | 4 |
+| `Ttr*dockWidth` | `third`, `half`: size of docked and snapped windows | `third` |
 
 The start menu reads applications through the `AppSource` interface
 ([src/core/apps.h](../src/core/apps.h)): `DesktopAppSource` reads XDG
@@ -463,7 +464,33 @@ pointer grab. Besides menus the shell reports, the WM treats any of our own
 override-redirect shells being mapped as a popup being up, and keeps out of
 pointer and key events until it is gone.
 
-### 5.7 Wayland mode (`ttr-wayland`, later)
+### 5.7 Docking and snapping
+
+A window can be docked in one of three columns, left, center or right, of
+the full work area height and `dockWidth` (a third or half) of its width;
+with halves the center column is the middle half. It can also be snapped
+to the top or bottom: full width, the same fraction of the height. Like
+maximize, the normal geometry is kept and comes back on Restore.
+
+Dragging a window to a screen edge shows an outline of the target (four
+thin windows, so nothing is drawn over other windows) and releasing there
+snaps it; Escape cancels. Dragging a docked window out returns it to its
+normal size with the same spot of the title bar under the pointer.
+
+| Keys | Action |
+|---|---|
+| Super+1 / 2 / 3 | dock left / center / right; the same key again restores |
+| Super+Left / Right | dock left / right |
+| Super+Up / Down | snap top / bottom |
+| Alt+F5 (CDE Restore) | undock |
+
+CDE and mwm put window operations on Alt+function keys and never used the
+Windows key, so the Super combinations do not collide with them. The window
+menu has the same operations under Snap. Docked columns set
+`_NET_WM_STATE_MAXIMIZED_VERT`, top and bottom `..._HORZ`, the nearest EWMH
+states.
+
+### 5.8 Wayland mode (`ttr-wayland`, later)
 
 1. Bring up DRM/KMS, libinput and the scene graph, then create the Wayland
    socket.

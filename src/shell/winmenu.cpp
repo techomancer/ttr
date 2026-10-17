@@ -25,6 +25,26 @@ WindowMenu::WindowMenu(Widget parent, WmLink* link, int desktops)
     add_item(ACT_SIZE, "Size", 'S', "Alt+F8");
     add_item(ACT_MINIMIZE, "Minimize", 'n', "Alt+F9");
     add_item(ACT_MAXIMIZE, "Maximize", 'x', "Alt+F10");
+
+    Widget snap = XmCreatePulldownMenu(menu_, (char*)"snap", 0, 0);
+    add_item(ACT_DOCK_LEFT, "Dock Left", 'L', "Super+1", snap);
+    add_item(ACT_DOCK_CENTER, "Dock Center", 'C', "Super+2", snap);
+    add_item(ACT_DOCK_RIGHT, "Dock Right", 'R', "Super+3", snap);
+    XtManageChild(XmCreateSeparatorGadget(snap, (char*)"sep", 0, 0));
+    add_item(ACT_SNAP_TOP, "Top", 'T', "Super+Up", snap);
+    add_item(ACT_SNAP_BOTTOM, "Bottom", 'B', "Super+Down", snap);
+    {
+        XmString l = XmStringCreateLocalized((char*)"Snap");
+        Arg sargs[3];
+        int n = 0;
+        XtSetArg(sargs[n], XmNlabelString, l); n++;
+        XtSetArg(sargs[n], XmNmnemonic, (KeySym)'p'); n++;
+        XtSetArg(sargs[n], XmNsubMenuId, snap); n++;
+        XtManageChild(XmCreateCascadeButtonGadget(menu_, (char*)"snapItem",
+                                                  sargs, n));
+        XmStringFree(l);
+    }
+
     add_item(ACT_LOWER, "Lower", 'L', "Alt+F3");
 
     if (desktops_ > 1) {
@@ -78,8 +98,10 @@ WindowMenu::~WindowMenu()
 }
 
 void WindowMenu::add_item(WmAction action, const char* label, char mnemonic,
-                          const char* accel)
+                          const char* accel, Widget menu)
 {
+    if (!menu)
+        menu = menu_;
     XmString l = XmStringCreateLocalized((char*)label);
     XmString a = XmStringCreateLocalized((char*)accel);
     Arg args[3];
@@ -87,7 +109,7 @@ void WindowMenu::add_item(WmAction action, const char* label, char mnemonic,
     XtSetArg(args[n], XmNlabelString, l); n++;
     XtSetArg(args[n], XmNmnemonic, (KeySym)mnemonic); n++;
     XtSetArg(args[n], XmNacceleratorText, a); n++;
-    Widget b = XmCreatePushButtonGadget(menu_, (char*)label, args, n);
+    Widget b = XmCreatePushButtonGadget(menu, (char*)label, args, n);
     XmStringFree(l);
     XmStringFree(a);
 

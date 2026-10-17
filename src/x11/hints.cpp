@@ -176,6 +176,10 @@ void apply_motif_hints(Display* dpy, const Atoms& a, Window w,
         if (funcs & MWM_FUNC_MAXIMIZE)
             m |= (1u << ACT_MAXIMIZE) | (1u << ACT_RESTORE);
         if (funcs & MWM_FUNC_CLOSE) m |= 1u << ACT_CLOSE;
+        if ((funcs & MWM_FUNC_MOVE) && (funcs & MWM_FUNC_RESIZE))
+            m |= (1u << ACT_DOCK_LEFT) | (1u << ACT_DOCK_CENTER) |
+                 (1u << ACT_DOCK_RIGHT) | (1u << ACT_SNAP_TOP) |
+                 (1u << ACT_SNAP_BOTTOM);
         *actions &= m;
     }
 

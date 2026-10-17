@@ -424,6 +424,11 @@ void SettingsDialog::build()
     XmToggleButtonSetState(cfg_.switch_style == Config::SWITCH_WINDOWS
                                ? windows_switch_ : unused, True, True);
 
+    radio(row(f, "Docked width:"), "1/3 of the screen", "1/2 of the screen",
+          &dock_third_);
+    XmToggleButtonSetState(cfg_.dock_div == 3 ? dock_third_
+                               : XtNameToWidget(XtParent(dock_third_), "b"),
+                           True, True);
     desktops_ = drop_down(row(f, "Virtual desktops:"), "desktops",
                           k_desktop_counts, k_ncounts, 8, 3);
     char count[16];
@@ -527,6 +532,8 @@ void SettingsDialog::save()
                                                                  : "pointer");
     file.set("switchStyle", XmToggleButtonGetState(windows_switch_)
                                 ? "windows" : "stack");
+    file.set("dockWidth", XmToggleButtonGetState(dock_third_) ? "third"
+                                                             : "half");
     file.set("desktops",
              selected_item(desktops_, k_desktop_counts, k_ncounts).c_str());
     file.set("titleFont", font_name(&title_).c_str());

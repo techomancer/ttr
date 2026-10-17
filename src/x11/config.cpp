@@ -46,6 +46,7 @@ struct Resources {
     String menu_font;
     String taskbar_font;
     String desktops;
+    String dock_width;
 };
 
 #define RES(name, cls, field, def) \
@@ -63,7 +64,8 @@ static XtResource k_resources[] = {
     RES("titleFont", "Font", title_font, BOLD_12),
     RES("menuFont", "Font", menu_font, BOLD_12),
     RES("taskbarFont", "Font", taskbar_font, MEDIUM_12),
-    RES("desktops", "Desktops", desktops, "4")
+    RES("desktops", "Desktops", desktops, "4"),
+    RES("dockWidth", "DockWidth", dock_width, "third")
 };
 
 #undef RES
@@ -72,7 +74,8 @@ Config::Config()
     : focus(FOCUS_CLICK), switch_style(SWITCH_WINDOWS),
       app_source(APPS_DESKTOP), app_source_name("auto"),
       terminal("xterm -e"), clock_format("%H:%M"), title_font(BOLD_12),
-      menu_font(BOLD_12), taskbar_font(MEDIUM_12), desktops(4)
+      menu_font(BOLD_12), taskbar_font(MEDIUM_12), desktops(4),
+      dock_div(3)
 {
 }
 
@@ -218,6 +221,12 @@ void read_config(Widget toplevel, Config* cfg)
     cfg->toolchest_files = expand_home(r.toolchest_files);
     cfg->terminal = r.terminal;
     cfg->clock_format = r.clock_format;
+
+    if (is(r.dock_width, "half"))
+        cfg->dock_div = 2;
+    else if (!is(r.dock_width, "third"))
+        fprintf(stderr, "ttr: unknown dockWidth '%s', using third\n",
+                r.dock_width);
 
     cfg->desktops = r.desktops ? atoi(r.desktops) : 4;
     if (cfg->desktops < 1)
