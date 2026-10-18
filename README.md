@@ -331,7 +331,8 @@ menus and dialogs:
 
 These need Motif 2.2 or later (Open Motif 2.3 and Motif 2.5 on Linux have
 them). On IRIX, ttr turns on SGI's own enhanced look instead, which has
-SGI's scroll bars. Scroll bars and sliders grow with the UI scale.
+SGI's scroll bars. Scroll bars and sliders are 17 pixels thick, a little
+more than Motif's 11, and grow with the UI scale.
 
 ### Fonts
 

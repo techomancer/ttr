@@ -368,12 +368,7 @@ static void scale_motif_resources(XrmDatabase* db)
         { "*XmText.highlightThickness", 2 },
         { "*XmTextField.highlightThickness", 2 },
         { "*XmList.highlightThickness", 2 },
-        { "*XmScrollBar.width", 15 },
-        { "*XmScrollBar.height", 15 },
-        { "*XmComboBox.arrowSize", 14 },
-        /* A slider's bar (volume, color picker) is not a scroll bar's
-         * width: it has its own thickness. */
-        { "*XmScale.scaleHeight", 15 }
+        { "*XmComboBox.arrowSize", 14 }
     };
     int i;
     for (i = 0; i < (int)(sizeof(k_res) / sizeof(k_res[0])); i++) {
@@ -799,6 +794,8 @@ bool scroll_bar_styles()
 #endif
 }
 
+static const int k_scroll_bar_width = 17;  /* at 100% */
+
 static const char* const k_grips[4][2] = {
     { "none", "NONE" }, { "line", "ETCHED_LINE" }, { "ridges", "THUMB_MARK" },
     { "dot", "ROUND_MARK" }
@@ -811,6 +808,15 @@ static const char* const k_grips[4][2] = {
 static void apply_scroll_bars(XrmDatabase* db, const Resources& r,
                               Config* cfg)
 {
+    /* Thicker than Motif's 11 pixels, at every scale: about Windows 2000's
+     * 16 plus Motif's bevel. A slider's bar (volume, color picker) has a
+     * thickness of its own, which a scroll bar's width does not reach. */
+    char w[16];
+    sprintf(w, "%d", scaled(k_scroll_bar_width));
+    XrmPutStringResource(db, "*XmScrollBar.width", w);
+    XrmPutStringResource(db, "*XmScrollBar.height", w);
+    XrmPutStringResource(db, "*XmScale.scaleHeight", w);
+
     cfg->scroll_arrows_together = r.scroll_arrows &&
                                   strcmp(r.scroll_arrows, "together") == 0;
     cfg->scroll_grip = "ridges";

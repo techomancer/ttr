@@ -436,6 +436,9 @@ ways, all applied once at startup (changing it restarts ttr):
   get one. An `XmScale` has its own thickness (`scaleHeight` for a
   horizontal one); its scroll bar's width does not apply.
 
+Scroll bars and sliders are 17 pixels thick at 100% (Motif's default is
+11), scaled like the rest.
+
 **Scroll bar looks.** Motif 2.2 added `XmNshowArrows` values (both arrows
 at one end with `XmMAX_SIDE`) and `XmNsliderMark` (a grip on the thumb).
 ttr sets them through the resource database only when they exist, which
