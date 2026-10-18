@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=To The Roots
+Comment=mwm-style window manager with a Windows 2000-style taskbar
+Exec=ttr-session
+TryExec=ttr-session
+DesktopNames=TTR

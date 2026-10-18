@@ -90,8 +90,32 @@ leave out `TTR_HAVE_PNG`, `TTR_HAVE_XPM` or `TTR_HAVE_SVG` (and the
 matching library) to drop an icon format. The top of the
 [Makefile](Makefile) has an example command line for IRIX with MIPSpro.
 
-There is no `make install` yet. Copy `build/ttr` to a directory on your
-`PATH` if you want it there.
+### Installing
+
+```sh
+make
+sudo make install           # to /usr; or: sudo make install PREFIX=/usr/local
+```
+
+This installs:
+
+| File | What it is |
+|---|---|
+| `/usr/bin/ttr` | the window manager and desktop |
+| `/usr/bin/ttr-session` | starts a ttr session (see below) |
+| `/usr/share/xsessions/ttr.desktop` | makes display managers offer "To The Roots" |
+
+`sudo make uninstall` removes them again (with the same `PREFIX`).
+`DESTDIR` is supported for packaging. Most display managers only look in
+`/usr/share/xsessions`, so keep `PREFIX=/usr` if you log in through one.
+
+On **Arch Linux** (and CachyOS, Manjaro), build a package instead, so that
+pacman tracks the files:
+
+```sh
+cd dist/arch
+makepkg -si
+```
 
 ## Running
 
@@ -113,24 +137,21 @@ both ttr and the nested server.
 
 ### As your desktop
 
-Start ttr from `~/.xinitrc` (for `startx`) or `~/.xsession` (for display
-managers that offer it):
+After `make install`, log out. Your display manager (SDDM, LightDM, GDM,
+...) now lists **To The Roots** among its sessions.
+
+With `startx`, put this in `~/.xinitrc`:
 
 ```sh
 #!/bin/sh
-exec ttr
+exec ttr-session
 ```
 
-If you use a display manager that lists sessions from
-`/usr/share/xsessions`, add a file such as `ttr.desktop` there:
-
-```ini
-[Desktop Entry]
-Name=To The Roots
-Comment=mwm-style window manager with a taskbar
-Exec=ttr
-Type=Application
-```
+`ttr-session` sets `XDG_CURRENT_DESKTOP=TTR` (unless the display manager has
+already set it) and runs ttr. Desktop notifications and single-instance
+programs need a D-Bus session bus. When there is none, which is common
+without systemd, `ttr-session` starts one for the session with
+`dbus-run-session`. Running plain `ttr` works too, but without that help.
 
 ttr does not replace a window manager that is already running. It prints
 "another window manager is already running" and exits.

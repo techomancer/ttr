@@ -30,6 +30,14 @@ DBUS_CFLAGS = -I/usr/include/dbus-1.0 -I/usr/lib64/dbus-1.0/include \
 LDFLAGS =
 LIBS = -lXm -lXt -lXpm -lpng -ldbus-1 -lX11 -lm
 
+# make install: the program and the session launcher go to BINDIR, the
+# session file to XSESSIONDIR, where display managers look for sessions.
+# DESTDIR is prepended to both, for packaging.
+PREFIX = /usr
+BINDIR = $(PREFIX)/bin
+XSESSIONDIR = $(PREFIX)/share/xsessions
+DESTDIR =
+
 B = build
 COMPILE = $(CXX) $(CPPFLAGS) $(CXXFLAGS) $(WARNFLAGS)
 
@@ -237,6 +245,20 @@ asan:
 	$(MAKE) B=build-asan \
 		CXXFLAGS="-std=c++98 -g -O0 -fno-exceptions -fno-rtti -fsanitize=address -fno-omit-frame-pointer" \
 		LDFLAGS=-fsanitize=address
+
+# Plain mkdir/cp/chmod: IRIX install(1) takes different arguments.
+install: $(B)/ttr
+	mkdir -p $(DESTDIR)$(BINDIR) $(DESTDIR)$(XSESSIONDIR)
+	cp $(B)/ttr $(DESTDIR)$(BINDIR)/ttr
+	chmod 755 $(DESTDIR)$(BINDIR)/ttr
+	cp dist/ttr-session $(DESTDIR)$(BINDIR)/ttr-session
+	chmod 755 $(DESTDIR)$(BINDIR)/ttr-session
+	cp dist/ttr.desktop $(DESTDIR)$(XSESSIONDIR)/ttr.desktop
+	chmod 644 $(DESTDIR)$(XSESSIONDIR)/ttr.desktop
+
+uninstall:
+	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr-session \
+		$(DESTDIR)$(XSESSIONDIR)/ttr.desktop
 
 clean:
 	rm -rf $(B) build-asan

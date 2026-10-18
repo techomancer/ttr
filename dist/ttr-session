@@ -1,0 +1,16 @@
+#!/bin/sh
+# Start a To The Roots session: what display managers run (from
+# /usr/share/xsessions/ttr.desktop), and what ~/.xinitrc can exec.
+#
+# Desktop notifications and single-instance programs need a D-Bus session
+# bus. systemd logins have one; elsewhere (OpenRC, startx) start our own,
+# which lasts as long as ttr does.
+
+XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP:-TTR}
+export XDG_CURRENT_DESKTOP
+
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] &&
+   command -v dbus-run-session >/dev/null 2>&1; then
+    exec dbus-run-session -- ttr "$@"
+fi
+exec ttr "$@"

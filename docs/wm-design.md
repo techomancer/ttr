@@ -740,6 +740,10 @@ src/shell/     portable C++98 + Xt/Motif: taskbar, start menu, window menu,
 src/wayland/   Linux only: compositor (C11 wlroots glue + C++98), xwm integration,
                PixelPainter, WmLink socket server
 config/        per-platform make fragments
+dist/          installed files: ttr-session, the xsessions entry; per-distribution
+               packaging (dist/arch/PKGBUILD)
+tools/         developer scripts (nested.sh)
+third_party/   pinned git submodules (nanosvg)
 ```
 
 ---
