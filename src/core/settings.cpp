@@ -184,18 +184,25 @@ const char* SettingsFile::value(int i) const
     return l ? l->value.c_str() : "";
 }
 
-Str SettingsFile::default_path()
+Str config_path(const char* file)
 {
     char buf[1100];
     const char* xdg = getenv("XDG_CONFIG_HOME");
     const char* home = getenv("HOME");
+    if (strlen(file) > 60)
+        file = "invalid";
     if (xdg && *xdg && strlen(xdg) < 1000)
-        sprintf(buf, "%s/ttr/settings", xdg);
+        sprintf(buf, "%s/ttr/%s", xdg, file);
     else if (home && strlen(home) < 1000)
-        sprintf(buf, "%s/.config/ttr/settings", home);
+        sprintf(buf, "%s/.config/ttr/%s", home, file);
     else
-        strcpy(buf, ".ttr-settings");
+        sprintf(buf, ".ttr-%s", file);
     return Str(buf);
+}
+
+Str SettingsFile::default_path()
+{
+    return config_path("settings");
 }
 
 }

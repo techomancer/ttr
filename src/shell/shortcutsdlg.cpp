@@ -1,4 +1,5 @@
 #include "shell/shortcutsdlg.h"
+#include "shell/pickers.h"
 #include "core/apps.h"
 #include "core/icon.h"
 #include "core/painter.h"
@@ -8,7 +9,6 @@
 #include "x11/xpainter.h"
 
 #include <Xm/Xm.h>
-#include <Xm/FileSB.h>
 #include <Xm/Form.h>
 #include <Xm/Frame.h>
 #include <Xm/Label.h>
@@ -16,7 +16,6 @@
 #include <Xm/MessageB.h>
 #include <Xm/PushB.h>
 #include <Xm/RowColumn.h>
-#include <Xm/SelectioB.h>
 #include <Xm/Separator.h>
 #include <Xm/TextF.h>
 #include <Xm/ToggleB.h>
@@ -42,15 +41,6 @@ static Str text_value(Widget t)
     return r;
 }
 
-static Str xmstring_text(XmString s)
-{
-    char* t = (char*)XmStringUnparse(s, 0, XmCHARSET_TEXT, XmCHARSET_TEXT, 0,
-                                     0, XmOUTPUT_ALL);
-    Str r(t ? t : "");
-    XtFree(t);
-    return r;
-}
-
 static Rgb pixel_rgb(Display* dpy, Pixel p)
 {
     XColor c;
@@ -61,10 +51,11 @@ static Rgb pixel_rgb(Display* dpy, Pixel p)
 
 ShortcutsDialog::ShortcutsDialog(Widget parent, WmLink* wm,
                                  const AppFolder* apps)
-    : parent_(parent), wm_(wm), apps_(apps), current_(-1), loading_(false),
-      dialog_(0), preview_pm_(None), programs_(0), browser_(0),
-      browse_target_(0)
+    : parent_(parent), wm_(wm), current_(-1), loading_(false),
+      dialog_(0), preview_pm_(None), browse_target_(0)
 {
+    programs_ = new ProgramPicker(apps, program_chosen, this);
+    browser_ = new FileBrowser(browsed, this);
     Display* dpy = XtDisplay(parent);
     painter_ = new XPainter(dpy, DefaultScreen(dpy));
     icons_ = new IconLoader(dpy);
@@ -74,6 +65,8 @@ ShortcutsDialog::~ShortcutsDialog()
 {
     if (preview_pm_ != None)
         XFreePixmap(XtDisplay(parent_), preview_pm_);
+    delete browser_;
+    delete programs_;
     delete icons_;
     delete painter_;
 }
@@ -84,8 +77,6 @@ void ShortcutsDialog::show()
     if (dialog_)
         XtDestroyWidget(XtParent(dialog_));
     dialog_ = 0;
-    programs_ = 0;
-    browser_ = 0;
     Str path = ShortcutList::default_path();
     model_.load(path.c_str());
     current_ = -1;
@@ -451,84 +442,18 @@ void ShortcutsDialog::add_app(const AppNode* app)
     select(model_.size() - 1);
 }
 
-void ShortcutsDialog::collect_apps(const AppFolder* f, const char* prefix)
-{
-    int i;
-    for (i = 0; i < f->items.size(); i++) {
-        const AppNode* node = f->items[i];
-        char label[600];
-        if (node->kind == AppNode::FOLDER) {
-            if (prefix[0])
-                sprintf(label, "%.250s / %.250s", prefix, node->name.c_str());
-            else
-                sprintf(label, "%.250s", node->name.c_str());
-            collect_apps(node->folder, label);
-        } else if (node->kind == AppNode::APP) {
-            if (prefix[0])
-                sprintf(label, "%.250s / %.250s", prefix, node->name.c_str());
-            else
-                sprintf(label, "%.250s", node->name.c_str());
-            app_labels_.push_back(Str(label));
-            app_nodes_.push_back(node);
-        }
-    }
-}
-
 void ShortcutsDialog::add_program_cb(Widget w, XtPointer closure,
                                      XtPointer call)
 {
     (void)w;
     (void)call;
     ShortcutsDialog* self = (ShortcutsDialog*)closure;
-    if (!self->programs_) {
-        self->app_labels_.clear();
-        self->app_nodes_.clear();
-        if (self->apps_)
-            self->collect_apps(self->apps_, "");
-        int count = self->app_labels_.size();
-        XmString* items = new XmString[count > 0 ? count : 1];
-        int i;
-        for (i = 0; i < count; i++)
-            items[i] = xmstr(self->app_labels_[i].c_str());
-
-        XmString title = xmstr("Add from Programs");
-        XmString label = xmstr("Programs:");
-        Arg args[6];
-        int n = 0;
-        XtSetArg(args[n], XmNdialogTitle, title); n++;
-        XtSetArg(args[n], XmNlistLabelString, label); n++;
-        XtSetArg(args[n], XmNlistItems, items); n++;
-        XtSetArg(args[n], XmNlistItemCount, count); n++;
-        XtSetArg(args[n], XmNlistVisibleItemCount, 15); n++;
-        XtSetArg(args[n], XmNmustMatch, True); n++;
-        self->programs_ = XmCreateSelectionDialog(self->dialog_,
-                                                  (char*)"programs", args, n);
-        XmStringFree(title);
-        XmStringFree(label);
-        for (i = 0; i < count; i++)
-            XmStringFree(items[i]);
-        delete [] items;
-        XtUnmanageChild(XtNameToWidget(self->programs_, "Help"));
-        XtUnmanageChild(XtNameToWidget(self->programs_, "Apply"));
-        XtAddCallback(self->programs_, XmNokCallback, program_ok_cb, closure);
-    }
-    XtManageChild(self->programs_);
+    self->programs_->show(self->dialog_);
 }
 
-void ShortcutsDialog::program_ok_cb(Widget w, XtPointer closure,
-                                    XtPointer call)
+void ShortcutsDialog::program_chosen(void* closure, const AppNode* app)
 {
-    (void)w;
-    ShortcutsDialog* self = (ShortcutsDialog*)closure;
-    XmSelectionBoxCallbackStruct* cbs = (XmSelectionBoxCallbackStruct*)call;
-    Str chosen = xmstring_text(cbs->value);
-    int i;
-    for (i = 0; i < self->app_labels_.size(); i++) {
-        if (strcmp(self->app_labels_[i].c_str(), chosen.c_str()) == 0) {
-            self->add_app(self->app_nodes_[i]);
-            return;
-        }
-    }
+    ((ShortcutsDialog*)closure)->add_app(app);
 }
 
 void ShortcutsDialog::remove_cb(Widget w, XtPointer closure, XtPointer call)
@@ -580,25 +505,6 @@ void ShortcutsDialog::down_cb(Widget w, XtPointer closure, XtPointer call)
 /* ------------------------------------------------------------------ */
 /* Browsing for files                                                  */
 
-static void open_browser(Widget* browser, Widget parent, const char* title,
-                         const char* dir, XtCallbackProc cb, XtPointer closure)
-{
-    if (!*browser) {
-        *browser = XmCreateFileSelectionDialog(parent, (char*)"browse", 0, 0);
-        XtUnmanageChild(XtNameToWidget(*browser, "Help"));
-        XtAddCallback(*browser, XmNokCallback, cb, closure);
-    }
-    XmString t = xmstr(title);
-    XmString d = xmstr(dir);
-    Arg args[2];
-    XtSetArg(args[0], XmNdialogTitle, t);
-    XtSetArg(args[1], XmNdirectory, d);
-    XtSetValues(*browser, args, 2);
-    XmStringFree(t);
-    XmStringFree(d);
-    XtManageChild(*browser);
-}
-
 void ShortcutsDialog::browse_command_cb(Widget w, XtPointer closure,
                                         XtPointer call)
 {
@@ -606,8 +512,7 @@ void ShortcutsDialog::browse_command_cb(Widget w, XtPointer closure,
     (void)call;
     ShortcutsDialog* self = (ShortcutsDialog*)closure;
     self->browse_target_ = self->command_;
-    open_browser(&self->browser_, self->dialog_, "Choose a Program",
-                 "/usr/bin", browsed_cb, closure);
+    self->browser_->show(self->dialog_, "Choose a Program", "/usr/bin");
 }
 
 void ShortcutsDialog::browse_icon_cb(Widget w, XtPointer closure,
@@ -617,20 +522,16 @@ void ShortcutsDialog::browse_icon_cb(Widget w, XtPointer closure,
     (void)call;
     ShortcutsDialog* self = (ShortcutsDialog*)closure;
     self->browse_target_ = self->icon_;
-    open_browser(&self->browser_, self->dialog_, "Choose an Icon",
-                 "/usr/share/pixmaps", browsed_cb, closure);
+    self->browser_->show(self->dialog_, "Choose an Icon",
+                         "/usr/share/pixmaps");
 }
 
-void ShortcutsDialog::browsed_cb(Widget w, XtPointer closure, XtPointer call)
+void ShortcutsDialog::browsed(void* closure, const char* path)
 {
     ShortcutsDialog* self = (ShortcutsDialog*)closure;
-    XmFileSelectionBoxCallbackStruct* cbs =
-        (XmFileSelectionBoxCallbackStruct*)call;
-    Str path = xmstring_text(cbs->value);
-    XtUnmanageChild(w);
-    if (path.empty() || !self->browse_target_)
+    if (!self->browse_target_)
         return;
-    XmTextFieldSetString(self->browse_target_, (char*)path.c_str());
+    XmTextFieldSetString(self->browse_target_, (char*)path);
     if (self->browse_target_ == self->icon_)
         self->update_preview();
 }

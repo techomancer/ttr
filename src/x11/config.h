@@ -18,6 +18,8 @@
  *   Ttr*notificationTime: seconds a notification stays up
  *   Ttr*notificationLog:  a file whose new lines become notifications
  *                         (e.g. /var/adm/SYSLOG on IRIX); empty: none
+ *   Ttr*autostartScript:  true | false: run ~/.config/ttr/autostart.sh
+ *                         at startup (core/startup.h)
  */
 #ifndef TTR_X11_CONFIG_H
 #define TTR_X11_CONFIG_H
@@ -54,6 +56,7 @@ struct Config {
     int dock_div;           /* 3: thirds, 2: halves */
     int notification_ms;
     Str notification_log;
+    bool autostart_script;
 
     Config();
 };

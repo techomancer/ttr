@@ -333,6 +333,8 @@ client, and it creates two frame-drawing paths for no visible benefit.
    available since X11R6), so they are dispatched even inside Motif's nested
    loops. We do not filter events in a custom loop in front of
    `XtDispatchEvent`.
+6. Just before the main loop, start the startup programs (§5.10), unless this
+   is a restart.
 
 On exit or crash, clients survive: they are in our save-set and are reparented
 back to the root window.
@@ -383,6 +385,7 @@ widgets only when they are created. See [src/x11/config.h](../src/x11/config.h):
 | `Ttr*dockWidth` | `third`, `half`: size of docked and snapped windows | `third` |
 | `Ttr*notificationTime` | seconds a notification stays up | 5 |
 | `Ttr*notificationLog` | file whose new lines become notifications | none |
+| `Ttr*autostartScript` | `true`, `false`: run `autostart.sh` at startup (§5.10) | `true` |
 
 The start menu reads applications through the `AppSource` interface
 ([src/core/apps.h](../src/core/apps.h)): `DesktopAppSource` reads XDG
@@ -571,7 +574,32 @@ menu has the same operations under Snap. Docked columns set
 `_NET_WM_STATE_MAXIMIZED_VERT`, top and bottom `..._HORZ`, the nearest EWMH
 states.
 
-### 5.10 Wayland mode (`ttr-wayland`, later)
+### 5.10 Startup programs
+
+Two ways to start programs with ttr, and both run, in this order:
+
+1. **The startup list**, `~/.config/ttr/startup`, edited on Settings >
+   Startup (or by hand). It is an ordered list of shell commands, added by
+   hand, browsed for, or picked from the start menu's programs. An entry can
+   be turned off without deleting it. It is easy to set up and shows at a
+   glance what starts.
+2. **The startup script**, `~/.config/ttr/autostart.sh`, as in Openbox. It
+   runs with `sh` (it need not be executable). It suits anything the list
+   cannot do: conditions, environment, `xset`, waiting for one program before
+   another. Settings > Startup can turn it off, and "Edit Script..." creates
+   a commented example and opens it in `$VISUAL` or `$EDITOR` in the
+   configured terminal.
+
+Everything is started detached, like the start menu does, and ttr does not
+wait for it. Startup programs run when ttr starts, **not** when it restarts
+in place: before `execvp`, ttr sets `TTR_RESTARTED=1`. The new image reads
+it and clears it at once, so programs it starts do not inherit it. XDG
+autostart (`~/.config/autostart/*.desktop`) is not read: on Linux it would
+also start desktop environments' own helpers from `/etc/xdg/autostart`.
+Supporting it is left as an option for later (§10). See
+[src/core/startup.h](../src/core/startup.h).
+
+### 5.11 Wayland mode (`ttr-wayland`, later)
 
 1. Bring up DRM/KMS, libinput and the scene graph, then create the Wayland
    socket.
@@ -730,3 +758,6 @@ config/        per-platform make fragments
 - Multi-head policy per backend (RandR, Xinerama, IRIX multi-head, our output
   abstraction).
 - Whether to support session management (XSMP). Optional, decide later.
+- Whether to also start XDG autostart entries (`~/.config/autostart`), and
+  which ones: only the user's, or `/etc/xdg/autostart` too, filtered by
+  `OnlyShowIn`/`NotShowIn`.

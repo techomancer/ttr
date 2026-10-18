@@ -1,5 +1,6 @@
 #include "shell/settings.h"
 #include "shell/shortcutsdlg.h"
+#include "shell/startuppage.h"
 #include "core/settings.h"
 #include "x11/config.h"
 
@@ -87,14 +88,15 @@ static Str xlfd_field(const char* name, int i)
 
 SettingsDialog::SettingsDialog(Widget parent, WmLink* wm, const Config& cfg,
                                const AppFolder* apps)
-    : parent_(parent), wm_(wm), cfg_(cfg), dialog_(0), categories_(0),
-      current_page_(0),
-      shortcuts_(new ShortcutsDialog(parent, wm, apps))
+    : parent_(parent), wm_(wm), cfg_(cfg), apps_(apps), dialog_(0),
+      categories_(0), current_page_(0),
+      shortcuts_(new ShortcutsDialog(parent, wm, apps)), startup_(0)
 {
 }
 
 SettingsDialog::~SettingsDialog()
 {
+    delete startup_;
     delete shortcuts_;
 }
 
@@ -444,7 +446,8 @@ void SettingsDialog::build()
 
     /* Categories on the left, the chosen page on the right. */
     static const char* const names[PAGE_COUNT] = {
-        "Windows", "Desktops", "Appearance", "Taskbar", "Start Menu"
+        "Windows", "Desktops", "Appearance", "Taskbar", "Start Menu",
+        "Startup"
     };
     XmString items[PAGE_COUNT];
     int i;
@@ -552,6 +555,11 @@ void SettingsDialog::build()
     XtAddCallback(sb, XmNactivateCallback, shortcuts_cb, (XtPointer)this);
     XtManageChild(sb);
 
+    /* Startup */
+    pg = page(content, PAGE_STARTUP);
+    delete startup_;
+    startup_ = new StartupPage(this, pg, cfg_, apps_);
+
     /* The page area is as big as the biggest page, so switching pages
      * does not resize the dialog. */
     Dimension pw = 0, ph = 0;
@@ -652,23 +660,33 @@ void SettingsDialog::save()
     file.set("appSource", selected_item(source_, k_sources, 3).c_str());
     file.set("toolchestFiles", text_value(toolchest_).c_str());
     file.set("terminal", text_value(terminal_).c_str());
+    file.set("autostartScript", startup_->run_script() ? "true" : "false");
 
+    Str failed;
+    if (!startup_->save(&failed)) {
+        error(failed.c_str());
+        return;
+    }
     if (!file.save(path.c_str())) {
         char msg[1200];
         sprintf(msg, "Could not write %.1000s", path.c_str());
-        XmString m = xmstr(msg);
-        Arg args[1];
-        XtSetArg(args[0], XmNmessageString, m);
-        Widget err = XmCreateErrorDialog(parent_, (char*)"saveError", args,
-                                         1);
-        XmStringFree(m);
-        XtUnmanageChild(XtNameToWidget(err, "Help"));
-        XtUnmanageChild(XtNameToWidget(err, "Cancel"));
-        XtManageChild(err);
+        error(msg);
         return;
     }
     XtUnmanageChild(dialog_);
     wm_->restart();
+}
+
+void SettingsDialog::error(const char* msg)
+{
+    XmString m = xmstr(msg);
+    Arg args[1];
+    XtSetArg(args[0], XmNmessageString, m);
+    Widget err = XmCreateErrorDialog(dialog_, (char*)"saveError", args, 1);
+    XmStringFree(m);
+    XtUnmanageChild(XtNameToWidget(err, "Help"));
+    XtUnmanageChild(XtNameToWidget(err, "Cancel"));
+    XtManageChild(err);
 }
 
 void SettingsDialog::ok_cb(Widget w, XtPointer closure, XtPointer call)

@@ -45,6 +45,7 @@ OBJS = $(B)/main.o \
 	$(B)/core_painter.o \
 	$(B)/core_settings.o \
 	$(B)/core_shortcuts.o \
+	$(B)/core_startup.o \
 	$(B)/core_storage.o \
 	$(B)/core_str.o \
 	$(B)/core_switcher.o \
@@ -52,12 +53,14 @@ OBJS = $(B)/main.o \
 	$(B)/shell_netstatus.o \
 	$(B)/shell_notifier.o \
 	$(B)/shell_notifysrc.o \
+	$(B)/shell_pickers.o \
 	$(B)/shell_quicklaunch.o \
 	$(B)/shell_runcmd.o \
 	$(B)/shell_settings.o \
 	$(B)/shell_shell.o \
 	$(B)/shell_shortcutsdlg.o \
 	$(B)/shell_startmenu.o \
+	$(B)/shell_startuppage.o \
 	$(B)/shell_storagemenu.o \
 	$(B)/shell_taskbar.o \
 	$(B)/shell_tray.o \
@@ -85,6 +88,7 @@ CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
 	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h \
 	src/core/settings.h src/core/shortcuts.h src/core/launch.h \
+	src/core/startup.h \
 	src/core/audio.h src/core/net.h src/core/storage.h src/core/notify.h
 X11_H = src/x11/wm.h src/x11/hints.h src/x11/config.h src/x11/xpainter.h \
 	src/x11/iconload.h src/x11/svg.h src/x11/keys.h \
@@ -94,7 +98,7 @@ SHELL_H = src/shell/shell.h src/shell/startmenu.h src/shell/taskbar.h \
 	src/shell/settings.h src/shell/shortcutsdlg.h src/shell/runcmd.h \
 	src/shell/volume.h src/shell/netstatus.h src/shell/trayitem.h \
 	src/shell/storagemenu.h src/shell/popup.h src/shell/notifier.h \
-	src/shell/notifysrc.h
+	src/shell/notifysrc.h src/shell/pickers.h src/shell/startuppage.h
 
 $(B)/main.o: $(B)/.dir src/main.cpp $(X11_H) $(SHELL_H)
 	$(COMPILE) -c src/main.cpp -o $@
@@ -132,6 +136,9 @@ $(B)/core_settings.o: $(B)/.dir src/core/settings.cpp $(CORE_H)
 $(B)/core_shortcuts.o: $(B)/.dir src/core/shortcuts.cpp $(CORE_H)
 	$(COMPILE) -c src/core/shortcuts.cpp -o $@
 
+$(B)/core_startup.o: $(B)/.dir src/core/startup.cpp $(CORE_H)
+	$(COMPILE) -c src/core/startup.cpp -o $@
+
 $(B)/core_storage.o: $(B)/.dir src/core/storage.cpp $(CORE_H)
 	$(COMPILE) -c src/core/storage.cpp -o $@
 
@@ -153,6 +160,9 @@ $(B)/shell_notifier.o: $(B)/.dir src/shell/notifier.cpp $(SHELL_H) $(X11_H)
 $(B)/shell_notifysrc.o: $(B)/.dir src/shell/notifysrc.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) $(DBUS_CFLAGS) -c src/shell/notifysrc.cpp -o $@
 
+$(B)/shell_pickers.o: $(B)/.dir src/shell/pickers.cpp $(SHELL_H) $(CORE_H)
+	$(COMPILE) -c src/shell/pickers.cpp -o $@
+
 $(B)/shell_quicklaunch.o: $(B)/.dir src/shell/quicklaunch.cpp $(SHELL_H) \
 		$(X11_H)
 	$(COMPILE) -c src/shell/quicklaunch.cpp -o $@
@@ -172,6 +182,10 @@ $(B)/shell_shortcutsdlg.o: $(B)/.dir src/shell/shortcutsdlg.cpp $(SHELL_H) \
 
 $(B)/shell_startmenu.o: $(B)/.dir src/shell/startmenu.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/startmenu.cpp -o $@
+
+$(B)/shell_startuppage.o: $(B)/.dir src/shell/startuppage.cpp $(SHELL_H) \
+		$(X11_H)
+	$(COMPILE) -c src/shell/startuppage.cpp -o $@
 
 $(B)/shell_taskbar.o: $(B)/.dir src/shell/taskbar.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/taskbar.cpp -o $@

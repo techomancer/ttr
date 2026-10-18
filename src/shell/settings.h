@@ -15,6 +15,7 @@
 namespace ttr {
 
 class ShortcutsDialog;
+class StartupPage;
 struct AppFolder;
 struct Config;
 
@@ -24,6 +25,12 @@ public:
                    const AppFolder* apps);
     ~SettingsDialog();
     void show();
+
+    /* Building blocks for pages. */
+    Widget widget() const { return dialog_; }
+    Widget frame(Widget parent, const char* title);
+    Widget row(Widget parent, const char* label);
+    Widget text_field(Widget parent, const char* value, int columns);
 
 private:
     struct FontRow {
@@ -35,19 +42,17 @@ private:
     };
 
     void build();
-    Widget frame(Widget parent, const char* title);
-    Widget row(Widget parent, const char* label);
     Widget radio(Widget parent, const char* a, const char* b, Widget* first);
     Widget drop_down(Widget parent, const char* name,
                      const char* const* items, int count, int visible,
                      int columns);
-    Widget text_field(Widget parent, const char* value, int columns);
     void font_row(FontRow* r, Widget parent, const char* label,
                   const char* current);
     Str font_name(FontRow* r);
     void update_preview(FontRow* r);
     void load_families();
     void save();
+    void error(const char* msg);
 
     static void font_changed_cb(Widget w, XtPointer closure, XtPointer call);
     static void ok_cb(Widget w, XtPointer closure, XtPointer call);
@@ -55,7 +60,7 @@ private:
     static void page_cb(Widget w, XtPointer closure, XtPointer call);
 
     enum { PAGE_WINDOWS, PAGE_DESKTOPS, PAGE_APPEARANCE, PAGE_TASKBAR,
-           PAGE_START, PAGE_COUNT };
+           PAGE_START, PAGE_STARTUP, PAGE_COUNT };
     Widget page(Widget parent, int index);
     void show_page(int index);
     static void cancel_cb(Widget w, XtPointer closure, XtPointer call);
@@ -63,6 +68,7 @@ private:
     Widget parent_;
     WmLink* wm_;
     const Config& cfg_;
+    const AppFolder* apps_;
     Widget dialog_;
     Widget click_focus_;
     Widget windows_switch_;
@@ -79,6 +85,7 @@ private:
     Widget pages_[PAGE_COUNT];
     int current_page_;          /* kept across opening the dialog */
     ShortcutsDialog* shortcuts_;
+    StartupPage* startup_;      /* rebuilt with the dialog */
 };
 
 }

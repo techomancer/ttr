@@ -18,7 +18,9 @@
 
 namespace ttr {
 
+class FileBrowser;
 class IconLoader;
+class ProgramPicker;
 class XPainter;
 struct AppFolder;
 struct AppNode;
@@ -40,7 +42,6 @@ private:
     void update_preview();
     void update_buttons();
     Str label_for(const Shortcut* s);
-    void collect_apps(const AppFolder* f, const char* prefix);
     void add_app(const AppNode* app);
     void error(const char* msg);
     void save();
@@ -50,19 +51,18 @@ private:
     static void icon_done_cb(Widget w, XtPointer closure, XtPointer call);
     static void add_cb(Widget w, XtPointer closure, XtPointer call);
     static void add_program_cb(Widget w, XtPointer closure, XtPointer call);
-    static void program_ok_cb(Widget w, XtPointer closure, XtPointer call);
+    static void program_chosen(void* closure, const AppNode* app);
     static void remove_cb(Widget w, XtPointer closure, XtPointer call);
     static void up_cb(Widget w, XtPointer closure, XtPointer call);
     static void down_cb(Widget w, XtPointer closure, XtPointer call);
     static void browse_command_cb(Widget w, XtPointer closure, XtPointer call);
     static void browse_icon_cb(Widget w, XtPointer closure, XtPointer call);
-    static void browsed_cb(Widget w, XtPointer closure, XtPointer call);
+    static void browsed(void* closure, const char* path);
     static void ok_cb(Widget w, XtPointer closure, XtPointer call);
     static void cancel_cb(Widget w, XtPointer closure, XtPointer call);
 
     Widget parent_;
     WmLink* wm_;
-    const AppFolder* apps_;
     XPainter* painter_;
     IconLoader* icons_;
     ColorSet cs_;
@@ -78,10 +78,8 @@ private:
     Pixmap preview_pm_;
     Widget remove_b_, up_b_, down_b_;
     Widget fields_;             /* the editing area, insensitive if empty */
-    Widget programs_;           /* "Add from Programs" picker */
-    Vector<Str> app_labels_;
-    Vector<const AppNode*> app_nodes_;
-    Widget browser_;            /* file selection, for command or icon */
+    ProgramPicker* programs_;   /* "Add from Programs" */
+    FileBrowser* browser_;      /* for the command or the icon */
     Widget browse_target_;
 };
 

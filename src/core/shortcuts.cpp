@@ -139,14 +139,7 @@ bool ShortcutList::save(const char* path) const
 
 Str ShortcutList::default_path()
 {
-    Str settings = SettingsFile::default_path();
-    const char* s = settings.c_str();
-    const char* slash = strrchr(s, '/');
-    char buf[1100];
-    if (!slash || slash - s > 1000)
-        return Str(".ttr-shortcuts");
-    sprintf(buf, "%.*s/shortcuts", (int)(slash - s), s);
-    return Str(buf);
+    return config_path("shortcuts");
 }
 
 }

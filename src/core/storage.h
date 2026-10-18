@@ -59,9 +59,6 @@ Str storage_eject_command(const StorageVolume& v,
 /* Open a folder: xdg-open, else a known file manager. Empty if none. */
 Str open_folder_command(const char* path);
 
-/* Quote for sh: 'it'\''s'. */
-Str shell_quote(const char* s);
-
 }
 
 #endif

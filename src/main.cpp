@@ -1,8 +1,10 @@
+#include "core/startup.h"
 #include "shell/notifysrc.h"
 #include "shell/shell.h"
 #include "x11/wm.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -33,6 +35,13 @@ int main(int argc, char** argv)
         saved[i] = argv[i];
     saved[argc] = 0;
 
+    /* Set across "Restart ttr", so the startup programs run only once.
+     * Cleared, so programs we start do not inherit it. */
+    const char* again = getenv("TTR_RESTARTED");
+    bool restarted = again && strcmp(again, "1") == 0;
+    static char clear_env[] = "TTR_RESTARTED=";
+    putenv(clear_env);
+
     int status;
     bool restart;
     {
@@ -42,11 +51,15 @@ int main(int argc, char** argv)
         ttr::Shell shell(wm.shell_parent(), &wm, wm.config());
         wm.set_shell(&shell);
         wm.start();
+        if (!restarted)
+            ttr::run_startup(wm.config().autostart_script);
         status = wm.run();
         restart = wm.restart_requested();
     }
 
     if (restart) {
+        static char restart_env[] = "TTR_RESTARTED=1";
+        putenv(restart_env);
         execvp(saved[0], saved);
         perror("ttr: restart");
         return 1;

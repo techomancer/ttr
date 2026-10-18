@@ -12,6 +12,9 @@
 
 namespace ttr {
 
+/* $XDG_CONFIG_HOME/ttr/<file>, or ~/.config/ttr/<file>. */
+Str config_path(const char* file);
+
 /* mkdir -p for the directory part of 'path'. */
 void make_parent_dirs(const char* path);
 

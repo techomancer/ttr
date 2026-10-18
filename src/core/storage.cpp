@@ -1,5 +1,6 @@
 #include "core/storage.h"
 #include "core/audio.h"     /* in_path() */
+#include "core/launch.h"    /* shell_quote() */
 #include "core/net.h"       /* format_bytes() */
 
 #include <ctype.h>
@@ -18,32 +19,6 @@ void storage_free(Vector<StorageVolume*>* list)
     for (i = 0; i < list->size(); i++)
         delete (*list)[i];
     list->clear();
-}
-
-Str shell_quote(const char* s)
-{
-    int n = (int)strlen(s), extra = 0, i;
-    for (i = 0; i < n; i++)
-        if (s[i] == '\'')
-            extra += 3;
-    char* out = new char[n + extra + 3];
-    int o = 0;
-    out[o++] = '\'';
-    for (i = 0; i < n; i++) {
-        if (s[i] == '\'') {
-            out[o++] = '\'';
-            out[o++] = '\\';
-            out[o++] = '\'';
-            out[o++] = '\'';
-        } else {
-            out[o++] = s[i];
-        }
-    }
-    out[o++] = '\'';
-    out[o] = 0;
-    Str r(out);
-    delete [] out;
-    return r;
 }
 
 Str storage_title(const StorageVolume& v)
