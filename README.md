@@ -254,6 +254,7 @@ file, and any whole number from 100 to 300 works there.
 
 You choose fonts at their normal size, and ttr scales them. X bitmap fonts
 exist only in some sizes, so ttr uses the nearest size that is installed.
+If text stays small, the fonts are missing: see [Fonts](#fonts).
 
 The scale only applies to ttr. Other programs have their own settings. For
 most of them, put this in `~/.Xresources` (192 is 200% of the usual 96):
@@ -266,6 +267,43 @@ Xcursor.size: 48
 GTK 3 programs also read `GDK_SCALE=2`, and Qt programs read
 `QT_SCALE_FACTOR=2`. Set these in `~/.xprofile` or in the script that
 starts your session.
+
+### Fonts
+
+ttr uses the X server's own fonts (core fonts), as mwm does, so it looks
+the same on Linux and IRIX. By default it uses Helvetica. If a font is not
+installed, ttr picks the nearest one that is, and says so on its standard
+error. With only the X server's built-in `fixed` font, text cannot get
+larger with the UI scale.
+
+Install the classic bitmap fonts. They have Helvetica up to 34 pixels,
+which is enough for 250%:
+
+| Distribution | Packages |
+|---|---|
+| Arch, CachyOS | `xorg-fonts-75dpi xorg-fonts-100dpi xorg-fonts-misc` |
+| Debian, Ubuntu | `xfonts-75dpi xfonts-100dpi xfonts-base` |
+| Gentoo | `media-fonts/font-adobe-75dpi media-fonts/font-adobe-100dpi media-fonts/font-misc-misc` |
+
+Then log out and in again, or run `xset fp rehash`.
+
+**Scalable fonts.** The X server can also draw Type1 and TrueType fonts at
+any size. It needs them in a folder on its font path, with a `fonts.dir`
+index in the folder. Good choices that look like Helvetica are Nimbus Sans
+(the URW Type1 fonts: `gsfonts` on Arch, `fonts-urw-base35` on Debian,
+`media-fonts/urw-fonts` on Gentoo), Liberation Sans and DejaVu Sans.
+
+- On Arch, install `xorg-mkfontscale` with the fonts: its pacman hook
+  writes the `fonts.dir` files. Folders such as `/usr/share/fonts/TTF` and
+  `/usr/share/fonts/Type1` are on the X server's default path.
+- For any other folder, run `mkfontscale` and then `mkfontdir` in it, and
+  add it in Settings > Appearance > **Font folders** (the `fontPath`
+  setting, folders separated by colons). ttr adds those folders to the X
+  server's font path when it starts, like `xset fp+`.
+
+The installed families show up in the font lists on Settings >
+Appearance. `xset q` shows the font path, and `xlsfonts` (in
+`xorg-xlsfonts` on Arch) lists the fonts.
 
 ### Optional helper programs
 

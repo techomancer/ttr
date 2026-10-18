@@ -388,15 +388,25 @@ widgets only when they are created. See [src/x11/config.h](../src/x11/config.h):
 | `Ttr*autostartScript` | `true`, `false`: run `autostart.sh` at startup (§5.10) | `true` |
 | `Ttr*xdgAutostart` | `true`, `false`: start XDG autostart entries (§5.10) | `false` |
 | `Ttr*uiScale` | 100 to 300 (percent): scale of everything ttr draws | 100 |
+| `Ttr*fontPath` | folders added to the X server's font path at startup (colon separated) | none |
 
 **UI scale.** For high-resolution screens, `uiScale` scales ttr in three
 ways, all applied once at startup (changing it restarts ttr):
 
 - **Fonts.** The font settings stay at their 100% size, which is what the
   Settings dialog shows and saves. When loading a font, ttr scales its XLFD
-  pixel size. Bitmap fonts come in a few sizes, so it takes the nearest one
-  the server has ([src/x11/config.cpp](../src/x11/config.cpp)
-  `scale_font`).
+  pixel size ([src/x11/config.cpp](../src/x11/config.cpp)
+  `resolve_font`). It asks for that exact size first, which scalable Type1
+  and TrueType fonts on the server's font path provide. Otherwise it takes
+  the nearest bitmap size of the same family. If the family is missing or
+  has nothing near (within 10%), it tries common sans serif families
+  (Nimbus Sans, Liberation Sans, DejaVu Sans, ...), then the misc fixed
+  fonts, then any font, and finally any weight. Aliases such as `fixed`
+  are resolved to their XLFD first. Many systems have no bitmap fonts
+  beyond the server's built-in `fixed`, so `fontPath` can add font folders
+  to the server's path (like `xset fp+`; a folder needs a `fonts.dir`).
+  Client-side Xft fonts are not used: IRIX has no Xft, and core fonts keep
+  one code path.
 - **Our own drawing.** Pixel sizes in frames, the taskbar, the tray, menus,
   pop-ups and dialog layout are written for 100% and go through `scaled()`.
   Lines and bevels go through `scaled_line()`, which grows more slowly (1

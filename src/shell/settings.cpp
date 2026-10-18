@@ -360,7 +360,7 @@ void SettingsDialog::load_families()
 }
 
 void SettingsDialog::font_row(FontRow* r, Widget parent, const char* label,
-                              const char* current)
+                              const char* current, const char* resolved)
 {
     r->dialog = this;
     Widget rc = row(parent, label);
@@ -389,6 +389,18 @@ void SettingsDialog::font_row(FontRow* r, Widget parent, const char* label,
     /* Show the current font; names that are not XLFDs show the default. */
     Str fam = xlfd_field(current, 2), weight = xlfd_field(current, 3),
         size = xlfd_field(current, 7);
+    /* A family that is not installed shows as the one ttr uses instead,
+     * so OK does not replace it with the first one on the list. */
+    int k;
+    bool installed = false;
+    for (k = 0; k < families_.size(); k++)
+        if (compare_nocase(families_[k].c_str(), fam.c_str()) == 0)
+            installed = true;
+    if (!installed) {
+        Str used = xlfd_field(resolved, 2);
+        if (!used.empty())
+            fam = used;
+    }
     select_item(r->family, fam.empty() ? "helvetica" : fam.c_str());
     select_item(r->size, size.empty() || size.c_str()[0] == '*'
                              ? "12" : size.c_str());
@@ -569,9 +581,18 @@ void SettingsDialog::build()
     XmStringFree(cur);
     select_item(scale_, scale_now);
     f = frame(pg, "Fonts");
-    font_row(&title_, f, "Window titles:", cfg_.title_font.c_str());
-    font_row(&menu_, f, "Menus and dialogs:", cfg_.menu_font.c_str());
-    font_row(&taskbar_, f, "Taskbar:", cfg_.taskbar_font.c_str());
+    font_row(&title_, f, "Window titles:", cfg_.title_font.c_str(),
+             cfg_.title_xfont.c_str());
+    font_row(&menu_, f, "Menus and dialogs:", cfg_.menu_font.c_str(),
+             cfg_.menu_xfont.c_str());
+    font_row(&taskbar_, f, "Taskbar:", cfg_.taskbar_font.c_str(),
+             cfg_.taskbar_xfont.c_str());
+    Widget fprow = row(f, "Font folders:");
+    font_path_ = text_field(fprow, cfg_.font_path.c_str(), 40);
+    XmString fpl = xmstr("for Type1 and TrueType fonts");
+    XtSetArg(pargs[0], XmNlabelString, fpl);
+    XtManageChild(XmCreateLabel(fprow, (char*)"unit", pargs, 1));
+    XmStringFree(fpl);
 
     /* Taskbar */
     pg = page(content, PAGE_TASKBAR);
@@ -716,6 +737,7 @@ void SettingsDialog::save()
     file.set("menuFont", font_name(&menu_).c_str());
     file.set("taskbarFont", font_name(&taskbar_).c_str());
     file.set("uiScale", combo_text(scale_).c_str());
+    file.set("fontPath", text_value(font_path_).c_str());
     file.set("clockFormat", text_value(clock_).c_str());
     file.set("notificationTime",
              selected_item(notify_time_, k_notify_times, k_nnotify).c_str());

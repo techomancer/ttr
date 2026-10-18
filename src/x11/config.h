@@ -24,6 +24,8 @@
  *                         /etc/xdg/autostart entries (core/xdgautostart.h)
  *   Ttr*uiScale:          100 .. 300 percent: everything ttr draws, and its
  *                         fonts (core/scale.h)
+ *   Ttr*fontPath:         folders added to the X server's font path, for
+ *                         Type1 and TrueType fonts (colon separated)
  */
 #ifndef TTR_X11_CONFIG_H
 #define TTR_X11_CONFIG_H
@@ -66,6 +68,7 @@ struct Config {
     bool autostart_script;
     bool xdg_autostart;
     int ui_scale;           /* percent */
+    Str font_path;          /* as set */
 
     Config();
 };

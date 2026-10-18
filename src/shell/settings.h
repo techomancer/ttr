@@ -47,8 +47,9 @@ private:
     Widget drop_down(Widget parent, const char* name,
                      const char* const* items, int count, int visible,
                      int columns);
+    /* 'current' as set, 'resolved' as loaded (x11/config.h). */
     void font_row(FontRow* r, Widget parent, const char* label,
-                  const char* current);
+                  const char* current, const char* resolved);
     Str font_name(FontRow* r);
     void update_preview(FontRow* r);
     void load_families();
@@ -76,6 +77,7 @@ private:
     Widget dock_third_;
     Widget desktops_;
     Widget scale_;
+    Widget font_path_;
     FontRow title_, menu_, taskbar_;
     Widget clock_;
     Widget notify_time_;
