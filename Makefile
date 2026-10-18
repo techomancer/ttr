@@ -270,8 +270,13 @@ asan:
 		LDFLAGS=-fsanitize=address
 
 # Plain mkdir/cp/chmod: IRIX install(1) takes different arguments.
+# A running ttr cannot be overwritten ("Text file busy"), but it can be
+# renamed: the old one becomes ttr.old and keeps running, and Restart ttr
+# starts the new one.
 install: $(B)/ttr
 	mkdir -p $(DESTDIR)$(BINDIR) $(DESTDIR)$(XSESSIONDIR)
+	if [ -f $(DESTDIR)$(BINDIR)/ttr ]; then \
+		mv -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old; fi
 	cp $(B)/ttr $(DESTDIR)$(BINDIR)/ttr
 	chmod 755 $(DESTDIR)$(BINDIR)/ttr
 	cp dist/ttr-session $(DESTDIR)$(BINDIR)/ttr-session
@@ -287,7 +292,8 @@ install: $(B)/ttr
 		$(DESTDIR)$(DATADIR)/schemes/irix/*
 
 uninstall:
-	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr-session \
+	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old \
+		$(DESTDIR)$(BINDIR)/ttr-session \
 		$(DESTDIR)$(XSESSIONDIR)/ttr.desktop
 	rm -rf $(DESTDIR)$(DATADIR)
 

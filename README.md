@@ -110,7 +110,9 @@ This installs:
 | `/usr/share/xsessions/ttr.desktop` | makes display managers offer "To The Roots" |
 | `/usr/share/ttr/schemes/` | the color themes |
 
-`sudo make uninstall` removes them again (with the same `PREFIX`). Build
+You can install while ttr is running: the old program is renamed to
+`ttr.old` and keeps running, and Start > Restart ttr switches to the new
+one. `sudo make uninstall` removes them again (with the same `PREFIX`). Build
 with the `PREFIX` you install to (`make PREFIX=/usr/local`, then `sudo make
 install PREFIX=/usr/local`): ttr looks for its themes under
 `PREFIX/share/ttr`. Run from the source tree, it finds them in `data/`.
