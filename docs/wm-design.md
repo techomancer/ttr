@@ -362,7 +362,10 @@ come from app-defaults, `~/.Xresources`, the settings file
 command line (`-focus`, `-switch`, `-xrm`). The settings file uses the same
 names, one `name: value` per line; it is edited by hand or by the Motif
 Settings dialog (Start > Settings...), which keeps comments and unknown lines.
-OK in the dialog saves and restarts ttr in place, because fonts reach Motif
+The dialog lists categories on the left (Windows, Desktops, Appearance,
+Taskbar, Start Menu) and shows one page at a time on the right, sized to the
+largest page so switching does not resize the dialog. OK saves every page
+at once and restarts ttr in place, because fonts reach Motif
 widgets only when they are created. See [src/x11/config.h](../src/x11/config.h):
 
 | Resource | Values | Default |

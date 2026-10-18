@@ -52,6 +52,12 @@ private:
     static void font_changed_cb(Widget w, XtPointer closure, XtPointer call);
     static void ok_cb(Widget w, XtPointer closure, XtPointer call);
     static void shortcuts_cb(Widget w, XtPointer closure, XtPointer call);
+    static void page_cb(Widget w, XtPointer closure, XtPointer call);
+
+    enum { PAGE_WINDOWS, PAGE_DESKTOPS, PAGE_APPEARANCE, PAGE_TASKBAR,
+           PAGE_START, PAGE_COUNT };
+    Widget page(Widget parent, int index);
+    void show_page(int index);
     static void cancel_cb(Widget w, XtPointer closure, XtPointer call);
 
     Widget parent_;
@@ -69,6 +75,9 @@ private:
     Widget toolchest_;
     Widget terminal_;
     Vector<Str> families_;
+    Widget categories_;
+    Widget pages_[PAGE_COUNT];
+    int current_page_;          /* kept across opening the dialog */
     ShortcutsDialog* shortcuts_;
 };
 

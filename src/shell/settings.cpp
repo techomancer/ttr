@@ -87,7 +87,8 @@ static Str xlfd_field(const char* name, int i)
 
 SettingsDialog::SettingsDialog(Widget parent, WmLink* wm, const Config& cfg,
                                const AppFolder* apps)
-    : parent_(parent), wm_(wm), cfg_(cfg), dialog_(0),
+    : parent_(parent), wm_(wm), cfg_(cfg), dialog_(0), categories_(0),
+      current_page_(0),
       shortcuts_(new ShortcutsDialog(parent, wm, apps))
 {
 }
@@ -95,6 +96,40 @@ SettingsDialog::SettingsDialog(Widget parent, WmLink* wm, const Config& cfg,
 SettingsDialog::~SettingsDialog()
 {
     delete shortcuts_;
+}
+
+/* One page: a column of frames in the page area, shown alone. */
+Widget SettingsDialog::page(Widget parent, int index)
+{
+    Arg args[6];
+    int n = 0;
+    XtSetArg(args[n], XmNorientation, XmVERTICAL); n++;
+    XtSetArg(args[n], XmNspacing, 6); n++;
+    XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
+    XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
+    XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
+    pages_[index] = XmCreateRowColumn(parent, (char*)"page", args, n);
+    return pages_[index];
+}
+
+void SettingsDialog::show_page(int index)
+{
+    if (index < 0 || index >= PAGE_COUNT)
+        index = 0;
+    current_page_ = index;
+    int i;
+    for (i = 0; i < PAGE_COUNT; i++)
+        if (i != index)
+            XtUnmanageChild(pages_[i]);
+    XtManageChild(pages_[index]);
+    XmListSelectPos(categories_, index + 1, False);
+}
+
+void SettingsDialog::page_cb(Widget w, XtPointer closure, XtPointer call)
+{
+    (void)w;
+    XmListCallbackStruct* cbs = (XmListCallbackStruct*)call;
+    ((SettingsDialog*)closure)->show_page(cbs->item_position - 1);
 }
 
 void SettingsDialog::shortcuts_cb(Widget w, XtPointer closure,
@@ -407,15 +442,42 @@ void SettingsDialog::build()
     dialog_ = XmCreateFormDialog(parent_, (char*)"settingsDialog", args, n);
     XmStringFree(title);
 
+    /* Categories on the left, the chosen page on the right. */
+    static const char* const names[PAGE_COUNT] = {
+        "Windows", "Desktops", "Appearance", "Taskbar", "Start Menu"
+    };
+    XmString items[PAGE_COUNT];
+    int i;
+    for (i = 0; i < PAGE_COUNT; i++)
+        items[i] = xmstr(names[i]);
     n = 0;
-    XtSetArg(args[n], XmNorientation, XmVERTICAL); n++;
-    XtSetArg(args[n], XmNspacing, 4); n++;
+    XtSetArg(args[n], XmNitems, items); n++;
+    XtSetArg(args[n], XmNitemCount, PAGE_COUNT); n++;
+    XtSetArg(args[n], XmNvisibleItemCount, PAGE_COUNT); n++;
+    XtSetArg(args[n], XmNselectionPolicy, XmBROWSE_SELECT); n++;
+    XtSetArg(args[n], XmNlistMarginWidth, 4); n++;
+    categories_ = XmCreateScrolledList(dialog_, (char*)"categories", args, n);
+    for (i = 0; i < PAGE_COUNT; i++)
+        XmStringFree(items[i]);
+    XtAddCallback(categories_, XmNbrowseSelectionCallback, page_cb,
+                  (XtPointer)this);
+    n = 0;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
-    Widget content = XmCreateRowColumn(dialog_, (char*)"content", args, n);
+    XtSetValues(XtParent(categories_), args, n);
+    XtManageChild(categories_);
 
-    Widget f = frame(content, "Windows");
+    n = 0;
+    XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
+    XtSetArg(args[n], XmNleftAttachment, XmATTACH_WIDGET); n++;
+    XtSetArg(args[n], XmNleftWidget, XtParent(categories_)); n++;
+    XtSetArg(args[n], XmNleftOffset, 10); n++;
+    XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
+    Widget content = XmCreateForm(dialog_, (char*)"pages", args, n);
+
+    /* Windows */
+    Widget pg = page(content, PAGE_WINDOWS);
+    Widget f = frame(pg, "Focus and switching");
     Widget unused;
     radio(row(f, "Focus:"), "Click to focus", "Focus follows mouse",
           &click_focus_);
@@ -429,27 +491,36 @@ void SettingsDialog::build()
     unused = XtNameToWidget(XtParent(windows_switch_), "b");
     XmToggleButtonSetState(cfg_.switch_style == Config::SWITCH_WINDOWS
                                ? windows_switch_ : unused, True, True);
-
+    f = frame(pg, "Docking and snapping");
     radio(row(f, "Docked width:"), "1/3 of the screen", "1/2 of the screen",
           &dock_third_);
     XmToggleButtonSetState(cfg_.dock_div == 3 ? dock_third_
                                : XtNameToWidget(XtParent(dock_third_), "b"),
                            True, True);
-    desktops_ = drop_down(row(f, "Virtual desktops:"), "desktops",
+
+    /* Desktops */
+    pg = page(content, PAGE_DESKTOPS);
+    f = frame(pg, "Virtual desktops");
+    desktops_ = drop_down(row(f, "Number of desktops:"), "desktops",
                           k_desktop_counts, k_ncounts, 8, 3);
     char count[16];
     sprintf(count, "%d", cfg_.desktops);
     select_item(desktops_, count);
 
-    f = frame(content, "Fonts");
+    /* Appearance */
+    pg = page(content, PAGE_APPEARANCE);
+    f = frame(pg, "Fonts");
     font_row(&title_, f, "Window titles:", cfg_.title_font.c_str());
     font_row(&menu_, f, "Menus and dialogs:", cfg_.menu_font.c_str());
     font_row(&taskbar_, f, "Taskbar:", cfg_.taskbar_font.c_str());
 
-    f = frame(content, "Taskbar and notifications");
+    /* Taskbar */
+    pg = page(content, PAGE_TASKBAR);
+    f = frame(pg, "Clock");
     clock_ = text_field(row(f, "Clock format:"), cfg_.clock_format.c_str(),
                         12);
-    Widget nrow = row(f, "Notifications for:");
+    f = frame(pg, "Notifications");
+    Widget nrow = row(f, "Show for:");
     notify_time_ = drop_down(nrow, "notifyTime", k_notify_times, k_nnotify,
                              k_nnotify, 3);
     XmString secs_label = xmstr("seconds");
@@ -461,7 +532,9 @@ void SettingsDialog::build()
     sprintf(secs, "%d", cfg_.notification_ms / 1000);
     select_item(notify_time_, secs);
 
-    f = frame(content, "Start menu and shortcuts");
+    /* Start menu */
+    pg = page(content, PAGE_START);
+    f = frame(pg, "Programs");
     source_ = drop_down(row(f, "Programs from:"), "source", k_sources, 3, 3,
                         10);
     select_item(source_, cfg_.app_source_name.c_str());
@@ -469,7 +542,8 @@ void SettingsDialog::build()
                             cfg_.toolchest_setting.c_str(), 40);
     terminal_ = text_field(row(f, "Terminal command:"),
                            cfg_.terminal.c_str(), 20);
-    Widget srow = row(f, "Shortcuts:");
+    f = frame(pg, "Shortcuts");
+    Widget srow = row(f, "Programs to launch:");
     XmString sl = xmstr("Edit Shortcuts...");
     Arg sargs[1];
     XtSetArg(sargs[0], XmNlabelString, sl);
@@ -477,7 +551,25 @@ void SettingsDialog::build()
     XmStringFree(sl);
     XtAddCallback(sb, XmNactivateCallback, shortcuts_cb, (XtPointer)this);
     XtManageChild(sb);
+
+    /* The page area is as big as the biggest page, so switching pages
+     * does not resize the dialog. */
+    Dimension pw = 0, ph = 0;
+    for (i = 0; i < PAGE_COUNT; i++) {
+        XtWidgetGeometry pref;
+        XtQueryGeometry(pages_[i], 0, &pref);
+        if (pref.width > pw)
+            pw = pref.width;
+        if (pref.height > ph)
+            ph = pref.height;
+    }
+    n = 0;
+    XtSetArg(args[n], XmNwidth, pw); n++;
+    XtSetArg(args[n], XmNheight, ph); n++;
+    XtSetArg(args[n], XmNresizePolicy, XmRESIZE_NONE); n++;
+    XtSetValues(content, args, n);
     XtManageChild(content);
+    show_page(current_page_);
 
     /* OK and Cancel along the bottom. */
     n = 0;
