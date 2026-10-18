@@ -1,6 +1,7 @@
 #include "x11/config.h"
 #include "core/scale.h"
 #include "core/settings.h"
+#include "core/theme.h"
 #include "core/vector.h"
 
 #include <X11/StringDefs.h>
@@ -8,6 +9,7 @@
 
 #include <dirent.h>
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,6 +60,8 @@ struct Resources {
     String xdg_autostart;
     String ui_scale;
     String font_path;
+    String theme;
+    String colors[k_ncolor_keys];
 };
 
 #define RES(name, cls, field, def) \
@@ -82,7 +86,14 @@ static XtResource k_resources[] = {
     RES("autostartScript", "AutostartScript", autostart_script, "true"),
     RES("xdgAutostart", "XdgAutostart", xdg_autostart, "false"),
     RES("uiScale", "UiScale", ui_scale, "100"),
-    RES("fontPath", "FontPath", font_path, "")
+    RES("fontPath", "FontPath", font_path, ""),
+    RES("theme", "Theme", theme, "Classic"),
+    RES("colorBackground", "Color", colors[0], ""),
+    RES("colorForeground", "Color", colors[1], ""),
+    RES("colorActive", "Color", colors[2], ""),
+    RES("colorActiveText", "Color", colors[3], ""),
+    RES("colorInactive", "Color", colors[4], ""),
+    RES("colorInactiveText", "Color", colors[5], "")
 };
 
 #undef RES
@@ -647,6 +658,126 @@ static void update_font_path(Display* dpy, const char* user)
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* Colors                                                              */
+
+const char* const k_color_keys[k_ncolor_keys] = {
+    "colorBackground", "colorForeground", "colorActive", "colorActiveText",
+    "colorInactive", "colorInactiveText"
+};
+const ThemeRole k_color_roles[k_ncolor_keys] = {
+    TR_BACKGROUND, TR_FOREGROUND, TR_ACTIVE, TR_ACTIVE_TEXT, TR_INACTIVE,
+    TR_INACTIVE_TEXT
+};
+
+/* A color by name or #rrggbb, as X parses it. */
+static bool parse_color(Display* dpy, const char* s, Rgb* out)
+{
+    if (!s || !*s)
+        return false;
+    XColor c;
+    if (!XParseColor(dpy, DefaultColormap(dpy, DefaultScreen(dpy)), s, &c))
+        return false;
+    *out = Rgb(c.red, c.green, c.blue);
+    return true;
+}
+
+/* An mwm color resource (Mwm*activeBackground), unless it only comes from
+ * a line for every program (*background), which is not meant for us. */
+static bool mwm_color(Display* dpy, XrmDatabase db, const char* res,
+                      Rgb* out)
+{
+    char name[128], cls[128], any[128];
+    sprintf(name, "Mwm.client.%s", res);
+    sprintf(any, "NoSuchProgram.client.%s", res);
+    sprintf(cls, "Mwm.Client.%c%s", toupper((unsigned char)res[0]), res + 1);
+    char* type = 0;
+    XrmValue v, w;
+    if (!XrmGetResource(db, name, cls, &type, &v) || !v.addr)
+        return false;
+    Str mine((const char*)v.addr);
+    sprintf(cls, "NoSuchProgram.Client.%c%s", toupper((unsigned char)res[0]),
+            res + 1);
+    if (XrmGetResource(db, any, cls, &type, &w) && w.addr &&
+        strcmp((const char*)w.addr, mine.c_str()) == 0)
+        return false;
+    return parse_color(dpy, mine.c_str(), out);
+}
+
+static void put_color(XrmDatabase* db, const char* spec, const Rgb& c)
+{
+    char hex[8];
+    format_hex_color(c, hex);
+    XrmPutStringResource(db, spec, hex);
+}
+
+/* Motif widgets get the theme through the resource database: what the
+ * theme sets, nothing else, so Motif derives the rest as usual. */
+static void apply_theme(XrmDatabase* db, const Theme& t)
+{
+    put_color(db, "*background", t.get(TR_BACKGROUND));
+    if (t.set[TR_FOREGROUND])
+        put_color(db, "*foreground", t.color[TR_FOREGROUND]);
+    if (t.set[TR_BUTTON])
+        put_color(db, "*XmPushButton.background", t.color[TR_BUTTON]);
+    if (t.set[TR_TEXT_FIELD]) {
+        put_color(db, "*XmTextField.background", t.color[TR_TEXT_FIELD]);
+        put_color(db, "*XmText.background", t.color[TR_TEXT_FIELD]);
+    }
+    if (t.set[TR_LIST])
+        put_color(db, "*XmList.background", t.color[TR_LIST]);
+    if (t.set[TR_TROUGH])
+        put_color(db, "*XmScrollBar.troughColor", t.color[TR_TROUGH]);
+    if (t.set[TR_SCROLL_BAR])
+        put_color(db, "*XmScrollBar.background", t.color[TR_SCROLL_BAR]);
+    if (t.set[TR_SELECT_FILL]) {
+        put_color(db, "*XmToggleButton.selectColor", t.color[TR_SELECT_FILL]);
+        put_color(db, "*XmToggleButtonGadget.selectColor",
+                  t.color[TR_SELECT_FILL]);
+    }
+}
+
+static void read_colors(Display* dpy, const Resources& r, Config* cfg)
+{
+    cfg->theme_name = r.theme ? r.theme : "Classic";
+    if (!find_theme(cfg->theme_name.c_str(), &cfg->theme))
+        fprintf(stderr, "ttr: no theme '%s', using Classic\n",
+                cfg->theme_name.c_str());
+
+    /* mwm's resources, for people who have them, over the default look
+     * only: a theme someone chose wins. */
+    XrmDatabase db = XtDatabase(dpy);
+    if (cfg->theme.path.empty()) {
+        static const char* const mwm_res[4] = {
+            "activeBackground", "activeForeground", "background", "foreground"
+        };
+        static const ThemeRole mwm_roles[4] = {
+            TR_ACTIVE, TR_ACTIVE_TEXT, TR_INACTIVE, TR_INACTIVE_TEXT
+        };
+        int i;
+        for (i = 0; i < 4; i++) {
+            Rgb c;
+            if (mwm_color(dpy, db, mwm_res[i], &c))
+                cfg->theme.put(mwm_roles[i], c);
+        }
+    }
+
+    /* The user's own colors, over the theme. */
+    int i;
+    for (i = 0; i < k_ncolor_keys; i++) {
+        cfg->colors[i] = r.colors[i] ? r.colors[i] : "";
+        Rgb c;
+        if (cfg->colors[i].empty())
+            continue;
+        if (parse_color(dpy, cfg->colors[i].c_str(), &c))
+            cfg->theme.put(k_color_roles[i], c);
+        else
+            fprintf(stderr, "ttr: %s: unknown color '%s'\n",
+                    k_color_keys[i], cfg->colors[i].c_str());
+    }
+    apply_theme(&db, cfg->theme);
+}
+
 static bool is(const char* a, const char* b)
 {
     return a && strcmp(a, b) == 0;
@@ -712,6 +843,7 @@ void read_config(Widget toplevel, Config* cfg)
 
     Display* dpy = XtDisplay(toplevel);
     update_font_path(XtDisplay(toplevel), r.font_path);
+    read_colors(XtDisplay(toplevel), r, cfg);
     cfg->font_path = r.font_path ? r.font_path : "";
 
     /* As set; what is loaded is resolved below. */

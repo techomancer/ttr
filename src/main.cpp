@@ -1,4 +1,5 @@
 #include "core/startup.h"
+#include "core/theme.h"
 #include "shell/notifysrc.h"
 #include "shell/shell.h"
 #include "x11/wm.h"
@@ -26,6 +27,7 @@ int main(int argc, char** argv)
 {
     if (argc >= 3 && strcmp(argv[1], "-notify") == 0)
         return send_notification(argc, argv);
+    ttr::set_program_path(argv[0]);
 
     /* Xt removes the options it understands from argv; keep the original
      * command line for "Restart ttr". */

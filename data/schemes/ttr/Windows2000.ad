@@ -1,0 +1,17 @@
+! To The Roots theme: the Windows 2000 standard colors.
+! Roles as in ../irix/README.md; left-out roles are derived.
+name: Windows 2000
+isDark: false
+
+BasicBackground: #d4d0c8
+TextForeground: #000000
+ButtonBackground: #d4d0c8
+TextFieldBackground: #ffffff
+ScrolledListBackground: #ffffff
+ScrollBarTroughColor: #e8e6e2
+ScrollBarControlBackground: #d4d0c8
+SelectFillColor: #0a246a
+WMBackground: #808080
+WMForeground: #d4d0c8
+WMActiveBackground: #0a246a
+WMActiveForeground: #ffffff

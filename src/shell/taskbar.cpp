@@ -51,7 +51,8 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     for (k = 0; k < 5; k++)
         fonts[k + 1] = k_task_fonts[k];
     painter_->load_font(fonts);
-    cs_ = motif_colors(Rgb::hex(k_widget_bg));
+    cs_ = motif_colors(cfg.theme.get(TR_BACKGROUND));
+    cs_.fg = cfg.theme.get(TR_FOREGROUND);
 
     int h = painter_->text_ascent() + painter_->text_descent() + scaled(14);
     if (h < scaled(28))

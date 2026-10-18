@@ -1,0 +1,14 @@
+! To The Roots theme: the CDE default palette.
+! Roles as in ../irix/README.md; left-out roles are derived.
+name: CDE
+isDark: false
+
+BasicBackground: #aeb2c3
+TextForeground: #000000
+TextFieldBackground: #c9ccd8
+ScrolledListBackground: #c9ccd8
+SelectFillColor: #b24d7a
+WMBackground: #aeb2c3
+WMForeground: #000000
+WMActiveBackground: #b24d7a
+WMActiveForeground: #ffffff

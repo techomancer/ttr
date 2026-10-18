@@ -121,7 +121,7 @@ bool SettingsFile::save(const char* path) const
     bool ok = fflush(f) == 0;
     ok = fclose(f) == 0 && ok;
     if (!ok || rename(tmp, path) != 0) {
-        remove(tmp);
+        ::remove(tmp);
         return false;
     }
     return true;
@@ -152,6 +152,18 @@ void SettingsFile::set(const char* name, const char* value)
         lines_.push_back(l);
     }
     l->value = value;
+}
+
+void SettingsFile::remove(const char* name)
+{
+    int i;
+    for (i = 0; i < lines_.size(); i++) {
+        if (lines_[i]->entry && strcmp(lines_[i]->name.c_str(), name) == 0) {
+            delete lines_[i];
+            lines_.remove_at(i);
+            return;
+        }
+    }
 }
 
 const SettingsFile::Line* SettingsFile::entry(int i) const

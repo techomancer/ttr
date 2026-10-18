@@ -31,6 +31,7 @@ public:
 
     const char* get(const char* name) const;   /* 0 if absent */
     void set(const char* name, const char* value);
+    void remove(const char* name);              /* if it is there */
 
     int count() const;
     const char* name(int i) const;

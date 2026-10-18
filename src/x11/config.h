@@ -26,21 +26,30 @@
  *                         fonts (core/scale.h)
  *   Ttr*fontPath:         folders added to the X server's font path, for
  *                         Type1 and TrueType fonts (colon separated)
+ *   Ttr*theme:            color theme name (core/theme.h), default Classic
+ *   Ttr*colorBackground, colorForeground, colorActive, colorActiveText,
+ *   colorInactive, colorInactiveText: the user's colors over the theme
+ *
+ * With the Classic theme, mwm's Mwm*activeBackground, activeForeground,
+ * background and foreground resources color the frames.
  */
 #ifndef TTR_X11_CONFIG_H
 #define TTR_X11_CONFIG_H
 
 #include "core/str.h"
+#include "core/theme.h"
 
 #include <X11/Intrinsic.h>
 
 namespace ttr {
 
-/* Background of Motif widgets and our panels (0xRRGGBB). Keep in sync
- * with the "*background" fallback resource in config.cpp. */
-static const unsigned long k_widget_bg = 0xb8b8b8;
 
 static const int k_max_desktops = 16;
+
+/* The user's colors: settings names and the roles they set. */
+static const int k_ncolor_keys = 6;
+extern const char* const k_color_keys[k_ncolor_keys];
+extern const ThemeRole k_color_roles[k_ncolor_keys];
 
 struct Config {
     enum FocusPolicy { FOCUS_CLICK, FOCUS_POINTER };
@@ -69,6 +78,9 @@ struct Config {
     bool xdg_autostart;
     int ui_scale;           /* percent */
     Str font_path;          /* as set */
+    Str theme_name;         /* as set */
+    Str colors[k_ncolor_keys];  /* as set, "" for the theme's */
+    Theme theme;            /* with the user's colors applied */
 
     Config();
 };

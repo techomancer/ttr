@@ -1,0 +1,17 @@
+! To The Roots theme: green widgets, blue active frames.
+! Roles as in ../irix/README.md; left-out roles are derived.
+name: Emerald
+isDark: false
+
+BasicBackground: #11a66d
+TextForeground: #000000
+ButtonBackground: #41b88a
+TextFieldBackground: #94d7bd
+ScrolledListBackground: #7cceaf
+ScrollBarTroughColor: #0d7d52
+ScrollBarControlBackground: #11a66d
+SelectFillColor: #2344d9
+WMBackground: #4f8a72
+WMForeground: #ffffff
+WMActiveBackground: #2344d9
+WMActiveForeground: #ffffff

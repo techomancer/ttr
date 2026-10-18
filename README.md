@@ -40,6 +40,9 @@ yet. A Wayland mode is planned for later (Linux only).
 - **Startup programs:** a list in Settings, an `autostart.sh` script, and
   optionally the desktop's XDG autostart entries.
 - **UI scale** from 100% to 300%, for high-resolution screens.
+- **Color themes:** ttr's own and the 30 IRIX desktop color schemes
+  (Gotham, Potrero, Lascaux, ...), with your own colors on top, and mwm's
+  color resources.
 - **Settings dialog** (Start > Settings...) for all of the above, stored in
   a plain text file you can also edit by hand.
 
@@ -105,8 +108,12 @@ This installs:
 | `/usr/bin/ttr` | the window manager and desktop |
 | `/usr/bin/ttr-session` | starts a ttr session (see below) |
 | `/usr/share/xsessions/ttr.desktop` | makes display managers offer "To The Roots" |
+| `/usr/share/ttr/schemes/` | the color themes |
 
-`sudo make uninstall` removes them again (with the same `PREFIX`).
+`sudo make uninstall` removes them again (with the same `PREFIX`). Build
+with the `PREFIX` you install to (`make PREFIX=/usr/local`, then `sudo make
+install PREFIX=/usr/local`): ttr looks for its themes under
+`PREFIX/share/ttr`. Run from the source tree, it finds them in `data/`.
 `DESTDIR` is supported for packaging. Most display managers only look in
 `/usr/share/xsessions`, so keep `PREFIX=/usr` if you log in through one.
 
@@ -205,6 +212,8 @@ Start > Settings... opens the Settings dialog. Pick a category on the left:
 - **Desktops:** the number of virtual desktops.
 - **Appearance:** UI scale, and fonts for window titles, menus and the
   taskbar.
+- **Colors:** the color theme, with a preview, and your own colors for the
+  background, text and window frames.
 - **Taskbar:** clock format, how long notifications stay up.
 - **Start Menu:** where programs come from, the terminal to use, shortcuts.
 - **Startup:** programs to start with ttr, and the startup script.
@@ -223,13 +232,53 @@ that variable is set:
 | `shortcuts` | programs for the quick launch bar and keyboard shortcuts |
 | `startup` | programs started with ttr |
 | `autostart.sh` | a shell script run when ttr starts |
+| `themes/` | your own color themes, `<Name>.ad` (see [Colors and themes](#colors-and-themes)) |
 
 All of them are plain text. The Settings dialog keeps comments and lines it
 does not know in `settings`. It rewrites `shortcuts` and `startup` when it
-saves them, so comments added to those two by hand are lost. The settings are also X resources (for example `Ttr*focusPolicy: pointer`
-in `~/.Xresources`). The command line overrides the settings file, and the
+saves them, so comments added to those two by hand are lost. The settings
+are also X resources (for example `Ttr*focusPolicy: pointer` in
+`~/.Xresources`). The command line overrides the settings file, and the
 settings file overrides `~/.Xresources`.
 [docs/wm-design.md §5.2](docs/wm-design.md) lists every setting.
+
+### Colors and themes
+
+Settings > Colors picks the color theme. The preview shows an inactive
+window, the active one and the taskbar, drawn the way ttr draws them. The
+themes are:
+
+- **Classic**, ttr's own: grey widgets, blue active frames.
+- **Emerald** (green and blue), **Windows 2000** and **CDE**, also ttr's.
+- **The 30 IRIX desktop color schemes**: Gotham, Potrero, Lascaux (SGI's
+  default), Base (the Indigo Magic look) and the rest.
+- Your own, from `~/.config/ttr/themes/<Name>.ad`.
+
+A theme colors Motif's widgets (buttons, text fields, lists, scroll bars,
+toggles), menus, the taskbar, notifications and window frames.
+
+Under **Your colors** you can replace six of the theme's colors with your
+own: the background, text, and the active and inactive title bars and
+title text. Click a color to open the color picker. It has sliders for
+red, green and blue, a field for a hex value such as `#2344d9` (the `#` may
+be left out), and a row of basic colors. **Theme** next to a color goes
+back to the theme's. Your colors stay when you pick another theme. In the
+settings file they are `colorBackground`, `colorForeground`, `colorActive`,
+`colorActiveText`, `colorInactive` and `colorInactiveText`.
+
+**Theme files** are X resource files, one color per role. See
+[data/schemes/irix/README.md](data/schemes/irix/README.md) for the roles
+and [data/schemes/ttr/README.md](data/schemes/ttr/README.md) for ttr's own
+format. Copying one of `data/schemes/ttr/*.ad` into `~/.config/ttr/themes`
+and changing it is the easiest way to start. On IRIX, ttr uses each
+scheme's colors for the system gamma (`gamma` command) when the scheme
+has them, as SGI's desktop does.
+
+**mwm's resources.** With the Classic theme, `Mwm*activeBackground`,
+`Mwm*activeForeground`, `Mwm*background` and `Mwm*foreground` from
+`~/.Xresources` color the window frames, as they would under mwm. A theme
+you choose wins over them. A line for every program, such as
+`*background: grey`, does not count as one of these.
 
 ### Starting programs with ttr
 

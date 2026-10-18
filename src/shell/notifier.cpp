@@ -52,7 +52,8 @@ Notifier::Notifier(Widget widget, WmLink* wm, const Config& cfg,
     for (k = 0; k < 4; k++)
         fonts[k + 1] = k_bold_fonts[k];
     painter_->load_bold_font(fonts);
-    cs_ = motif_colors(Rgb::hex(k_widget_bg));
+    cs_ = motif_colors(cfg.theme.get(TR_BACKGROUND));
+    cs_.fg = cfg.theme.get(TR_FOREGROUND);
 
     /* Our popups are not widgets; Xt hands their events to 'widget'. */
     XtAddEventHandler(widget_, ExposureMask | ButtonPressMask, False,

@@ -1,4 +1,5 @@
 #include "shell/settings.h"
+#include "shell/colorspage.h"
 #include "shell/shortcutsdlg.h"
 #include "shell/startuppage.h"
 #include "core/scale.h"
@@ -99,12 +100,13 @@ SettingsDialog::SettingsDialog(Widget parent, WmLink* wm, const Config& cfg,
     : parent_(parent), wm_(wm), cfg_(cfg), apps_(apps), dialog_(0),
       categories_(0), current_page_(0),
       shortcuts_(new ShortcutsDialog(parent, wm, apps)), startup_(0),
-      xdg_(0)
+      xdg_(0), colors_(0)
 {
 }
 
 SettingsDialog::~SettingsDialog()
 {
+    delete colors_;
     delete xdg_;
     delete startup_;
     delete shortcuts_;
@@ -537,8 +539,8 @@ void SettingsDialog::build()
 
     /* Categories on the left, the chosen page on the right. */
     static const char* const names[PAGE_COUNT] = {
-        "Windows", "Desktops", "Appearance", "Taskbar", "Start Menu",
-        "Startup", "XDG Autostart"
+        "Windows", "Desktops", "Appearance", "Colors", "Taskbar",
+        "Start Menu", "Startup", "XDG Autostart"
     };
     XmString items[PAGE_COUNT];
     int i;
@@ -638,6 +640,11 @@ void SettingsDialog::build()
     XtSetArg(pargs[0], XmNlabelString, fpl);
     XtManageChild(XmCreateLabel(row(f, ""), (char*)"note", pargs, 1));
     XmStringFree(fpl);
+
+    /* Colors */
+    pg = page(content, PAGE_COLORS);
+    delete colors_;
+    colors_ = new ColorsPage(this, pg, cfg_);
 
     /* Taskbar */
     pg = page(content, PAGE_TASKBAR);
@@ -783,6 +790,7 @@ void SettingsDialog::save()
     file.set("taskbarFont", font_name(&taskbar_).c_str());
     file.set("uiScale", combo_text(scale_).c_str());
     file.set("fontPath", text_value(font_path_).c_str());
+    colors_->save(&file);
     file.set("clockFormat", text_value(clock_).c_str());
     file.set("notificationTime",
              selected_item(notify_time_, k_notify_times, k_nnotify).c_str());

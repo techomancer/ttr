@@ -274,6 +274,11 @@ bool Wm::init(int* argc, char** argv)
         return false;
     }
     theme_.fit_font(painter_->text_ascent() + painter_->text_descent());
+    const Theme& colors = config_.theme;
+    theme_.active = motif_colors(colors.get(TR_ACTIVE));
+    theme_.active.fg = colors.get(TR_ACTIVE_TEXT);
+    theme_.inactive = motif_colors(colors.get(TR_INACTIVE));
+    theme_.inactive.fg = colors.get(TR_INACTIVE_TEXT);
 
     cursor_normal_ = XCreateFontCursor(dpy_, XC_left_ptr);
     cursor_move_ = XCreateFontCursor(dpy_, XC_fleur);

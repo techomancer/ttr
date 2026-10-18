@@ -31,6 +31,32 @@ public:
                       const Rgb& bg) = 0;
 };
 
+/* Another painter with its origin moved to (dx, dy), for drawing a part
+ * (a frame, say) somewhere inside a bigger picture. */
+class OffsetPainter : public Painter {
+public:
+    OffsetPainter(Painter& p, int dx, int dy) : p_(p), dx_(dx), dy_(dy) {}
+    void fill(const Rect& r, const Rgb& c)
+    {
+        p_.fill(Rect(r.x + dx_, r.y + dy_, r.w, r.h), c);
+    }
+    int text_width(const char* s, int len) { return p_.text_width(s, len); }
+    int text_ascent() { return p_.text_ascent(); }
+    int text_descent() { return p_.text_descent(); }
+    void text(int x, int y, const char* s, int len, const Rgb& c)
+    {
+        p_.text(x + dx_, y + dy_, s, len, c);
+    }
+    void icon(const Icon& ic, int x, int y, int size, const Rgb& bg)
+    {
+        p_.icon(ic, x + dx_, y + dy_, size, bg);
+    }
+
+private:
+    Painter& p_;
+    int dx_, dy_;
+};
+
 /* Draw 'ic', or a generic window glyph if it is null. */
 void draw_app_icon(Painter& p, const Icon* ic, int x, int y, int size,
                    const ColorSet& cs);

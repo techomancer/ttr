@@ -389,6 +389,8 @@ widgets only when they are created. See [src/x11/config.h](../src/x11/config.h):
 | `Ttr*xdgAutostart` | `true`, `false`: start XDG autostart entries (§5.10) | `false` |
 | `Ttr*uiScale` | 100 to 300 (percent): scale of everything ttr draws | 100 |
 | `Ttr*fontPath` | folders added to the X server's font path at startup (colon separated) | none |
+| `Ttr*theme` | color theme name (§5.11) | `Classic` |
+| `Ttr*colorBackground`, `colorForeground`, `colorActive`, `colorActiveText`, `colorInactive`, `colorInactiveText` | the user's colors over the theme | none |
 
 **UI scale.** For high-resolution screens, `uiScale` scales ttr in three
 ways, all applied once at startup (changing it restarts ttr):
@@ -668,7 +670,52 @@ it and clears it at once, so programs it starts do not inherit it. See
 [src/core/startup.h](../src/core/startup.h) and
 [src/core/xdgautostart.h](../src/core/xdgautostart.h).
 
-### 5.11 Wayland mode (`ttr-wayland`, later)
+### 5.11 Color themes
+
+A theme is a color per role ([src/core/theme.h](../src/core/theme.h)):
+background, text, button, text field, list, scroll bar trough and slider,
+toggle fill, and the inactive and active frames with their title text.
+Theme files are X resource files in the format of IRIX's desktop color
+schemes, whose role names they use (`BasicBackground`, `WMActiveBackground`,
+...). The 30 IRIX schemes (only their color values, see
+[data/schemes/irix/README.md](../data/schemes/irix/README.md)) are themes
+as they are. ttr's own themes leave out the gamma prefix and may carry a
+`name:`. On Linux the `gamma1_0` values are used, the colors as a stock SGI
+screen showed them. On IRIX the values for the system gamma are used
+(`/etc/config/system.glGammaVal`, 1.7 by default), because its display
+hardware applies that gamma.
+
+Themes are looked up in `~/.config/ttr/themes`, next to an uninstalled
+build (`data/schemes`), and in `PREFIX/share/ttr/schemes`. Classic is built
+in.
+
+How a theme is applied, once at startup:
+
+- **Motif widgets** get it through the resource database: `*background`
+  always, and `*foreground`, `*XmPushButton.background`,
+  `*XmTextField.background`, `*XmList.background`, the scroll bar colors and
+  the toggle `selectColor` only when the theme sets them. Motif derives the
+  shadows, arm and select colors itself, as it does for any background.
+- **Our own drawing** (frames, the taskbar and tray, notifications) uses
+  `motif_colors()` on the theme's colors, so it matches the widgets.
+- **Missing roles** are derived. The specific backgrounds follow the
+  background, and text colors follow Motif's brightness rule. A new
+  background, such as the user's own, also resets the specific
+  backgrounds, so they follow it instead of the theme's.
+
+Precedence, lowest first: the theme, then (with Classic only) mwm's
+`Mwm*activeBackground`, `activeForeground`, `background` and `foreground`
+for the frames, then the user's colors. An mwm resource only counts if it
+was written for mwm. Lines for every program (`*background`) are told
+apart by looking the same resource up for a program that does not exist.
+
+The Settings dialog has a Colors page with the theme list, a preview drawn
+with `paint_frame()` through an `OffsetPainter`, and the six user colors.
+It also has a color picker of our own (RGB sliders, a hex field, basic
+colors), since `XmColorSelector` is Motif 2.2 and IRIX has 2.1. The
+picker frees the colors it allocated, for 8-bit PseudoColor displays.
+
+### 5.12 Wayland mode (`ttr-wayland`, later)
 
 1. Bring up DRM/KMS, libinput and the scene graph, then create the Wayland
    socket.

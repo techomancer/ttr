@@ -31,11 +31,13 @@ LDFLAGS =
 LIBS = -lXm -lXt -lXpm -lpng -ldbus-1 -lX11 -lm
 
 # make install: the program and the session launcher go to BINDIR, the
-# session file to XSESSIONDIR, where display managers look for sessions.
-# DESTDIR is prepended to both, for packaging.
+# session file to XSESSIONDIR, where display managers look for sessions,
+# and the color themes to DATADIR/schemes. DESTDIR is prepended to all of
+# them, for packaging.
 PREFIX = /usr
 BINDIR = $(PREFIX)/bin
 XSESSIONDIR = $(PREFIX)/share/xsessions
+DATADIR = $(PREFIX)/share/ttr
 DESTDIR =
 
 B = build
@@ -59,7 +61,10 @@ OBJS = $(B)/main.o \
 	$(B)/core_str.o \
 	$(B)/core_switcher.o \
 	$(B)/core_text.o \
+	$(B)/core_theme.o \
 	$(B)/core_xdgautostart.o \
+	$(B)/shell_colorpicker.o \
+	$(B)/shell_colorspage.o \
 	$(B)/shell_netstatus.o \
 	$(B)/shell_notifier.o \
 	$(B)/shell_notifysrc.o \
@@ -99,6 +104,7 @@ CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h \
 	src/core/settings.h src/core/shortcuts.h src/core/launch.h \
 	src/core/startup.h src/core/xdgautostart.h src/core/scale.h \
+	src/core/theme.h \
 	src/core/audio.h src/core/net.h src/core/storage.h src/core/notify.h
 X11_H = src/x11/wm.h src/x11/hints.h src/x11/config.h src/x11/xpainter.h \
 	src/x11/iconload.h src/x11/svg.h src/x11/keys.h \
@@ -108,7 +114,8 @@ SHELL_H = src/shell/shell.h src/shell/startmenu.h src/shell/taskbar.h \
 	src/shell/settings.h src/shell/shortcutsdlg.h src/shell/runcmd.h \
 	src/shell/volume.h src/shell/netstatus.h src/shell/trayitem.h \
 	src/shell/storagemenu.h src/shell/popup.h src/shell/notifier.h \
-	src/shell/notifysrc.h src/shell/pickers.h src/shell/startuppage.h
+	src/shell/notifysrc.h src/shell/pickers.h src/shell/startuppage.h \
+	src/shell/colorpicker.h src/shell/colorspage.h
 
 $(B)/main.o: $(B)/.dir src/main.cpp $(X11_H) $(SHELL_H)
 	$(COMPILE) -c src/main.cpp -o $@
@@ -164,8 +171,20 @@ $(B)/core_switcher.o: $(B)/.dir src/core/switcher.cpp $(CORE_H)
 $(B)/core_text.o: $(B)/.dir src/core/text.cpp $(CORE_H)
 	$(COMPILE) -c src/core/text.cpp -o $@
 
+# Where make install puts the themes; built-in, so ttr finds them there.
+$(B)/core_theme.o: $(B)/.dir src/core/theme.cpp $(CORE_H)
+	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/core/theme.cpp -o $@
+
 $(B)/core_xdgautostart.o: $(B)/.dir src/core/xdgautostart.cpp $(CORE_H)
 	$(COMPILE) -c src/core/xdgautostart.cpp -o $@
+
+$(B)/shell_colorpicker.o: $(B)/.dir src/shell/colorpicker.cpp $(SHELL_H) \
+		$(CORE_H)
+	$(COMPILE) -c src/shell/colorpicker.cpp -o $@
+
+$(B)/shell_colorspage.o: $(B)/.dir src/shell/colorspage.cpp $(SHELL_H) \
+		$(X11_H)
+	$(COMPILE) -c src/shell/colorspage.cpp -o $@
 
 $(B)/shell_netstatus.o: $(B)/.dir src/shell/netstatus.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/netstatus.cpp -o $@
@@ -259,10 +278,18 @@ install: $(B)/ttr
 	chmod 755 $(DESTDIR)$(BINDIR)/ttr-session
 	cp dist/ttr.desktop $(DESTDIR)$(XSESSIONDIR)/ttr.desktop
 	chmod 644 $(DESTDIR)$(XSESSIONDIR)/ttr.desktop
+	mkdir -p $(DESTDIR)$(DATADIR)/schemes/ttr $(DESTDIR)$(DATADIR)/schemes/irix
+	cp data/schemes/ttr/*.ad data/schemes/ttr/README.md \
+		$(DESTDIR)$(DATADIR)/schemes/ttr
+	cp data/schemes/irix/*.ad data/schemes/irix/README.md \
+		$(DESTDIR)$(DATADIR)/schemes/irix
+	chmod 644 $(DESTDIR)$(DATADIR)/schemes/ttr/* \
+		$(DESTDIR)$(DATADIR)/schemes/irix/*
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr-session \
 		$(DESTDIR)$(XSESSIONDIR)/ttr.desktop
+	rm -rf $(DESTDIR)$(DATADIR)
 
 clean:
 	rm -rf $(B) build-asan
