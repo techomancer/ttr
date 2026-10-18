@@ -30,6 +30,12 @@
  *   Ttr*colorBackground, colorForeground, colorActive, colorActiveText,
  *   colorInactive, colorInactiveText: the user's colors over the theme
  *
+ *   Ttr*scrollArrows:     ends | together: scroll bar arrows at each end,
+ *                         or both at the bottom / right end
+ *   Ttr*scrollGrip:       none | line | ridges | dot, on scroll bar and
+ *                         slider thumbs (both need Motif 2.2; IRIX uses
+ *                         SGI's enhanced look instead)
+ *
  * With the Classic theme, mwm's Mwm*activeBackground, activeForeground,
  * background and foreground resources color the frames.
  */
@@ -81,6 +87,8 @@ struct Config {
     Str theme_name;         /* as set */
     Str colors[k_ncolor_keys];  /* as set, "" for the theme's */
     Theme theme;            /* with the user's colors applied */
+    bool scroll_arrows_together;
+    Str scroll_grip;        /* none, line, ridges, dot */
 
     Config();
 };
@@ -101,6 +109,9 @@ void read_config(Widget toplevel, Config* cfg);
 /* An XLFD at 'percent' of its size: the nearest size the server has. Names
  * that are not XLFDs, or have no size, are returned as they are. */
 Str scale_font(Display* dpy, const char* name, int percent);
+
+/* Whether this Motif has the scroll bar styles (Motif 2.2 or later). */
+bool scroll_bar_styles();
 
 /* Defaults, for the Settings dialog's "Default" choices. */
 const char* config_default(const char* name);

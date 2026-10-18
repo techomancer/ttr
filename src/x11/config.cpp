@@ -4,6 +4,7 @@
 #include "core/theme.h"
 #include "core/vector.h"
 
+#include <Xm/Xm.h>
 #include <X11/StringDefs.h>
 #include <X11/Xatom.h>
 
@@ -62,6 +63,8 @@ struct Resources {
     String font_path;
     String theme;
     String colors[k_ncolor_keys];
+    String scroll_arrows;
+    String scroll_grip;
 };
 
 #define RES(name, cls, field, def) \
@@ -93,7 +96,9 @@ static XtResource k_resources[] = {
     RES("colorActive", "Color", colors[2], ""),
     RES("colorActiveText", "Color", colors[3], ""),
     RES("colorInactive", "Color", colors[4], ""),
-    RES("colorInactiveText", "Color", colors[5], "")
+    RES("colorInactiveText", "Color", colors[5], ""),
+    RES("scrollArrows", "ScrollArrows", scroll_arrows, "ends"),
+    RES("scrollGrip", "ScrollGrip", scroll_grip, "ridges")
 };
 
 #undef RES
@@ -104,7 +109,8 @@ Config::Config()
       terminal("xterm -e"), clock_format("%H:%M"), title_font(BOLD_12),
       menu_font(BOLD_12), taskbar_font(MEDIUM_12), desktops(4),
       dock_div(3), notification_ms(5000), autostart_script(true),
-      xdg_autostart(false), ui_scale(100)
+      xdg_autostart(false), ui_scale(100), scroll_arrows_together(false),
+      scroll_grip("ridges")
 {
 }
 
@@ -364,7 +370,10 @@ static void scale_motif_resources(XrmDatabase* db)
         { "*XmList.highlightThickness", 2 },
         { "*XmScrollBar.width", 15 },
         { "*XmScrollBar.height", 15 },
-        { "*XmComboBox.arrowSize", 14 }
+        { "*XmComboBox.arrowSize", 14 },
+        /* A slider's bar (volume, color picker) is not a scroll bar's
+         * width: it has its own thickness. */
+        { "*XmScale.scaleHeight", 15 }
     };
     int i;
     for (i = 0; i < (int)(sizeof(k_res) / sizeof(k_res[0])); i++) {
@@ -778,6 +787,54 @@ static void read_colors(Display* dpy, const Resources& r, Config* cfg)
     apply_theme(&db, cfg->theme);
 }
 
+/* ------------------------------------------------------------------ */
+/* Scroll bars                                                         */
+
+bool scroll_bar_styles()
+{
+#if defined(XmNsliderMark)
+    return true;
+#else
+    return false;
+#endif
+}
+
+static const char* const k_grips[4][2] = {
+    { "none", "NONE" }, { "line", "ETCHED_LINE" }, { "ridges", "THUMB_MARK" },
+    { "dot", "ROUND_MARK" }
+};
+
+/* Where the arrows go and the grip on the slider. Motif 2.2 added both
+ * (XmNshowArrows as XmMAX_SIDE, XmNsliderMark); older Motif would only
+ * warn about values it cannot convert. On IRIX, SGI's enhanced look has
+ * scroll bars of its own. */
+static void apply_scroll_bars(XrmDatabase* db, const Resources& r,
+                              Config* cfg)
+{
+    cfg->scroll_arrows_together = r.scroll_arrows &&
+                                  strcmp(r.scroll_arrows, "together") == 0;
+    cfg->scroll_grip = "ridges";
+    int i;
+    for (i = 0; i < 4; i++)
+        if (r.scroll_grip && strcmp(r.scroll_grip, k_grips[i][0]) == 0)
+            cfg->scroll_grip = k_grips[i][0];
+    if (scroll_bar_styles()) {
+        if (cfg->scroll_arrows_together)
+            XrmPutStringResource(db, "*XmScrollBar.showArrows", "MAX_SIDE");
+        for (i = 0; i < 4; i++) {
+            if (strcmp(cfg->scroll_grip.c_str(), k_grips[i][0]) != 0)
+                continue;
+            XrmPutStringResource(db, "*XmScrollBar.sliderMark",
+                                 k_grips[i][1]);
+            XrmPutStringResource(db, "*XmScale.sliderMark", k_grips[i][1]);
+        }
+    }
+#if defined(__sgi)
+    XrmPutStringResource(db, "*sgiMode", "True");
+    XrmPutStringResource(db, "*useEnhancedSGILook", "True");
+#endif
+}
+
 static bool is(const char* a, const char* b)
 {
     return a && strcmp(a, b) == 0;
@@ -872,6 +929,7 @@ void read_config(Widget toplevel, Config* cfg)
     XrmPutStringResource(&db, "*buttonFontList", cfg->menu_xfont.c_str());
     if (scale != 100)
         scale_motif_resources(&db);
+    apply_scroll_bars(&db, r, cfg);
 }
 
 }

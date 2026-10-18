@@ -212,8 +212,8 @@ Start > Settings... opens the Settings dialog. Pick a category on the left:
 
 - **Windows:** focus, Alt+Tab style, docked width.
 - **Desktops:** the number of virtual desktops.
-- **Appearance:** UI scale, and fonts for window titles, menus and the
-  taskbar.
+- **Appearance:** UI scale, scroll bars, and fonts for window titles,
+  menus and the taskbar.
 - **Colors:** the color theme, with a preview, and your own colors for the
   background, text and window frames.
 - **Taskbar:** clock format, how long notifications stay up.
@@ -318,6 +318,20 @@ Xcursor.size: 48
 GTK 3 programs also read `GDK_SCALE=2`, and Qt programs read
 `QT_SCALE_FACTOR=2`. Set these in `~/.xprofile` or in the script that
 starts your session.
+
+### Scroll bars
+
+Settings > Appearance > Scroll bars sets how scroll bars look in ttr's
+menus and dialogs:
+
+- **Arrows** at both ends, as Motif usually has them, or **together** at
+  the bottom (or right) end, as on NeXT and Mac OS X.
+- **Slider grip:** none, a line, ridges (the default, like SGI's) or a dot,
+  on scroll bars and on sliders such as the volume control.
+
+These need Motif 2.2 or later (Open Motif 2.3 and Motif 2.5 on Linux have
+them). On IRIX, ttr turns on SGI's own enhanced look instead, which has
+SGI's scroll bars. Scroll bars and sliders grow with the UI scale.
 
 ### Fonts
 

@@ -36,6 +36,9 @@ static const int k_nsizes = (int)(sizeof(k_sizes) / sizeof(k_sizes[0]));
 
 static const char* const k_sources[] = { "auto", "desktop", "toolchest" };
 
+static const char* const k_grips[] = { "none", "line", "ridges", "dot" };
+static const int k_ngrips = 4;
+
 static const char* const k_scales[] = {
     "100", "125", "150", "175", "200", "250", "300"
 };
@@ -623,6 +626,25 @@ void SettingsDialog::build()
         XmComboBoxAddItem(scale_, cur, 0, False);
     XmStringFree(cur);
     select_item(scale_, scale_now);
+
+    f = frame(pg, "Scroll bars");
+    arrows_ends_ = 0;
+    grip_ = 0;
+    if (scroll_bar_styles()) {
+        radio(row(f, "Arrows:"), "At both ends", "Together", &arrows_ends_);
+        XmToggleButtonSetState(cfg_.scroll_arrows_together
+                                   ? XtNameToWidget(XtParent(arrows_ends_),
+                                                    "b")
+                                   : arrows_ends_, True, True);
+        grip_ = drop_down(row(f, "Slider grip:"), "grip", k_grips, k_ngrips,
+                          k_ngrips, 7);
+        select_item(grip_, cfg_.scroll_grip.c_str());
+    } else {
+        XmString l = xmstr("SGI's enhanced look draws the scroll bars here.");
+        XtSetArg(pargs[0], XmNlabelString, l);
+        XtManageChild(XmCreateLabel(f, (char*)"note", pargs, 1));
+        XmStringFree(l);
+    }
     f = frame(pg, "Fonts");
     font_row(&title_, f, "Window titles:", cfg_.title_font.c_str(),
              cfg_.title_xfont.c_str());
@@ -790,6 +812,12 @@ void SettingsDialog::save()
     file.set("taskbarFont", font_name(&taskbar_).c_str());
     file.set("uiScale", combo_text(scale_).c_str());
     file.set("fontPath", text_value(font_path_).c_str());
+    if (arrows_ends_) {
+        file.set("scrollArrows", XmToggleButtonGetState(arrows_ends_)
+                                     ? "ends" : "together");
+        file.set("scrollGrip",
+                 selected_item(grip_, k_grips, k_ngrips).c_str());
+    }
     colors_->save(&file);
     file.set("clockFormat", text_value(clock_).c_str());
     file.set("notificationTime",

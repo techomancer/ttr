@@ -389,6 +389,8 @@ widgets only when they are created. See [src/x11/config.h](../src/x11/config.h):
 | `Ttr*xdgAutostart` | `true`, `false`: start XDG autostart entries (§5.10) | `false` |
 | `Ttr*uiScale` | 100 to 300 (percent): scale of everything ttr draws | 100 |
 | `Ttr*fontPath` | folders added to the X server's font path at startup (colon separated) | none |
+| `Ttr*scrollArrows` | `ends`, `together`: scroll bar arrows at each end, or both at the bottom/right (Motif 2.2+) | `ends` |
+| `Ttr*scrollGrip` | `none`, `line`, `ridges`, `dot`: grip on scroll bar and slider thumbs (Motif 2.2+) | `ridges` |
 | `Ttr*theme` | color theme name (§5.11) | `Classic` |
 | `Ttr*colorBackground`, `colorForeground`, `colorActive`, `colorActiveText`, `colorInactive`, `colorInactiveText` | the user's colors over the theme | none |
 
@@ -428,9 +430,18 @@ ways, all applied once at startup (changing it restarts ttr):
   pixel up to 199%) so they do not get heavy
   ([src/core/scale.h](../src/core/scale.h)).
 - **Motif widgets.** They size themselves from their fonts. Their
-  pixel-sized resources (shadows, focus highlights, scroll bars, combo box
-  arrows) are scaled in the resource database, class by class, so widgets
-  that have none, such as labels and managers, do not get one.
+  pixel-sized resources (shadows, focus highlights, scroll bars, slider
+  thickness, combo box arrows) are scaled in the resource database, class
+  by class, so widgets that have none, such as labels and managers, do not
+  get one. An `XmScale` has its own thickness (`scaleHeight` for a
+  horizontal one); its scroll bar's width does not apply.
+
+**Scroll bar looks.** Motif 2.2 added `XmNshowArrows` values (both arrows
+at one end with `XmMAX_SIDE`) and `XmNsliderMark` (a grip on the thumb).
+ttr sets them through the resource database only when they exist, which
+it detects with `#ifdef XmNsliderMark`; older Motif would warn about
+values it cannot convert. On IRIX it sets `*sgiMode` and
+`*useEnhancedSGILook`, so IRIS IM draws SGI's own scroll bars.
 
 Icons are loaded at the scaled size. When a theme lacks that size, a larger
 bitmap is scaled down in preference to a smaller one scaled up. At 100%

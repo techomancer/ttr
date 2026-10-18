@@ -80,6 +80,8 @@ private:
     Widget dock_third_;
     Widget desktops_;
     Widget scale_;
+    Widget arrows_ends_;        /* 0 without the scroll bar styles */
+    Widget grip_;
     Widget font_path_;
     FontRow title_, menu_, taskbar_;
     Widget clock_;
