@@ -486,6 +486,22 @@ published through EWMH (`_NET_NUMBER_OF_DESKTOPS`, `_NET_CURRENT_DESKTOP`,
 external pagers and `wmctrl` work. Windows keep their `_NET_WM_DESKTOP`, and
 a restart keeps the current desktop.
 
+**Taskbar order.** The buttons can be put in any order. Drag one sideways
+(past a few pixels, so a wobbly click is still a click), use the window
+menu's Taskbar submenu (Move to Start, Move Left, Move Right), or press
+Ctrl+Super+Home, Ctrl+Super+Left or Ctrl+Super+Right on the active window.
+The keys and menu items are window actions (`ACT_TASK_*`): the WM passes
+them to the shell with `ShellLink::move_task()`, so they work the same
+over a socket in Wayland mode. A move counts among the current desktop's
+buttons. The shell keeps the order in `_TTR_TASK_ORDER` on the root
+window, so a restart, which adopts windows in stacking order, puts the
+buttons back where they were. New windows go at the end.
+
+The task buttons take their button events with an event handler, not
+`XmDrawingArea`'s input callback. Its translations include a press
+followed by a release, so Xt holds a press back and then reports only the
+release, and a drag never sees its press.
+
 ### 5.4 Shortcuts and quick launch
 
 Program shortcuts live in `~/.config/ttr/shortcuts`, in order, one

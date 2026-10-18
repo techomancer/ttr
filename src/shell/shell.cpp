@@ -85,6 +85,11 @@ void Shell::desktop_changed(int current, int count)
     start_->set_desktop(current);
 }
 
+void Shell::move_task(ToplevelId id, WmAction where)
+{
+    taskbar_->move(id, where);
+}
+
 void Shell::show_start_menu(unsigned long time)
 {
     taskbar_->post_start_menu(time);

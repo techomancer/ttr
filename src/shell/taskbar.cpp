@@ -17,6 +17,8 @@
 #include <Xm/Form.h>
 #include <Xm/ToggleB.h>
 #include <X11/Shell.h>
+#include <X11/Xatom.h>
+#include <X11/cursorfont.h>
 
 #include <string.h>
 
@@ -40,7 +42,8 @@ static const int k_icon = 16;
 Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
                  StartMenu* start, WindowMenu* winmenu)
     : wm_(wm), start_menu_(start), winmenu_(winmenu), tray_(0), icons_(0),
-      quick_(0), storage_(0), net_(0), volume_(0), active_(0), pressed_(-1), closing_(false)
+      quick_(0), storage_(0), net_(0), volume_(0), active_(0), pressed_(-1),
+      press_x_(0), dragging_(false), closing_(false)
 {
     Display* dpy = XtDisplay(parent);
     int screen = DefaultScreen(dpy);
@@ -145,7 +148,30 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
                   (XtPointer)this);
     XtAddCallback(tasks_, XmNresizeCallback, tasks_expose_cb,
                   (XtPointer)this);
-    XtAddCallback(tasks_, XmNinputCallback, tasks_input_cb, (XtPointer)this);
+    /* Our own handler, not the drawing area's input callback: its
+     * translations hold a press back to see if a release follows, and
+     * then report only the release. Dragging a button also needs the
+     * motion in between. */
+    XtAddEventHandler(tasks_, ButtonPressMask | ButtonReleaseMask |
+                      Button1MotionMask, False, tasks_event, (XtPointer)this);
+    drag_cursor_ = XCreateFontCursor(dpy, XC_sb_h_double_arrow);
+
+    /* The order the buttons had before a restart. */
+    order_atom_ = XInternAtom(dpy, "_TTR_TASK_ORDER", False);
+    Atom type;
+    int format;
+    unsigned long count = 0, after;
+    unsigned char* data = 0;
+    if (XGetWindowProperty(dpy, DefaultRootWindow(dpy), order_atom_, 0, 4096,
+                           False, XA_WINDOW, &type, &format, &count, &after,
+                           &data) == Success && data) {
+        if (format == 32 && type == XA_WINDOW) {
+            unsigned long k;
+            for (k = 0; k < count; k++)
+                saved_order_.push_back((ToplevelId)((long*)data)[k]);
+        }
+        XFree(data);
+    }
 
     XtManageChild(start_);
     XtManageChild(quick_area_);
@@ -226,8 +252,49 @@ void Taskbar::add(const TaskInfo& t)
     }
     Task* task = new Task;
     task->id = t.id;
+    /* Where it was before a restart, else at the end. */
+    int at = list_.size(), pos = saved_position(t.id), i;
+    if (pos >= 0) {
+        for (i = 0; i < list_.size(); i++) {
+            int other = saved_position(list_[i]->id);
+            if (other < 0 || other > pos) {
+                at = i;
+                break;
+            }
+        }
+    }
     list_.push_back(task);
+    for (i = list_.size() - 1; i > at; i--)
+        list_[i] = list_[i - 1];
+    list_[at] = task;
+    if (pressed_ >= at)
+        pressed_++;
     change(t);
+    save_order();
+}
+
+int Taskbar::saved_position(ToplevelId id)
+{
+    int i;
+    for (i = 0; i < saved_order_.size(); i++)
+        if (saved_order_[i] == id)
+            return i;
+    return -1;
+}
+
+/* The order of all buttons, for the next ttr after a restart. */
+void Taskbar::save_order()
+{
+    if (closing_)
+        return;
+    Display* dpy = XtDisplay(tasks_);
+    long* ids = new long[list_.size() > 0 ? list_.size() : 1];
+    int i;
+    for (i = 0; i < list_.size(); i++)
+        ids[i] = (long)list_[i]->id;
+    XChangeProperty(dpy, DefaultRootWindow(dpy), order_atom_, XA_WINDOW, 32,
+                    PropModeReplace, (unsigned char*)ids, list_.size());
+    delete [] ids;
 }
 
 void Taskbar::change(const TaskInfo& t)
@@ -253,7 +320,113 @@ void Taskbar::remove(ToplevelId id)
     delete list_[i];
     list_.remove_at(i);
     pressed_ = -1;
+    if (dragging_) {
+        dragging_ = false;
+        XUndefineCursor(XtDisplay(tasks_), XtWindow(tasks_));
+    }
+    save_order();
     paint_tasks();
+}
+
+/* The slot of list_[i] among the buttons shown, or -1 if it is not shown
+ * (on another desktop). */
+int Taskbar::visible_slot(int i)
+{
+    if (i < 0 || i >= list_.size() || !list_[i]->on_current)
+        return -1;
+    int k, slot = 0;
+    for (k = 0; k < i; k++)
+        if (list_[k]->on_current)
+            slot++;
+    return slot;
+}
+
+/* The list_ index of the button shown in 'slot', or -1. */
+int Taskbar::visible_index(int slot)
+{
+    int i, n = 0;
+    for (i = 0; i < list_.size(); i++)
+        if (list_[i]->on_current && n++ == slot)
+            return i;
+    return -1;
+}
+
+/* Take list_[from] out and put it where list_[to] is, the others moving
+ * up or down a place. */
+void Taskbar::move_to(int from, int to)
+{
+    if (from == to || from < 0 || to < 0 || from >= list_.size() ||
+        to >= list_.size())
+        return;
+    Task* t = list_[from];
+    int i;
+    if (from < to)
+        for (i = from; i < to; i++)
+            list_[i] = list_[i + 1];
+    else
+        for (i = from; i > to; i--)
+            list_[i] = list_[i - 1];
+    list_[to] = t;
+    if (pressed_ == from)
+        pressed_ = to;
+}
+
+void Taskbar::move(ToplevelId id, WmAction where)
+{
+    int i = find(id), slot = visible_slot(i), to = -1;
+    if (slot < 0)
+        return;
+    if (where == ACT_TASK_FIRST)
+        to = visible_index(0);
+    else if (where == ACT_TASK_LEFT)
+        to = visible_index(slot - 1);
+    else if (where == ACT_TASK_RIGHT)
+        to = visible_index(slot + 1);
+    if (to < 0)
+        return;
+    move_to(i, to);
+    save_order();
+    paint_tasks();
+}
+
+/* While dragging, the pressed button takes the slot under the pointer. */
+void Taskbar::drag_to(int x)
+{
+    Dimension w = 0, h = 0;
+    Arg args[2];
+    XtSetArg(args[0], XmNwidth, &w);
+    XtSetArg(args[1], XmNheight, &h);
+    XtGetValues(tasks_, args, 2);
+    int count = visible_count();
+    if (count == 0)
+        return;
+    Rect first = button_rect(0, count, w, h);
+    int step = first.w + scaled(k_button_gap);
+    int slot = x < 0 ? 0 : x / step;
+    if (slot >= count)
+        slot = count - 1;
+    int to = visible_index(slot);
+    if (to >= 0 && to != pressed_) {
+        move_to(pressed_, to);
+        paint_tasks();
+    }
+}
+
+void Taskbar::on_motion(Widget w, XEvent* ev)
+{
+    if (pressed_ < 0)
+        return;
+    int x = ev->xmotion.x;
+    if (!dragging_) {
+        int d = x - press_x_;
+        if (d < 0)
+            d = -d;
+        if (d < scaled(6))
+            return;     /* a click that wobbles is still a click */
+        dragging_ = true;
+        XDefineCursor(XtDisplay(w), XtWindow(w), drag_cursor_);
+    }
+    drag_to(x);
 }
 
 void Taskbar::set_active(ToplevelId id)
@@ -405,20 +578,23 @@ void Taskbar::tasks_expose_cb(Widget w, XtPointer closure, XtPointer call)
     ((Taskbar*)closure)->paint_tasks();
 }
 
-void Taskbar::tasks_input_cb(Widget w, XtPointer closure, XtPointer call)
+void Taskbar::tasks_event(Widget w, XtPointer closure, XEvent* ev,
+                          Boolean* cont)
 {
-    (void)w;
+    (void)cont;
     Taskbar* self = (Taskbar*)closure;
-    XEvent* ev = ((XmDrawingAreaCallbackStruct*)call)->event;
-    if (!ev)
+    if (ev->type == MotionNotify) {
+        self->on_motion(w, ev);
         return;
-
+    }
     if (ev->type == ButtonPress) {
         int i = self->hit(ev->xbutton.x, ev->xbutton.y);
         if (i < 0)
             return;
         if (ev->xbutton.button == Button1) {
             self->pressed_ = i;
+            self->press_x_ = ev->xbutton.x;
+            self->dragging_ = false;
             self->paint_tasks();
         }
     } else if (ev->type == ButtonRelease && ev->xbutton.button == Button3) {
@@ -432,8 +608,14 @@ void Taskbar::tasks_input_cb(Widget w, XtPointer closure, XtPointer call)
         int i = self->hit(ev->xbutton.x, ev->xbutton.y);
         int pressed = self->pressed_;
         self->pressed_ = -1;
-        if (i >= 0 && i == pressed)
+        if (self->dragging_) {
+            /* A drag moves the button and does nothing else. */
+            self->dragging_ = false;
+            XUndefineCursor(XtDisplay(w), XtWindow(w));
+            self->save_order();
+        } else if (i >= 0 && i == pressed) {
             self->activate(self->list_[i]);
+        }
         self->paint_tasks();
     }
 }

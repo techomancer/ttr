@@ -30,6 +30,9 @@ enum WmAction {
     ACT_DOCK_RIGHT,
     ACT_SNAP_TOP,   /* full width, dockWidth of the height */
     ACT_SNAP_BOTTOM,
+    ACT_TASK_FIRST, /* the window's taskbar button: to the start, */
+    ACT_TASK_LEFT,  /* one place left, */
+    ACT_TASK_RIGHT, /* one place right */
     ACT_COUNT
 };
 
@@ -94,6 +97,8 @@ public:
                                   int desktop) = 0;
     virtual void desktop_changed(int current, int count) = 0;
     virtual void show_start_menu(unsigned long time) = 0;
+    /* Move a window's taskbar button: ACT_TASK_FIRST, _LEFT or _RIGHT. */
+    virtual void move_task(ToplevelId id, WmAction where) = 0;
     /* The WM is exiting; let go of anything borrowed (tray icons). */
     virtual void shutdown() = 0;
 };

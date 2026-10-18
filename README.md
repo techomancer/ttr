@@ -23,7 +23,8 @@ yet. A Wayland mode is planned for later (Linux only).
 - **Alt+Tab** either Windows-style (a list of icons, most recently used
   first) or mwm/CDE-style (cycles through the stack).
 - **Taskbar** with a Start menu, a task button per window, a quick launch
-  bar, a notification area (system tray) and a clock.
+  bar, a notification area (system tray) and a clock. Drag the task
+  buttons into any order, and ttr keeps it when it restarts.
 - **Start menu** built from the installed applications (XDG `.desktop`
   files on Linux, toolchest files on IRIX), with icons (PNG, XPM, SVG).
 - **Virtual desktops** (4 by default, up to 16).
@@ -200,6 +201,8 @@ window. Pressing OK in Settings does the same.
 | Super+1 / 2 / 3 | dock left / center / right (again: restore) |
 | Super+Left / Right | dock left / right |
 | Super+Up / Down | snap to the top / bottom half |
+| Ctrl+Super+Left / Right | move the active window's taskbar button one place |
+| Ctrl+Super+Home | move the active window's taskbar button to the start |
 
 The Alt+function keys are mwm's and CDE's. The docking keys use the Windows
 (Super) key, which CDE never used, so the two sets do not collide. You can

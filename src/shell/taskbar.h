@@ -3,6 +3,10 @@
  * one button per window, notification area. The bar is a Motif override
  * shell; the task buttons are drawn by us in an XmDrawingArea because
  * Motif 2.1 buttons cannot show an icon and a label together.
+ *
+ * The buttons can be put in any order: dragged, or moved with the window
+ * menu and keys (ACT_TASK_*). The order is kept in the _TTR_TASK_ORDER
+ * property on the root window, so it survives Restart ttr.
  */
 #ifndef TTR_SHELL_TASKBAR_H
 #define TTR_SHELL_TASKBAR_H
@@ -38,6 +42,9 @@ public:
     void change(const TaskInfo& t);
     void remove(ToplevelId id);
     void set_active(ToplevelId id);
+    /* Move a button: ACT_TASK_FIRST, ACT_TASK_LEFT or ACT_TASK_RIGHT,
+     * among the buttons of the current desktop. */
+    void move(ToplevelId id, WmAction where);
     void post_start_menu(unsigned long time);
     /* Root coordinates of the bar. */
     const Rect& geometry() const { return geom_; }
@@ -58,7 +65,9 @@ private:
                             Boolean* cont);
     static void start_unposted(void* closure);
     static void tasks_expose_cb(Widget w, XtPointer closure, XtPointer call);
-    static void tasks_input_cb(Widget w, XtPointer closure, XtPointer call);
+    static void tasks_event(Widget w, XtPointer closure, XEvent* ev,
+                            Boolean* cont);
+    void on_motion(Widget w, XEvent* ev);
     static void tray_expose_cb(Widget w, XtPointer closure, XtPointer call);
     static void tray_resized(void* closure);
 
@@ -68,6 +77,12 @@ private:
     int hit(int x, int y);
     void paint_tasks();
     void activate(Task* t);
+    int visible_slot(int i);        /* of list_[i], or -1 */
+    int visible_index(int slot);    /* into list_, or -1 */
+    void move_to(int from, int to);
+    void drag_to(int x);
+    void save_order();
+    int saved_position(ToplevelId id);
 
     WmLink* wm_;
     StartMenu* start_menu_;
@@ -86,6 +101,11 @@ private:
     Vector<Task*> list_;
     ToplevelId active_;
     int pressed_;
+    int press_x_;
+    bool dragging_;         /* the pressed button follows the pointer */
+    Cursor drag_cursor_;
+    Atom order_atom_;
+    Vector<ToplevelId> saved_order_;    /* from before a restart */
     bool closing_;          /* after release(): the WM is freeing windows */
 };
 

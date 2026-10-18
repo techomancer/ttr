@@ -48,6 +48,7 @@ private:
     WmLink* link_;
     Widget menu_;
     Widget buttons_[ACT_COUNT];
+    Widget task_item_;          /* the Taskbar submenu */
     Item items_[ACT_COUNT];
     int desktops_;
     DeskItem* desk_items_;      /* desktops_ + 1, the last is "all" */

@@ -14,7 +14,8 @@ namespace ttr {
 
 WindowMenu::WindowMenu(Widget parent, WmLink* link, int desktops)
     : app_(XtWidgetToApplicationContext(parent)), link_(link),
-      desktops_(desktops), desk_items_(0), target_(0), pending_move_(false),
+      task_item_(0), desktops_(desktops), desk_items_(0), target_(0),
+      pending_move_(false),
       pending_(ACT_RESTORE), pending_desktop_(0)
 {
     memset(buttons_, 0, sizeof(buttons_));
@@ -42,6 +43,23 @@ WindowMenu::WindowMenu(Widget parent, WmLink* link, int desktops)
         XtSetArg(sargs[n], XmNsubMenuId, snap); n++;
         XtManageChild(XmCreateCascadeButtonGadget(menu_, (char*)"snapItem",
                                                   sargs, n));
+        XmStringFree(l);
+    }
+
+    Widget task = XmCreatePulldownMenu(menu_, (char*)"taskbar", 0, 0);
+    add_item(ACT_TASK_FIRST, "Move to Start", 'S', "Ctrl+Super+Home", task);
+    add_item(ACT_TASK_LEFT, "Move Left", 'L', "Ctrl+Super+Left", task);
+    add_item(ACT_TASK_RIGHT, "Move Right", 'R', "Ctrl+Super+Right", task);
+    {
+        XmString l = XmStringCreateLocalized((char*)"Taskbar");
+        Arg targs[3];
+        int n = 0;
+        XtSetArg(targs[n], XmNlabelString, l); n++;
+        XtSetArg(targs[n], XmNmnemonic, (KeySym)'T'); n++;
+        XtSetArg(targs[n], XmNsubMenuId, task); n++;
+        task_item_ = XmCreateCascadeButtonGadget(menu_, (char*)"taskbarItem",
+                                                 targs, n);
+        XtManageChild(task_item_);
         XmStringFree(l);
     }
 
@@ -149,6 +167,8 @@ void WindowMenu::post(ToplevelId id, int x_root, int y_root,
     for (i = 0; i < ACT_COUNT; i++)
         if (buttons_[i])
             XtSetSensitive(buttons_[i], action_allowed(allowed, (WmAction)i));
+    /* Dialogs share their owner's button and cannot move it. */
+    XtSetSensitive(task_item_, action_allowed(allowed, ACT_TASK_FIRST));
     if (desk_items_)
         for (i = 0; i <= desktops_; i++)
             XmToggleButtonGadgetSetState(desk_items_[i].button,

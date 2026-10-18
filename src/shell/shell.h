@@ -36,6 +36,7 @@ public:
                           int desktop);
     void desktop_changed(int current, int count);
     void show_start_menu(unsigned long time);
+    void move_task(ToplevelId id, WmAction where);
     void shutdown();
 
 private:

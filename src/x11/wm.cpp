@@ -109,7 +109,11 @@ static const KeyBinding k_keys[] = {
     { "Left", Mod4Mask, KC_ACTION, ACT_DOCK_LEFT },
     { "Right", Mod4Mask, KC_ACTION, ACT_DOCK_RIGHT },
     { "Up", Mod4Mask, KC_ACTION, ACT_SNAP_TOP },
-    { "Down", Mod4Mask, KC_ACTION, ACT_SNAP_BOTTOM }
+    { "Down", Mod4Mask, KC_ACTION, ACT_SNAP_BOTTOM },
+    /* The active window's taskbar button. */
+    { "Home", ControlMask | Mod4Mask, KC_ACTION, ACT_TASK_FIRST },
+    { "Left", ControlMask | Mod4Mask, KC_ACTION, ACT_TASK_LEFT },
+    { "Right", ControlMask | Mod4Mask, KC_ACTION, ACT_TASK_RIGHT }
 };
 
 /* Snap zones: how close to a screen edge the pointer must be. */
@@ -119,6 +123,9 @@ static const int k_preview_line = 4;
 static const ActionMask k_snap_actions =
     (1u << ACT_DOCK_LEFT) | (1u << ACT_DOCK_CENTER) | (1u << ACT_DOCK_RIGHT) |
     (1u << ACT_SNAP_TOP) | (1u << ACT_SNAP_BOTTOM);
+
+static const ActionMask k_task_actions =
+    (1u << ACT_TASK_FIRST) | (1u << ACT_TASK_LEFT) | (1u << ACT_TASK_RIGHT);
 
 /* How long the desktop name stays up after a switch. */
 static const unsigned long k_osd_ms = 900;
@@ -1509,6 +1516,10 @@ ActionMask Wm::allowed(const Client* c) const
     if (!action_allowed(c->actions, ACT_MOVE) ||
         !action_allowed(c->actions, ACT_SIZE) || c->fullscreen)
         m &= ~k_snap_actions;
+    /* Moving a taskbar button needs one, whatever the window's hints. */
+    m &= ~k_task_actions;
+    if (shell_ && on_taskbar(c))
+        m |= k_task_actions;
     return m;
 }
 
@@ -1814,6 +1825,11 @@ void Wm::request(ToplevelId id, WmAction action)
         break;
     case ACT_CLOSE:
         close(c);
+        break;
+    case ACT_TASK_FIRST:
+    case ACT_TASK_LEFT:
+    case ACT_TASK_RIGHT:
+        shell_->move_task(c->win, action);
         break;
     case ACT_COUNT:
         break;
