@@ -297,23 +297,36 @@ Good scalable fonts that look like Helvetica are Nimbus Sans (the URW
 Type1 fonts: `gsfonts` on Arch, `fonts-urw-base35` on Debian,
 `media-fonts/urw-fonts` on Gentoo), Liberation Sans and DejaVu Sans.
 
-**Font folders.** The X server only reads its font folders when it starts.
+**Installed fonts and their index.** The X server never looks at font
+files directly. In each font folder it reads a `fonts.dir` file that lists
+the fonts there and their names, and a folder without that index is
+useless to it. `mkfontscale` and `mkfontdir` write the index. Programs such
+as Firefox and GTK or Qt applications do not need it, because they use
+fontconfig, which reads the font files itself. That is why a TrueType font
+can work in every other program but not in ttr.
+
+When ttr starts, it adds every font folder that has an index to the X
+server's font path, like `xset fp+`. It looks under `/usr/share/fonts`,
+`/usr/share/X11/fonts`, `/usr/lib/X11/fonts` (IRIX),
+`/usr/local/share/fonts`, `~/.local/share/fonts` and `~/.fonts`, and it
+reports which folders it added. It also reports the folders that hold
+fonts but have no index ("N font folders without fonts.dir"). This
+matters because the X server only reads its font folders when it starts.
 It leaves out the ones that were missing or empty then, and it never sees
-folders it was not told about, such as `/usr/share/fonts/dejavu`. So when
-ttr starts, it adds every font folder that has a `fonts.dir` index to the
-X server's font path, like `xset fp+`. It looks under `/usr/share/fonts`,
-`/usr/share/X11/fonts`, `/usr/lib/X11/fonts` (IRIX), `/usr/local/share/fonts`,
-`~/.local/share/fonts` and `~/.fonts`. It reports the folders it added, and
-the ones it could not add because they have no index. To index a folder:
+folders nobody told it about, such as `/usr/share/fonts/dejavu`.
+
+To index every font folder once, then use Start > Restart ttr:
 
 ```sh
-sudo mkfontscale /usr/share/fonts/TTF && sudo mkfontdir /usr/share/fonts/TTF
+for d in /usr/share/fonts/*/; do sudo mkfontscale "$d"; sudo mkfontdir "$d"; done
 ```
 
-On Arch, `xorg-mkfontscale` does this by itself when font packages are
-installed. After installing fonts, use Start > Restart ttr. Folders
-anywhere else can be added in Settings > Appearance > **Font folders**
-(the `fontPath` setting, folders separated by colons).
+On Arch, `xorg-mkfontscale` indexes folders by itself when font packages
+are installed, but not the ones that were installed before it.
+
+**Font folders** in Settings > Appearance (the `fontPath` setting, folders
+separated by colons) is only for fonts outside the folders listed above,
+for example `/opt/myfonts`. Those folders need an index too.
 
 **IRIX.** The X server in IRIX 6.5 has Type1 fonts in
 `/usr/lib/X11/fonts/Type1`. If your release can also use TrueType fonts,
