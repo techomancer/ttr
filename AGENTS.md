@@ -26,3 +26,7 @@ Design principles:
   through one wrapper file each; never edit it in place.
 
 The design decisions are recorded in docs/wm-design.md.
+
+README.md is for people who build and use ttr. When a change adds or alters
+something they see (a feature, a setting, a key, a file, a build step or
+dependency), update README.md in the same commit.
