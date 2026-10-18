@@ -152,6 +152,7 @@ void Tray::dock(Window icon)
     Item it;
     it.win = icon;
     it.mapped = map;
+    it.rect = Rect(0, 0, icon_size(), icon_size());
     items_.push_back(it);
     if (map)
         XMapRaised(dpy_, icon);
@@ -280,24 +281,51 @@ void Tray::layout()
     XtSetArg(args[0], XmNheight, &h);
     XtGetValues(area_, args, 1);
     int x = pad(), i;
+    bool moved = false;
     for (i = 0; i < builtins_.size(); i++)
         if (builtins_[i]->visible())
             x += icon_size() + gap();
     for (i = 0; i < items_.size(); i++) {
         if (!items_[i].mapped)
             continue;
-        XMoveResizeWindow(dpy_, items_[i].win, x,
-                          ((int)h - icon_size()) / 2, icon_size(),
-                          icon_size());
+        Rect r(x, ((int)h - icon_size()) / 2, icon_size(), icon_size());
+        if (r.x != items_[i].rect.x || r.y != items_[i].rect.y ||
+            r.w != items_[i].rect.w || r.h != items_[i].rect.h) {
+            XMoveResizeWindow(dpy_, items_[i].win, r.x, r.y, r.w, r.h);
+            items_[i].rect = r;
+            moved = true;
+        }
         x += icon_size() + gap();
     }
     int w = preferred_width();
+    /* A width change moves the tray; its Expose refreshes the icons. */
+    if (moved && w == last_width_)
+        refresh_icons();
     if (w != last_width_) {
         last_width_ = w;
         if (resized_)
             resized_(closure_);
     }
     paint();
+}
+
+/* Make the docked icons redraw. Moving or resizing the tray (it is
+ * right-aligned, so it moves whenever its width changes) can leave stale
+ * or half-cleared icons, and some clients never repaint them unasked. */
+void Tray::refresh_icons()
+{
+    int i;
+    for (i = 0; i < items_.size(); i++)
+        if (items_[i].mapped)
+            XClearArea(dpy_, items_[i].win, 0, 0, 0, 0, True);
+}
+
+void Tray::exposed(XEvent* ev)
+{
+    paint();
+    /* The last Expose of a series: the tray has settled. */
+    if (!ev || (ev->type == Expose && ev->xexpose.count == 0))
+        refresh_icons();
 }
 
 void Tray::paint()

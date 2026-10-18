@@ -27,6 +27,8 @@ public:
 
     int preferred_width();
     void paint();
+    /* Expose on the tray area: repaint and make docked icons redraw. */
+    void exposed(XEvent* ev);
     /* Built-in icons, left to right, before the docked ones. */
     void add_item(TrayItem* item);
     /* Something about the built-in icons changed. */
@@ -38,6 +40,7 @@ private:
     struct Item {
         Window win;
         bool mapped;
+        Rect rect;      /* last placement in the tray */
     };
 
     static void event_cb(Widget w, XtPointer closure, XEvent* ev,
@@ -51,6 +54,7 @@ private:
     void remove(Window icon);
     int find(Window icon);
     void layout();
+    void refresh_icons();
     void clock_text(char* buf, int size);
     void schedule_clock();
 

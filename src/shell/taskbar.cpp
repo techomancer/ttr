@@ -440,10 +440,9 @@ void Taskbar::tasks_input_cb(Widget w, XtPointer closure, XtPointer call)
 void Taskbar::tray_expose_cb(Widget w, XtPointer closure, XtPointer call)
 {
     (void)w;
-    (void)call;
     Taskbar* self = (Taskbar*)closure;
     if (self->tray_)
-        self->tray_->paint();
+        self->tray_->exposed(((XmDrawingAreaCallbackStruct*)call)->event);
 }
 
 /* A built-in tray icon (network, volume) appeared or changed. */
