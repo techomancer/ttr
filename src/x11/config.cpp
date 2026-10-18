@@ -6,6 +6,8 @@
 #include <X11/StringDefs.h>
 #include <X11/Xatom.h>
 
+#include <dirent.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -417,69 +419,136 @@ static int font_path_error(Display* dpy, XErrorEvent* ev)
     return 0;
 }
 
-/* Add the folders in 'list' (colon separated, ~ expanded) to the end of
- * the X server's font path, like xset fp+, so the fonts in them can be
- * used: Type1 and TrueType ones at any size. A folder needs a fonts.dir
- * index (made by mkfontscale and mkfontdir); others are skipped, with a
- * message unless 'quiet'. Folders already on the path are left alone. */
-static void add_font_path(Display* dpy, const char* list, bool quiet)
+/* Same folder, ignoring a trailing slash. */
+static bool same_dir(const char* a, const char* b)
 {
-    if (!list || !*list)
-        return;
-    int n = 0;
-    char** old = XGetFontPath(dpy, &n);
-    Vector<Str> dirs;
+    int la = (int)strlen(a), lb = (int)strlen(b);
+    while (la > 1 && a[la - 1] == '/')
+        la--;
+    while (lb > 1 && b[lb - 1] == '/')
+        lb--;
+    return la == lb && strncmp(a, b, la) == 0;
+}
+
+static bool listed(const Vector<Str>& v, const char* dir)
+{
     int i;
-    for (i = 0; i < n; i++)
-        dirs.push_back(Str(old[i]));
-    if (old)
-        XFreeFontPath(old);
-    int had = dirs.size();
+    for (i = 0; i < v.size(); i++)
+        if (same_dir(v[i].c_str(), dir))
+            return true;
+    return false;
+}
 
-    Str expanded = expand_home(list);
-    const char* p = expanded.c_str();
-    while (*p) {
-        const char* e = strchr(p, ':');
-        int len = e ? (int)(e - p) : (int)strlen(p);
-        char dir[1024], index[1100];
-        if (len > 0 && len < (int)sizeof(dir)) {
-            memcpy(dir, p, len);
-            dir[len] = 0;
-            while (len > 1 && dir[len - 1] == '/')
-                dir[--len] = 0;
-            bool present = false;
-            for (i = 0; i < dirs.size(); i++) {
-                const char* d = dirs[i].c_str();
-                int dl = (int)strlen(d);
-                if (dl > 0 && d[dl - 1] == '/')
-                    dl--;
-                if (dl == len && strncmp(d, dir, len) == 0)
-                    present = true;
-            }
-            sprintf(index, "%s/fonts.dir", dir);
-            if (!present && access(index, R_OK) != 0) {
-                /* A standard folder that is missing is fine; one with no
-                 * index is worth a word. */
-                if (!quiet || access(dir, F_OK) == 0)
-                    fprintf(stderr, "ttr: font folder %s has no fonts.dir; "
-                                    "run mkfontscale and mkfontdir in it\n",
-                            dir);
-            } else if (!present) {
-                dirs.push_back(Str(dir));
-            }
+static bool has_index(const char* dir)
+{
+    char path[1100];
+    if (strlen(dir) > 1000)
+        return false;
+    sprintf(path, "%s/fonts.dir", dir);
+    return access(path, R_OK) == 0;
+}
+
+/* Does 'dir' hold font files the X server could use? */
+static bool has_font_files(const char* dir)
+{
+    static const char* const exts[] = {
+        ".ttf", ".TTF", ".otf", ".ttc", ".pfa", ".pfb", ".pcf", ".pcf.gz",
+        ".bdf", ".bdf.gz", 0
+    };
+    DIR* d = opendir(dir);
+    if (!d)
+        return false;
+    bool found = false;
+    struct dirent* de;
+    while (!found && (de = readdir(d)) != 0) {
+        int n = (int)strlen(de->d_name), k;
+        for (k = 0; exts[k] && !found; k++) {
+            int e = (int)strlen(exts[k]);
+            found = n > e && strcmp(de->d_name + n - e, exts[k]) == 0;
         }
-        if (!e)
-            break;
-        p = e + 1;
     }
-    if (dirs.size() == had)
-        return;
+    closedir(d);
+    return found;
+}
 
-    char** path = new char*[dirs.size()];
+/* Font folders on Linux and IRIX. The classic ones come first, in this
+ * order, so that a font name matches the same font it did before. */
+static const char* const k_font_roots[] = {
+    "/usr/share/fonts", "/usr/share/X11/fonts", "/usr/X11R6/lib/X11/fonts",
+    "/usr/lib/X11/fonts", "/usr/local/share/fonts", "~/.local/share/fonts",
+    "~/.fonts", 0
+};
+static const char* const k_first_dirs[] = {
+    "misc", "75dpi", "100dpi", "Type1", 0
+};
+
+/* A folder with fonts.dir goes on 'out'; one with font files but no
+ * index on 'unindexed'. */
+static void consider(const char* dir, Vector<Str>* out,
+                     Vector<Str>* unindexed)
+{
+    if (listed(*out, dir))
+        return;
+    if (has_index(dir))
+        out->push_back(Str(dir));
+    else if (has_font_files(dir))
+        unindexed->push_back(Str(dir));
+}
+
+/* Each root, then its classic subfolders, then the others by name. */
+static void scan_font_roots(Vector<Str>* out, Vector<Str>* unindexed)
+{
+    int r, k, i, j;
+    for (r = 0; k_font_roots[r]; r++) {
+        Str root = expand_home(k_font_roots[r]);
+        if (root.length() > 900)
+            continue;
+        DIR* d = opendir(root.c_str());
+        if (!d)
+            continue;
+        consider(root.c_str(), out, unindexed);
+        char sub[1100];
+        for (k = 0; k_first_dirs[k]; k++) {
+            sprintf(sub, "%s/%s", root.c_str(), k_first_dirs[k]);
+            consider(sub, out, unindexed);
+        }
+        Vector<Str> names;
+        struct dirent* de;
+        while ((de = readdir(d)) != 0) {
+            if (de->d_name[0] == '.' || strlen(de->d_name) > 150)
+                continue;
+            sprintf(sub, "%s/%s", root.c_str(), de->d_name);
+            DIR* t = opendir(sub);
+            if (!t)
+                continue;   /* not a folder */
+            closedir(t);
+            names.push_back(Str(de->d_name));
+        }
+        closedir(d);
+        /* By name, so the path is the same every time. */
+        for (i = 1; i < names.size(); i++)
+            for (j = i; j > 0 && strcmp(names[j - 1].c_str(),
+                                        names[j].c_str()) > 0; j--) {
+                Str t = names[j];
+                names[j] = names[j - 1];
+                names[j - 1] = t;
+            }
+        for (i = 0; i < names.size(); i++) {
+            sprintf(sub, "%s/%s", root.c_str(), names[i].c_str());
+            consider(sub, out, unindexed);
+        }
+    }
+}
+
+/* Set the server's font path; false if it refused it. A folder the
+ * server cannot read is an X error, and Xt's handler would exit, so the
+ * error is caught. */
+static bool set_font_path(Display* dpy, const Vector<Str>& dirs)
+{
+    char** path = new char*[dirs.size() > 0 ? dirs.size() : 1];
+    int i;
     for (i = 0; i < dirs.size(); i++)
         path[i] = (char*)dirs[i].c_str();
-    /* A folder the server cannot read is an X error, and Xt's handler
-     * would exit; catch it instead. */
     XSync(dpy, False);
     g_font_path_error = 0;
     XErrorHandler prev = XSetErrorHandler(font_path_error);
@@ -487,26 +556,96 @@ static void add_font_path(Display* dpy, const char* list, bool quiet)
     XSync(dpy, False);
     XSetErrorHandler(prev);
     delete [] path;
-    if (g_font_path_error) {
-        fprintf(stderr, "ttr: the X server refused the font folders\n");
-        return;
-    }
-    for (i = had; i < dirs.size(); i++)
-        fprintf(stderr, "ttr: added %s to the X font path\n",
-                dirs[i].c_str());
+    return !g_font_path_error;
 }
 
-/* The usual font folders on Linux and IRIX. The X server drops folders
- * that are missing or empty when it starts, and installing fonts later
- * does not bring them back (xset fp rehash only rereads the path), so
- * the ones that exist now are added. */
-static const char* const k_std_font_dirs =
-    "/usr/share/fonts/misc:/usr/share/fonts/75dpi:/usr/share/fonts/100dpi:"
-    "/usr/share/fonts/Type1:/usr/share/fonts/TTF:/usr/share/fonts/OTF:"
-    "/usr/share/X11/fonts/misc:/usr/share/X11/fonts/75dpi:"
-    "/usr/share/X11/fonts/100dpi:/usr/share/X11/fonts/Type1:"
-    "/usr/lib/X11/fonts/misc:/usr/lib/X11/fonts/75dpi:"
-    "/usr/lib/X11/fonts/100dpi:/usr/lib/X11/fonts/Type1";
+/* Add font folders to the end of the X server's font path, like xset
+ * fp+: every folder with a fonts.dir index under the usual font roots,
+ * then the ones in 'user' (colon separated, ~ expanded). The server only
+ * reads its font folders when it starts, and leaves out the ones that are
+ * missing or empty then, so fonts installed later, and fonts in folders
+ * it never knew (TrueType ones in /usr/share/fonts/<family>), need this.
+ * Folders already on the path are left alone. */
+static void update_font_path(Display* dpy, const char* user)
+{
+    int n = 0, i;
+    char** old = XGetFontPath(dpy, &n);
+    Vector<Str> path;
+    for (i = 0; i < n; i++)
+        path.push_back(Str(old[i]));
+    if (old)
+        XFreeFontPath(old);
+
+    Vector<Str> found, unindexed;
+    scan_font_roots(&found, &unindexed);
+    if (user && *user) {
+        Str list = expand_home(user);
+        const char* p = list.c_str();
+        while (*p) {
+            const char* e = strchr(p, ':');
+            int len = e ? (int)(e - p) : (int)strlen(p);
+            if (len > 0 && len < 1000) {
+                char dir[1024];
+                memcpy(dir, p, len);
+                dir[len] = 0;
+                if (has_index(dir)) {
+                    if (!listed(found, dir))
+                        found.push_back(Str(dir));
+                } else {
+                    fprintf(stderr, "ttr: font folder %s has no fonts.dir; "
+                                    "run mkfontscale and mkfontdir in it\n",
+                            dir);
+                }
+            }
+            if (!e)
+                break;
+            p = e + 1;
+        }
+    }
+
+    Vector<Str> add;
+    for (i = 0; i < found.size(); i++)
+        if (!listed(path, found[i].c_str()))
+            add.push_back(found[i]);
+
+    int had = path.size();
+    for (i = 0; i < add.size(); i++)
+        path.push_back(add[i]);
+    if (add.size() > 0 && !set_font_path(dpy, path)) {
+        /* One bad folder spoils the request; add them one at a time. */
+        while (path.size() > had)
+            path.remove_at(path.size() - 1);
+        for (i = 0; i < add.size(); i++) {
+            path.push_back(add[i]);
+            if (!set_font_path(dpy, path)) {
+                fprintf(stderr, "ttr: the X server cannot use the fonts in "
+                                "%s\n", add[i].c_str());
+                path.remove_at(path.size() - 1);
+            }
+        }
+    }
+    if (path.size() > had) {
+        fprintf(stderr, "ttr: added %d font folder%s to the X font path:",
+                path.size() - had, path.size() - had == 1 ? "" : "s");
+        for (i = had; i < path.size(); i++)
+            fprintf(stderr, " %s", path[i].c_str());
+        fprintf(stderr, "\n");
+    }
+
+    if (unindexed.size() > 0) {
+        fprintf(stderr, "ttr: %d font folder%s without fonts.dir, so the X "
+                        "server cannot use %s (run mkfontscale and "
+                        "mkfontdir in %s):", unindexed.size(),
+                unindexed.size() == 1 ? "" : "s",
+                unindexed.size() == 1 ? "it" : "them",
+                unindexed.size() == 1 ? "it" : "each");
+        for (i = 0; i < unindexed.size() && i < 4; i++)
+            fprintf(stderr, " %s", unindexed[i].c_str());
+        if (unindexed.size() > 4)
+            fprintf(stderr, " ...");
+        fprintf(stderr, "\n");
+    }
+}
 
 static bool is(const char* a, const char* b)
 {
@@ -572,8 +711,7 @@ void read_config(Widget toplevel, Config* cfg)
         cfg->desktops = k_max_desktops;
 
     Display* dpy = XtDisplay(toplevel);
-    add_font_path(XtDisplay(toplevel), k_std_font_dirs, true);
-    add_font_path(XtDisplay(toplevel), r.font_path, false);
+    update_font_path(XtDisplay(toplevel), r.font_path);
     cfg->font_path = r.font_path ? r.font_path : "";
 
     /* As set; what is loaded is resolved below. */

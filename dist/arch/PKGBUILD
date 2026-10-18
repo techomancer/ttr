@@ -13,7 +13,12 @@ pkgdesc="To The Roots: mwm-style window manager with a Windows 2000-style taskba
 arch=('x86_64' 'aarch64')
 url="https://github.com/techomancer/ttr"
 license=('BSD-3-Clause')
-depends=('openmotif' 'libxt' 'libxpm' 'libpng' 'dbus' 'libx11')
+# ttr draws with X core fonts: the bitmap fonts have Helvetica in every
+# size the UI scale needs, and mkfontscale indexes font folders (fonts.dir)
+# as font packages are installed, so the X server can use them.
+depends=('openmotif' 'libxt' 'libxpm' 'libpng' 'dbus' 'libx11'
+         'xorg-fonts-75dpi' 'xorg-fonts-100dpi' 'xorg-fonts-misc'
+         'xorg-mkfontscale')
 makedepends=('git')
 optdepends=('xorg-server-xephyr: tools/nested.sh, to try ttr in a window'
             'wireplumber: volume control with PipeWire (wpctl)'
@@ -21,7 +26,11 @@ optdepends=('xorg-server-xephyr: tools/nested.sh, to try ttr in a window'
             'alsa-utils: volume control with ALSA (amixer)'
             'pavucontrol: sound panel from the volume menu'
             'udisks2: mount removable drives without root (udisksctl)'
-            'xterm: the default terminal')
+            'xterm: the default terminal'
+            'gsfonts: scalable Type1 fonts, Nimbus Sans is like Helvetica'
+            'ttf-dejavu: scalable TrueType fonts'
+            'ttf-liberation: scalable TrueType fonts'
+            'xorg-xlsfonts: list the fonts the X server has')
 provides=('ttr')
 conflicts=('ttr')
 source=('ttr::git+https://github.com/techomancer/ttr.git'

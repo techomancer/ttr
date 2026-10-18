@@ -404,10 +404,20 @@ ways, all applied once at startup (changing it restarts ttr):
   fonts, then any font, and finally any weight. Aliases such as `fixed`
   are resolved to their XLFD first. Many systems have no bitmap fonts
   beyond the server's built-in `fixed`. The X server drops font folders
-  that are missing or empty when it starts, and installing fonts later
-  does not bring them back. So at startup ttr adds the usual Linux and IRIX
-  font folders that exist with a `fonts.dir`, and `fontPath` can add more
-  (both like `xset fp+`).
+  that are missing or empty when it starts, installing fonts later does
+  not bring them back, and distributions put TrueType fonts in folders
+  the server never knew about (`/usr/share/fonts/<family>`). So at startup
+  ttr adds every folder with a `fonts.dir` under the usual font roots
+  (Linux, X11R6, IRIX, the user's) to the end of the server's font path,
+  like `xset fp+`. The classic folders come first, so a font name keeps
+  matching the font it matched before. If the server refuses the request,
+  the folders are added one at a time and the bad one is skipped.
+  `fontPath` adds more folders.
+- **Scalable fonts.** Type1 and TrueType fonts come through the X server
+  too (its FreeType or Type1 rasterizer), so Motif widgets and our drawing
+  use the same fonts. That matters on IRIX, whose Motif 2.1 can only use
+  core fonts. The Settings dialog marks scalable families (pixel size 0 in
+  their XLFDs).
   Client-side Xft fonts are not used: IRIX has no Xft, and core fonts keep
   one code path.
 - **Our own drawing.** Pixel sizes in frames, the taskbar, the tray, menus,

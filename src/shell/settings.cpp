@@ -26,8 +26,10 @@ namespace ttr {
 
 static const int k_label_width = 140;
 
+/* Bitmap fonts have some of these; scalable (Type1, TrueType) ones all. */
 static const char* const k_sizes[] = {
-    "8", "10", "11", "12", "13", "14", "16", "18", "20", "24"
+    "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "20",
+    "22", "24", "26", "28", "32", "36"
 };
 static const int k_nsizes = (int)(sizeof(k_sizes) / sizeof(k_sizes[0]));
 
@@ -232,11 +234,14 @@ Widget SettingsDialog::drop_down(Widget parent, const char* name,
     for (i = 0; i < count; i++)
         strs[i] = xmstr(items[i]);
     Arg args[4];
-    XtSetArg(args[0], XmNitems, strs);
-    XtSetArg(args[1], XmNitemCount, count);
-    XtSetArg(args[2], XmNvisibleItemCount, visible);
-    XtSetArg(args[3], XmNcolumns, columns);
-    Widget cb = XmCreateDropDownList(parent, (char*)name, args, 4);
+    int n = 0;
+    XtSetArg(args[n], XmNvisibleItemCount, visible); n++;
+    XtSetArg(args[n], XmNcolumns, columns); n++;
+    if (count > 0) {    /* Motif reads items[0] even when there are none */
+        XtSetArg(args[n], XmNitems, strs); n++;
+        XtSetArg(args[n], XmNitemCount, count); n++;
+    }
+    Widget cb = XmCreateDropDownList(parent, (char*)name, args, n);
     for (i = 0; i < count; i++)
         XmStringFree(strs[i]);
     delete [] strs;
@@ -323,17 +328,23 @@ Widget SettingsDialog::text_field(Widget parent, const char* value,
 /* ------------------------------------------------------------------ */
 /* Fonts                                                               */
 
+/* The families the X server has, sorted. Scalable ones (Type1, TrueType:
+ * pixel size 0 in their names) are marked with a *, since they come in
+ * every size. */
 void SettingsDialog::load_families()
 {
     families_.clear();
+    family_labels_.clear();
+    Vector<int> scalable;
     int n = 0;
     char** names = XListFonts(XtDisplay(parent_),
-                              "-*-*-*-r-*--*-*-*-*-*-*-iso8859-1", 8000, &n);
+                              "-*-*-*-r-*--*-*-*-*-*-*-iso8859-1", 60000, &n);
     int i, j;
     for (i = 0; i < n; i++) {
         Str fam = xlfd_field(names[i], 2);
         if (fam.empty())
             continue;
+        int is_scalable = strcmp(xlfd_field(names[i], 7).c_str(), "0") == 0;
         /* Insert sorted, skipping duplicates. */
         int at = families_.size();
         bool dup = false;
@@ -341,6 +352,8 @@ void SettingsDialog::load_families()
             int c = compare_nocase(fam.c_str(), families_[j].c_str());
             if (c == 0) {
                 dup = true;
+                if (is_scalable)
+                    scalable[j] = 1;
                 break;
             }
             if (c < 0) {
@@ -351,12 +364,31 @@ void SettingsDialog::load_families()
         if (dup)
             continue;
         families_.push_back(fam);
-        for (j = families_.size() - 1; j > at; j--)
+        scalable.push_back(is_scalable);
+        for (j = families_.size() - 1; j > at; j--) {
             families_[j] = families_[j - 1];
+            scalable[j] = scalable[j - 1];
+        }
         families_[at] = fam;
+        scalable[at] = is_scalable;
     }
     if (names)
         XFreeFontNames(names);
+    for (i = 0; i < families_.size(); i++) {
+        char label[300];
+        sprintf(label, "%.200s%s", families_[i].c_str(),
+                scalable[i] ? " *" : "");
+        family_labels_.push_back(Str(label));
+    }
+}
+
+int SettingsDialog::family_index(const char* family)
+{
+    int k;
+    for (k = 0; k < families_.size(); k++)
+        if (compare_nocase(families_[k].c_str(), family) == 0)
+            return k;
+    return -1;
 }
 
 void SettingsDialog::font_row(FontRow* r, Widget parent, const char* label,
@@ -368,8 +400,21 @@ void SettingsDialog::font_row(FontRow* r, Widget parent, const char* label,
     const char** fams = new const char*[families_.size() + 1];
     int i;
     for (i = 0; i < families_.size(); i++)
-        fams[i] = families_[i].c_str();
-    r->family = drop_down(rc, "family", fams, families_.size(), 15, 18);
+        fams[i] = family_labels_[i].c_str();
+    /* A combo box widens to its longest entry, and some families have
+     * long names: keep the width 18 columns give an empty one. */
+    r->family = drop_down(rc, "family", fams, 0, 15, 18);
+    Dimension fw = 0;
+    Arg wargs[1];
+    XtSetArg(wargs[0], XmNwidth, &fw);
+    XtGetValues(r->family, wargs, 1);
+    for (i = 0; i < families_.size(); i++) {
+        XmString item = xmstr(fams[i]);
+        XmComboBoxAddItem(r->family, item, 0, False);
+        XmStringFree(item);
+    }
+    XtSetArg(wargs[0], XmNwidth, fw);
+    XtSetValues(r->family, wargs, 1);
     delete [] fams;
     r->size = drop_down(rc, "size", k_sizes, k_nsizes, k_nsizes, 3);
 
@@ -391,17 +436,13 @@ void SettingsDialog::font_row(FontRow* r, Widget parent, const char* label,
         size = xlfd_field(current, 7);
     /* A family that is not installed shows as the one ttr uses instead,
      * so OK does not replace it with the first one on the list. */
-    int k;
-    bool installed = false;
-    for (k = 0; k < families_.size(); k++)
-        if (compare_nocase(families_[k].c_str(), fam.c_str()) == 0)
-            installed = true;
-    if (!installed) {
+    if (family_index(fam.c_str()) < 0) {
         Str used = xlfd_field(resolved, 2);
         if (!used.empty())
             fam = used;
     }
-    select_item(r->family, fam.empty() ? "helvetica" : fam.c_str());
+    int k = family_index(fam.empty() ? "helvetica" : fam.c_str());
+    select_item(r->family, k >= 0 ? family_labels_[k].c_str() : "");
     select_item(r->size, size.empty() || size.c_str()[0] == '*'
                              ? "12" : size.c_str());
     XmToggleButtonSetState(r->bold, strstr(weight.c_str(), "bold") != 0,
@@ -592,6 +633,10 @@ void SettingsDialog::build()
     XmString fpl = xmstr("for Type1 and TrueType fonts");
     XtSetArg(pargs[0], XmNlabelString, fpl);
     XtManageChild(XmCreateLabel(fprow, (char*)"unit", pargs, 1));
+    XmStringFree(fpl);
+    fpl = xmstr("* scalable (Type1, TrueType): every size looks sharp");
+    XtSetArg(pargs[0], XmNlabelString, fpl);
+    XtManageChild(XmCreateLabel(row(f, ""), (char*)"note", pargs, 1));
     XmStringFree(fpl);
 
     /* Taskbar */

@@ -53,6 +53,7 @@ private:
     Str font_name(FontRow* r);
     void update_preview(FontRow* r);
     void load_families();
+    int family_index(const char* family);   /* in families_, or -1 */
     void save();
     void error(const char* msg);
 
@@ -84,7 +85,8 @@ private:
     Widget source_;
     Widget toolchest_;
     Widget terminal_;
-    Vector<Str> families_;
+    Vector<Str> families_;          /* sorted */
+    Vector<Str> family_labels_;     /* as shown: scalable ones marked */
     Widget categories_;
     Widget pages_[PAGE_COUNT];
     int current_page_;          /* kept across opening the dialog */

@@ -270,51 +270,57 @@ starts your session.
 
 ### Fonts
 
-ttr uses the X server's own fonts (core fonts), as mwm does, so it looks
-the same on Linux and IRIX. By default it uses Helvetica. If a font is not
-installed, ttr picks the nearest one that is, and says so on its standard
-error. With only the X server's built-in `fixed` font, text cannot get
-larger with the UI scale.
+ttr uses the X server's own fonts (core fonts), as mwm does. Menus,
+dialogs, window titles and the taskbar therefore all render the same way,
+on Linux and on IRIX. Both bitmap fonts and scalable ones work:
 
-Install the classic bitmap fonts. They have Helvetica up to 34 pixels,
-which is enough for 250%:
+- **Bitmap fonts** (the default Helvetica) come in fixed sizes. ttr uses
+  the nearest size that is installed.
+- **Scalable fonts**, Type1 and TrueType, are drawn by the X server at
+  exactly the size asked for, which suits a large UI scale best. They are
+  marked with `*` in the font lists on Settings > Appearance.
+
+If a font is not installed, ttr picks the nearest one that is, and says so
+on its standard error. With only the X server's built-in `fixed` font,
+text cannot get larger with the UI scale.
+
+**What to install.** The classic bitmap fonts have Helvetica up to 34
+pixels, which is enough for 250%:
 
 | Distribution | Packages |
 |---|---|
-| Arch, CachyOS | `xorg-fonts-75dpi xorg-fonts-100dpi xorg-fonts-misc` |
+| Arch, CachyOS | `xorg-fonts-75dpi xorg-fonts-100dpi xorg-fonts-misc xorg-mkfontscale` (the `dist/arch` package depends on these) |
 | Debian, Ubuntu | `xfonts-75dpi xfonts-100dpi xfonts-base` |
 | Gentoo | `media-fonts/font-adobe-75dpi media-fonts/font-adobe-100dpi media-fonts/font-misc-misc` |
 
-ttr adds the usual font folders (`/usr/share/fonts/75dpi`, `100dpi`,
-`Type1`, `TTF` and others) to the X server's font path when it starts, and
-says so on its standard error. This matters because the X server only looks
-at its font folders when it starts. Folders that were missing or empty then
-are left out, and fonts installed later do not show up (`xset q` then shows
-a font path of just `built-ins`). So after installing fonts, use Start >
-Restart ttr. A folder needs a `fonts.dir` index. If ttr reports that one is
-missing, create it:
-
-```sh
-sudo mkfontscale /usr/share/fonts/75dpi && sudo mkfontdir /usr/share/fonts/75dpi
-```
-
-**Scalable fonts.** The X server can also draw Type1 and TrueType fonts at
-any size. It needs them in a folder on its font path, with a `fonts.dir`
-index in the folder. Good choices that look like Helvetica are Nimbus Sans
-(the URW Type1 fonts: `gsfonts` on Arch, `fonts-urw-base35` on Debian,
+Good scalable fonts that look like Helvetica are Nimbus Sans (the URW
+Type1 fonts: `gsfonts` on Arch, `fonts-urw-base35` on Debian,
 `media-fonts/urw-fonts` on Gentoo), Liberation Sans and DejaVu Sans.
 
-- On Arch, install `xorg-mkfontscale` with the fonts: its pacman hook
-  writes the `fonts.dir` files. Folders such as `/usr/share/fonts/TTF` and
-  `/usr/share/fonts/Type1` are on the X server's default path.
-- For any other folder, run `mkfontscale` and then `mkfontdir` in it, and
-  add it in Settings > Appearance > **Font folders** (the `fontPath`
-  setting, folders separated by colons). ttr adds those folders to the X
-  server's font path when it starts, like `xset fp+`.
+**Font folders.** The X server only reads its font folders when it starts.
+It leaves out the ones that were missing or empty then, and it never sees
+folders it was not told about, such as `/usr/share/fonts/dejavu`. So when
+ttr starts, it adds every font folder that has a `fonts.dir` index to the
+X server's font path, like `xset fp+`. It looks under `/usr/share/fonts`,
+`/usr/share/X11/fonts`, `/usr/lib/X11/fonts` (IRIX), `/usr/local/share/fonts`,
+`~/.local/share/fonts` and `~/.fonts`. It reports the folders it added, and
+the ones it could not add because they have no index. To index a folder:
 
-The installed families show up in the font lists on Settings >
-Appearance. `xset q` shows the font path, and `xlsfonts` (in
-`xorg-xlsfonts` on Arch) lists the fonts.
+```sh
+sudo mkfontscale /usr/share/fonts/TTF && sudo mkfontdir /usr/share/fonts/TTF
+```
+
+On Arch, `xorg-mkfontscale` does this by itself when font packages are
+installed. After installing fonts, use Start > Restart ttr. Folders
+anywhere else can be added in Settings > Appearance > **Font folders**
+(the `fontPath` setting, folders separated by colons).
+
+**IRIX.** The X server in IRIX 6.5 has Type1 fonts in
+`/usr/lib/X11/fonts/Type1`. If your release can also use TrueType fonts,
+add their folder under Font folders.
+
+`xset q` shows the font path, and `xlsfonts` lists the fonts (it is in
+`xorg-xlsfonts` on Arch).
 
 ### Optional helper programs
 
