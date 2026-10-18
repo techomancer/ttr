@@ -1979,17 +1979,27 @@ void Wm::apply_state(Client* c, bool restore)
 {
     if (c->fullscreen) {
         set_geometry(c, 0, 0, screen_w_, screen_h_);
-    } else if (c->maximized) {
-        FrameExtents e = extents_of(c);
-        int w = work_.w - e.width(), h = work_.h - e.height();
-        c->size.apply(&w, &h);
-        set_geometry(c, work_.x, work_.y, w, h);
-    } else if (c->snap != SNAP_NONE) {
-        Rect r = snap_rect(c->snap);
+    } else if (c->maximized || c->snap != SNAP_NONE) {
+        /* Fill the slot exactly: resize increments (terminals ask for
+         * whole character cells) would leave a gap, so only the minimum
+         * and maximum sizes apply here. */
+        Rect r = c->maximized ? work_ : snap_rect(c->snap);
         FrameExtents e = extents_of(c);
         int w = r.w - e.width(), h = r.h - e.height();
-        c->size.apply(&w, &h);
-        set_geometry(c, r.x, r.y, w, h);
+        SizeConstraints fit = c->size;
+        fit.inc_w = fit.inc_h = 0;
+        fit.apply(&w, &h);
+        /* A window that still cannot fill it (maximum size) sits against
+         * the edge it was snapped to. */
+        int fw = w + e.width(), fh = h + e.height();
+        int x = r.x, y = r.y;
+        if (c->snap == SNAP_RIGHT)
+            x = r.x + r.w - fw;
+        else if (c->snap == SNAP_CENTER)
+            x = r.x + (r.w - fw) / 2;
+        if (c->snap == SNAP_BOTTOM)
+            y = r.y + r.h - fh;
+        set_geometry(c, x, y, w, h);
     } else if (restore) {
         set_geometry(c, c->saved.x, c->saved.y, c->saved.w, c->saved.h);
     } else {
