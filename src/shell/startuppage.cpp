@@ -3,6 +3,7 @@
 #include "shell/settings.h"
 #include "core/apps.h"
 #include "core/launch.h"
+#include "core/scale.h"
 #include "x11/config.h"
 
 #include <Xm/Xm.h>
@@ -94,7 +95,7 @@ StartupPage::StartupPage(SettingsDialog* dialog, Widget page,
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
     XtSetValues(XtParent(list_), args, n);
     n = 0;
-    XtSetArg(args[n], XmNwidth, 300); n++;
+    XtSetArg(args[n], XmNwidth, scaled(300)); n++;
     XtSetArg(args[n], XmNheight, pref.height); n++;
     XtSetValues(box, args, n);
     XtManageChild(box);
@@ -495,7 +496,7 @@ XdgAutostartPage::XdgAutostartPage(SettingsDialog* dialog, Widget page,
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
     XtSetValues(XtParent(list_), args, n);
     n = 0;
-    XtSetArg(args[n], XmNwidth, 300); n++;
+    XtSetArg(args[n], XmNwidth, scaled(300)); n++;
     XtSetArg(args[n], XmNheight, pref.height); n++;
     XtSetValues(box, args, n);
     XtManageChild(box);

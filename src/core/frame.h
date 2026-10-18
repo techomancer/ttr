@@ -66,6 +66,7 @@ struct FrameTheme {
 
     FrameTheme();
 
+    /* Sizes for the title font and the UI scale (core/scale.h). */
     void fit_font(int font_height);
 
     /* Width of the border for this decoration (0, thin, or full). */

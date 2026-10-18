@@ -269,8 +269,9 @@ bool IconLoader::find_in(const char* dir, const char* name,
 }
 
 /* Bitmaps drawn for the exact size first (artists tune small sizes by
- * hand), then scalable SVG, then other bitmap sizes scaled down, then the
- * legacy pixmaps directories. */
+ * hand), then scalable SVG, then other bitmap sizes: larger ones scaled
+ * down, nearest first, then smaller ones scaled up, then the legacy pixmaps
+ * directories. */
 bool IconLoader::find(const char* name, int size, char* path, int len)
 {
     char dir[32];
@@ -282,10 +283,18 @@ bool IconLoader::find(const char* name, int size, char* path, int len)
     if (find_in("scalable", name, svg, path, len))
         return true;
 #endif
-    static const int sizes[] = { 22, 24, 32, 48, 64, 128, 256, 16 };
+    static const int sizes[] = { 16, 22, 24, 32, 48, 64, 128, 256 };
+    const int nsizes = (int)(sizeof(sizes) / sizeof(sizes[0]));
     int k;
-    for (k = 0; k < (int)(sizeof(sizes) / sizeof(sizes[0])); k++) {
-        if (sizes[k] == size)
+    for (k = 0; k < nsizes; k++) {
+        if (sizes[k] <= size)
+            continue;
+        sprintf(dir, "%dx%d", sizes[k], sizes[k]);
+        if (find_in(dir, name, k_bitmap_exts, path, len))
+            return true;
+    }
+    for (k = nsizes - 1; k >= 0; k--) {
+        if (sizes[k] >= size)
             continue;
         sprintf(dir, "%dx%d", sizes[k], sizes[k]);
         if (find_in(dir, name, k_bitmap_exts, path, len))

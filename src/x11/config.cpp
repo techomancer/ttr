@@ -1,4 +1,5 @@
 #include "x11/config.h"
+#include "core/scale.h"
 #include "core/settings.h"
 
 #include <X11/StringDefs.h>
@@ -51,6 +52,7 @@ struct Resources {
     String notification_log;
     String autostart_script;
     String xdg_autostart;
+    String ui_scale;
 };
 
 #define RES(name, cls, field, def) \
@@ -73,7 +75,8 @@ static XtResource k_resources[] = {
     RES("notificationTime", "NotificationTime", notification_time, "5"),
     RES("notificationLog", "NotificationLog", notification_log, ""),
     RES("autostartScript", "AutostartScript", autostart_script, "true"),
-    RES("xdgAutostart", "XdgAutostart", xdg_autostart, "false")
+    RES("xdgAutostart", "XdgAutostart", xdg_autostart, "false"),
+    RES("uiScale", "UiScale", ui_scale, "100")
 };
 
 #undef RES
@@ -84,7 +87,7 @@ Config::Config()
       terminal("xterm -e"), clock_format("%H:%M"), title_font(BOLD_12),
       menu_font(BOLD_12), taskbar_font(MEDIUM_12), desktops(4),
       dock_div(3), notification_ms(5000), autostart_script(true),
-      xdg_autostart(false)
+      xdg_autostart(false), ui_scale(100)
 {
 }
 
@@ -131,6 +134,95 @@ void merge_settings_file(Widget toplevel, int argc, char** argv)
     delete [] copy;
 }
 
+/* Split an XLFD into its 14 fields; false if it is not one. */
+static bool xlfd_split(const char* name, char fields[14][128])
+{
+    if (name[0] != '-')
+        return false;
+    const char* p = name + 1;
+    int f;
+    for (f = 0; f < 14; f++) {
+        const char* e = strchr(p, '-');
+        if (f == 13)
+            e = p + strlen(p);
+        if (!e || e - p >= 128)
+            return false;
+        memcpy(fields[f], p, e - p);
+        fields[f][e - p] = 0;
+        p = *e ? e + 1 : e;
+    }
+    return true;
+}
+
+static Str xlfd_join(char fields[14][128])
+{
+    char buf[14 * 129 + 2];
+    char* o = buf;
+    int f;
+    for (f = 0; f < 14; f++) {
+        *o++ = '-';
+        strcpy(o, fields[f]);
+        o += strlen(o);
+    }
+    *o = 0;
+    return Str(buf);
+}
+
+static bool loadable(Display* dpy, const char* name)
+{
+    XFontStruct* f = XLoadQueryFont(dpy, name);
+    if (f)
+        XFreeFont(dpy, f);
+    return f != 0;
+}
+
+/* Fields are numbered from 0 here: 6 is the pixel size, 7 the point
+ * size (in tenths). */
+Str scale_font(Display* dpy, const char* name, int percent)
+{
+    char fields[14][128];
+    if (percent == 100 || !xlfd_split(name, fields))
+        return Str(name);
+    int px = atoi(fields[6]), pt = atoi(fields[7]);
+    if (px <= 0 && pt <= 0)
+        return Str(name);
+    /* Without a pixel size, take points (in tenths) as pixels. */
+    int target = px > 0 ? (px * percent + 50) / 100
+                        : (pt * percent / 10 + 50) / 100;
+    sprintf(fields[6], "%d", target);
+    strcpy(fields[7], "*");
+    strcpy(fields[8], "*");
+    strcpy(fields[9], "*");
+    strcpy(fields[11], "*");
+    Str want = xlfd_join(fields);
+    if (loadable(dpy, want.c_str()))
+        return want;
+
+    /* Bitmap fonts come in a few sizes: take the nearest one there is. */
+    strcpy(fields[6], "*");
+    Str pattern = xlfd_join(fields);
+    int n = 0;
+    char** names = XListFonts(dpy, pattern.c_str(), 2000, &n);
+    Str best(name);
+    int best_d = -1, i;
+    for (i = 0; i < n; i++) {
+        char f2[14][128];
+        if (!xlfd_split(names[i], f2))
+            continue;
+        int size = atoi(f2[6]);
+        if (size <= 0)
+            continue;       /* scalable: would have loaded above */
+        int d = size > target ? size - target : target - size;
+        if (best_d < 0 || d < best_d) {
+            best_d = d;
+            best = names[i];
+        }
+    }
+    if (names)
+        XFreeFontNames(names);
+    return best;
+}
+
 /* A font that cannot be loaded falls back to the default. */
 static Str usable_font(Display* dpy, const char* name, const char* def)
 {
@@ -142,6 +234,44 @@ static Str usable_font(Display* dpy, const char* name, const char* def)
     if (name && *name && strcmp(name, def) != 0)
         fprintf(stderr, "ttr: cannot load font '%s', using default\n", name);
     return Str(def);
+}
+
+/* Motif sizes its widgets from their fonts, but shadows, focus
+ * highlights and scroll bars are in pixels. Scaled per class, at Motif's
+ * defaults, so classes that have none (labels, layout managers) do not
+ * get one. */
+static void scale_motif_resources(XrmDatabase* db)
+{
+    static const struct { const char* spec; int base; } k_res[] = {
+        { "*XmPushButton.shadowThickness", 2 },
+        { "*XmPushButtonGadget.shadowThickness", 2 },
+        { "*XmCascadeButton.shadowThickness", 2 },
+        { "*XmCascadeButtonGadget.shadowThickness", 2 },
+        { "*XmArrowButton.shadowThickness", 2 },
+        { "*XmText.shadowThickness", 2 },
+        { "*XmTextField.shadowThickness", 2 },
+        { "*XmList.shadowThickness", 2 },
+        { "*XmScrollBar.shadowThickness", 2 },
+        { "*XmScale.shadowThickness", 2 },
+        { "*XmComboBox.shadowThickness", 2 },
+        { "*XmMenuShell*XmRowColumn.shadowThickness", 2 },
+        { "*XmPushButton.highlightThickness", 2 },
+        { "*XmToggleButton.highlightThickness", 2 },
+        { "*XmText.highlightThickness", 2 },
+        { "*XmTextField.highlightThickness", 2 },
+        { "*XmList.highlightThickness", 2 },
+        { "*XmScrollBar.width", 15 },
+        { "*XmScrollBar.height", 15 },
+        { "*XmComboBox.arrowSize", 14 }
+    };
+    int i;
+    for (i = 0; i < (int)(sizeof(k_res) / sizeof(k_res[0])); i++) {
+        char v[16];
+        int base = k_res[i].base;
+        sprintf(v, "%d", strstr(k_res[i].spec, "Thickness") ? scaled_line(base)
+                                                             : scaled(base));
+        XrmPutStringResource(db, k_res[i].spec, v);
+    }
 }
 
 XrmOptionDescRec* config_options()
@@ -256,10 +386,24 @@ void read_config(Widget toplevel, Config* cfg)
     cfg->menu_font = usable_font(dpy, r.menu_font, BOLD_12);
     cfg->taskbar_font = usable_font(dpy, r.taskbar_font, MEDIUM_12);
 
+    int scale = r.ui_scale ? atoi(r.ui_scale) : 100;
+    if (scale < k_min_scale || scale > k_max_scale) {
+        fprintf(stderr, "ttr: uiScale %s is outside %d..%d\n",
+                r.ui_scale ? r.ui_scale : "", k_min_scale, k_max_scale);
+        scale = scale < k_min_scale ? k_min_scale : k_max_scale;
+    }
+    cfg->ui_scale = scale;
+    set_ui_scale(scale);
+    cfg->title_xfont = scale_font(dpy, cfg->title_font.c_str(), scale);
+    cfg->menu_xfont = scale_font(dpy, cfg->menu_font.c_str(), scale);
+    cfg->taskbar_xfont = scale_font(dpy, cfg->taskbar_font.c_str(), scale);
+
     /* Motif widgets created from now on use the menu font. */
     XrmDatabase db = XtDatabase(dpy);
-    XrmPutStringResource(&db, "*fontList", cfg->menu_font.c_str());
-    XrmPutStringResource(&db, "*buttonFontList", cfg->menu_font.c_str());
+    XrmPutStringResource(&db, "*fontList", cfg->menu_xfont.c_str());
+    XrmPutStringResource(&db, "*buttonFontList", cfg->menu_xfont.c_str());
+    if (scale != 100)
+        scale_motif_resources(&db);
 }
 
 }

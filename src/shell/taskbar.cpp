@@ -7,6 +7,7 @@
 #include "shell/volume.h"
 #include "shell/winmenu.h"
 #include "core/painter.h"
+#include "core/scale.h"
 #include "x11/config.h"
 #include "x11/iconload.h"
 #include "x11/xpainter.h"
@@ -29,10 +30,12 @@ static const char* const k_task_fonts[] = {
     0
 };
 
-static const int k_max_button = 160;    /* Windows 2000 metrics */
+/* Sizes at 100% (Windows 2000 metrics); scaled() when used. */
+static const int k_max_button = 160;
 static const int k_button_gap = 3;
 /* Gap between the bar's 1 pixel shadow and its contents. */
 static const int k_margin = 2;
+static const int k_icon = 16;
 
 Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
                  StartMenu* start, WindowMenu* winmenu)
@@ -43,16 +46,16 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     int screen = DefaultScreen(dpy);
     painter_ = new XPainter(dpy, screen);
     const char* fonts[6];
-    fonts[0] = cfg.taskbar_font.c_str();
+    fonts[0] = cfg.taskbar_xfont.c_str();
     int k;
     for (k = 0; k < 5; k++)
         fonts[k + 1] = k_task_fonts[k];
     painter_->load_font(fonts);
     cs_ = motif_colors(Rgb::hex(k_widget_bg));
 
-    int h = painter_->text_ascent() + painter_->text_descent() + 14;
-    if (h < 28)
-        h = 28;
+    int h = painter_->text_ascent() + painter_->text_descent() + scaled(14);
+    if (h < scaled(28))
+        h = scaled(28);
     geom_ = Rect(0, DisplayHeight(dpy, screen) - h, DisplayWidth(dpy, screen),
                  h);
 
@@ -66,7 +69,7 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
                                 args, n);
 
     n = 0;
-    XtSetArg(args[n], XmNshadowThickness, 1); n++;
+    XtSetArg(args[n], XmNshadowThickness, scaled_line(1)); n++;
     XtSetArg(args[n], XmNshadowType, XmSHADOW_OUT); n++;
     form_ = XmCreateForm(shell_, (char*)"bar", args, n);
 
@@ -76,14 +79,14 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNbottomAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNleftOffset, k_margin); n++;
-    XtSetArg(args[n], XmNtopOffset, k_margin); n++;
-    XtSetArg(args[n], XmNbottomOffset, k_margin); n++;
-    XtSetArg(args[n], XmNmarginWidth, 8); n++;
+    XtSetArg(args[n], XmNleftOffset, scaled(k_margin)); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(k_margin)); n++;
+    XtSetArg(args[n], XmNbottomOffset, scaled(k_margin)); n++;
+    XtSetArg(args[n], XmNmarginWidth, scaled(8)); n++;
     XtSetArg(args[n], XmNtraversalOn, False); n++;
     XtSetArg(args[n], XmNhighlightThickness, 0); n++;
     XtSetArg(args[n], XmNindicatorOn, False); n++;
-    XtSetArg(args[n], XmNshadowThickness, 2); n++;
+    XtSetArg(args[n], XmNshadowThickness, scaled_line(2)); n++;
     XtSetArg(args[n], XmNfillOnSelect, False); n++;
     start_ = XmCreateToggleButton(form_, (char*)"start", args, n);
     XmStringFree(l);
@@ -97,10 +100,10 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNbottomAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNrightOffset, k_margin); n++;
-    XtSetArg(args[n], XmNtopOffset, k_margin); n++;
-    XtSetArg(args[n], XmNbottomOffset, k_margin); n++;
-    XtSetArg(args[n], XmNwidth, 60); n++;
+    XtSetArg(args[n], XmNrightOffset, scaled(k_margin)); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(k_margin)); n++;
+    XtSetArg(args[n], XmNbottomOffset, scaled(k_margin)); n++;
+    XtSetArg(args[n], XmNwidth, scaled(60)); n++;
     XtSetArg(args[n], XmNresizePolicy, XmRESIZE_NONE); n++;
     XtSetArg(args[n], XmNtraversalOn, False); n++;
     tray_area_ = XmCreateDrawingArea(form_, (char*)"tray", args, n);
@@ -113,9 +116,9 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     XtSetArg(args[n], XmNleftWidget, start_); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNbottomAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNleftOffset, 3); n++;
-    XtSetArg(args[n], XmNtopOffset, k_margin); n++;
-    XtSetArg(args[n], XmNbottomOffset, k_margin); n++;
+    XtSetArg(args[n], XmNleftOffset, scaled(3)); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(k_margin)); n++;
+    XtSetArg(args[n], XmNbottomOffset, scaled(k_margin)); n++;
     XtSetArg(args[n], XmNwidth, 2); n++;
     XtSetArg(args[n], XmNresizePolicy, XmRESIZE_NONE); n++;
     XtSetArg(args[n], XmNtraversalOn, False); n++;
@@ -130,10 +133,10 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     XtSetArg(args[n], XmNrightWidget, tray_area_); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNbottomAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNleftOffset, 4); n++;
-    XtSetArg(args[n], XmNrightOffset, 4); n++;
-    XtSetArg(args[n], XmNtopOffset, k_margin); n++;
-    XtSetArg(args[n], XmNbottomOffset, k_margin); n++;
+    XtSetArg(args[n], XmNleftOffset, scaled(4)); n++;
+    XtSetArg(args[n], XmNrightOffset, scaled(4)); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(k_margin)); n++;
+    XtSetArg(args[n], XmNbottomOffset, scaled(k_margin)); n++;
     XtSetArg(args[n], XmNresizePolicy, XmRESIZE_NONE); n++;
     XtSetArg(args[n], XmNtraversalOn, False); n++;
     tasks_ = XmCreateDrawingArea(form_, (char*)"tasks", args, n);
@@ -262,7 +265,7 @@ void Taskbar::set_active(ToplevelId id)
 void Taskbar::post_start_menu(unsigned long time)
 {
     XmToggleButtonSetState(start_, True, False);
-    start_menu_->post(geom_.x + k_margin, geom_.y, time);
+    start_menu_->post(geom_.x + scaled(k_margin), geom_.y, time);
 }
 
 /* Pushed in on press, menu on release: a Motif menu posted while the
@@ -308,12 +311,12 @@ int Taskbar::visible_count()
 
 Rect Taskbar::button_rect(int slot, int count, int w, int h)
 {
-    int bw = k_max_button;
-    if (count > 0 && (w + k_button_gap) / count - k_button_gap < bw)
-        bw = (w + k_button_gap) / count - k_button_gap;
-    if (bw < 24)
-        bw = 24;
-    return Rect(slot * (bw + k_button_gap), 0, bw, h);
+    int bw = scaled(k_max_button), gap = scaled(k_button_gap);
+    if (count > 0 && (w + gap) / count - gap < bw)
+        bw = (w + gap) / count - gap;
+    if (bw < scaled(24))
+        bw = scaled(24);
+    return Rect(slot * (bw + gap), 0, bw, h);
 }
 
 /* Index into list_ of the button at (x, y), or -1. */
@@ -363,21 +366,24 @@ void Taskbar::paint_tasks()
         bool is_down = (t->id == active_ && !t->minimized) || i == pressed_;
         const ColorSet& c = is_down ? down : cs_;
         painter_->fill(r, c.bg);
+        int bevel = scaled_line(2), icon = scaled(k_icon);
         if (is_down)
-            draw_bevel(*painter_, r, 2, cs_.bottom, cs_.top);
+            draw_bevel(*painter_, r, bevel, cs_.bottom, cs_.top);
         else
-            draw_bevel(*painter_, r, 2, cs_.top, cs_.bottom);
+            draw_bevel(*painter_, r, bevel, cs_.top, cs_.bottom);
 
-        int off = is_down ? 1 : 0;
-        draw_app_icon(*painter_, t->icon, r.x + 5 + off,
-                      r.y + (r.h - 16) / 2 + off, 16, c);
+        int off = is_down ? scaled_line(1) : 0;
+        draw_app_icon(*painter_, t->icon, r.x + scaled(5) + off,
+                      r.y + (r.h - icon) / 2 + off, icon, c);
 
         char buf[256];
-        int len = fit_text(*painter_, t->title.c_str(), r.w - 30, buf,
-                           sizeof(buf));
+        int text_x = scaled(5) + icon + scaled(4);
+        int len = fit_text(*painter_, t->title.c_str(),
+                           r.w - text_x - scaled(5), buf, sizeof(buf));
         int asc = painter_->text_ascent(), desc = painter_->text_descent();
-        painter_->text(r.x + 25 + off, r.y + (r.h - asc - desc) / 2 + asc + off,
-                       buf, len, cs_.fg);
+        painter_->text(r.x + text_x + off,
+                       r.y + (r.h - asc - desc) / 2 + asc + off, buf, len,
+                       cs_.fg);
     }
     painter_->end();
 }

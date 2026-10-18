@@ -3,6 +3,7 @@
 #include "core/apps.h"
 #include "core/icon.h"
 #include "core/painter.h"
+#include "core/scale.h"
 #include "x11/config.h"
 #include "x11/iconload.h"
 #include "x11/keys.h"
@@ -101,7 +102,7 @@ Widget ShortcutsDialog::field_row(Widget parent, const char* label,
     XmString l = xmstr(label);
     int n = 0;
     XtSetArg(args[n], XmNlabelString, l); n++;
-    XtSetArg(args[n], XmNwidth, k_label_width); n++;
+    XtSetArg(args[n], XmNwidth, scaled(k_label_width)); n++;
     XtSetArg(args[n], XmNrecomputeSize, False); n++;
     XtSetArg(args[n], XmNalignment, XmALIGNMENT_BEGINNING); n++;
     XtManageChild(XmCreateLabel(rc, (char*)"label", args, n));
@@ -138,8 +139,8 @@ void ShortcutsDialog::build()
     int n = 0;
     XtSetArg(args[n], XmNdialogTitle, title); n++;
     XtSetArg(args[n], XmNautoUnmanage, False); n++;
-    XtSetArg(args[n], XmNmarginWidth, 10); n++;
-    XtSetArg(args[n], XmNmarginHeight, 10); n++;
+    XtSetArg(args[n], XmNmarginWidth, scaled(10)); n++;
+    XtSetArg(args[n], XmNmarginHeight, scaled(10)); n++;
     dialog_ = XmCreateFormDialog(parent_, (char*)"shortcutsDialog", args, n);
     XmStringFree(title);
 
@@ -177,7 +178,7 @@ void ShortcutsDialog::build()
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNrightWidget, buttons); n++;
-    XtSetArg(args[n], XmNrightOffset, 8); n++;
+    XtSetArg(args[n], XmNrightOffset, scaled(8)); n++;
     XtSetValues(XtParent(list_), args, n);
     XtManageChild(list_);
 
@@ -185,7 +186,7 @@ void ShortcutsDialog::build()
     n = 0;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNtopWidget, XtParent(list_)); n++;
-    XtSetArg(args[n], XmNtopOffset, 10); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(10)); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
     Widget frame = XmCreateFrame(dialog_, (char*)"frame", args, n);
@@ -197,8 +198,8 @@ void ShortcutsDialog::build()
 
     n = 0;
     XtSetArg(args[n], XmNorientation, XmVERTICAL); n++;
-    XtSetArg(args[n], XmNmarginWidth, 8); n++;
-    XtSetArg(args[n], XmNmarginHeight, 6); n++;
+    XtSetArg(args[n], XmNmarginWidth, scaled(8)); n++;
+    XtSetArg(args[n], XmNmarginHeight, scaled(6)); n++;
     fields_ = XmCreateRowColumn(frame, (char*)"fields", args, n);
 
     field_row(fields_, "Name:", &name_, 30);
@@ -211,8 +212,8 @@ void ShortcutsDialog::build()
     push(r, "Browse...", browse_icon_cb, (XtPointer)this);
     n = 0;
     XtSetArg(args[n], XmNlabelType, XmPIXMAP); n++;
-    XtSetArg(args[n], XmNwidth, k_preview + 8); n++;
-    XtSetArg(args[n], XmNheight, k_preview + 8); n++;
+    XtSetArg(args[n], XmNwidth, scaled(k_preview + 8)); n++;
+    XtSetArg(args[n], XmNheight, scaled(k_preview + 8)); n++;
     XtSetArg(args[n], XmNrecomputeSize, False); n++;
     preview_ = XmCreateLabel(r, (char*)"preview", args, n);
     XtManageChild(preview_);
@@ -238,7 +239,7 @@ void ShortcutsDialog::build()
     n = 0;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNtopWidget, frame); n++;
-    XtSetArg(args[n], XmNtopOffset, 10); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(10)); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
     Widget sep = XmCreateSeparator(dialog_, (char*)"sep", args, n);
@@ -249,7 +250,7 @@ void ShortcutsDialog::build()
     XtSetArg(args[n], XmNlabelString, note); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNtopWidget, sep); n++;
-    XtSetArg(args[n], XmNtopOffset, 10); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(10)); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     XtManageChild(XmCreateLabel(dialog_, (char*)"note", args, n));
     XmStringFree(note);
@@ -259,14 +260,14 @@ void ShortcutsDialog::build()
     XtSetArg(args[n], XmNlabelString, cancel); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNtopWidget, sep); n++;
-    XtSetArg(args[n], XmNtopOffset, 6); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(6)); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
     Widget cancel_b = XmCreatePushButton(dialog_, (char*)"cancel", args, n);
     n = 0;
     XtSetArg(args[n], XmNlabelString, ok); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNtopWidget, sep); n++;
-    XtSetArg(args[n], XmNtopOffset, 6); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(6)); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNrightWidget, cancel_b); n++;
     Widget ok_b = XmCreatePushButton(dialog_, (char*)"ok", args, n);
@@ -367,12 +368,13 @@ void ShortcutsDialog::update_preview()
     Display* dpy = XtDisplay(parent_);
     int screen = DefaultScreen(dpy);
     Str name = text_value(icon_);
-    Icon* ic = name.empty() ? 0 : icons_->load(name.c_str(), k_preview);
+    int size = scaled(k_preview);
+    Icon* ic = name.empty() ? 0 : icons_->load(name.c_str(), size);
 
-    Pixmap pm = XCreatePixmap(dpy, RootWindow(dpy, screen), k_preview,
-                              k_preview, DefaultDepth(dpy, screen));
-    painter_->begin(pm, k_preview, k_preview);
-    draw_app_icon(*painter_, ic, 0, 0, k_preview, cs_);
+    Pixmap pm = XCreatePixmap(dpy, RootWindow(dpy, screen), size, size,
+                              DefaultDepth(dpy, screen));
+    painter_->begin(pm, size, size);
+    draw_app_icon(*painter_, ic, 0, 0, size, cs_);
     painter_->end();
     delete ic;
 

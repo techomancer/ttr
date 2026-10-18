@@ -2,6 +2,7 @@
 #include "core/icon.h"
 #include "core/launch.h"
 #include "core/painter.h"
+#include "core/scale.h"
 #include "shell/popup.h"
 #include "x11/config.h"
 #include "x11/iconload.h"
@@ -72,9 +73,9 @@ NetStatus::NetStatus(Widget parent, WmLink* wm, const Config& cfg,
 {
     int i;
     for (i = 0; i < ICON_COUNT; i++) {
-        icons_[i] = icons->load(k_icon_names[i][0], 16);
+        icons_[i] = icons->load(k_icon_names[i][0], scaled(16));
         if (!icons_[i])
-            icons_[i] = icons->load(k_icon_names[i][1], 16);
+            icons_[i] = icons->load(k_icon_names[i][1], scaled(16));
     }
     find_net_tools(cfg.terminal.c_str(), &tools_);
     poll();
@@ -149,13 +150,14 @@ int NetStatus::icon_state() const
 
 void NetStatus::paint(Painter& p, const Rect& r)
 {
-    int x = r.x + (r.w - 16) / 2, y = r.y + (r.h - 16) / 2;
+    int size = r.w < r.h ? r.w : r.h;
+    int x = r.x + (r.w - size) / 2, y = r.y + (r.h - size) / 2;
     if (icons_[state_]) {
-        p.icon(*icons_[state_], x, y, 16, cs_.bg);
+        p.icon(*icons_[state_], x, y, size, cs_.bg);
         return;
     }
     int kind = state_ == ICON_OFFLINE ? 0 : state_ == ICON_WIRED ? 1 : 2;
-    draw_network_icon(p, x, y, 16, kind, state_ - ICON_WIFI_0, cs_);
+    draw_network_icon(p, x, y, size, kind, state_ - ICON_WIFI_0, cs_);
 }
 
 void NetStatus::button(XButtonEvent* ev)
@@ -188,8 +190,8 @@ void NetStatus::build_dialog()
     int n = 0;
     XtSetArg(args[n], XmNdialogTitle, title); n++;
     XtSetArg(args[n], XmNautoUnmanage, False); n++;
-    XtSetArg(args[n], XmNmarginWidth, 10); n++;
-    XtSetArg(args[n], XmNmarginHeight, 10); n++;
+    XtSetArg(args[n], XmNmarginWidth, scaled(10)); n++;
+    XtSetArg(args[n], XmNmarginHeight, scaled(10)); n++;
     dialog_ = XmCreateFormDialog(parent_, (char*)"networkDialog", args, n);
     XmStringFree(title);
 
@@ -208,7 +210,7 @@ void NetStatus::build_dialog()
     XtSetArg(args[n], XmNorientation, XmHORIZONTAL); n++;
     XtSetArg(args[n], XmNbottomAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNbottomWidget, close); n++;
-    XtSetArg(args[n], XmNbottomOffset, 6); n++;
+    XtSetArg(args[n], XmNbottomOffset, scaled(6)); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     Widget row = XmCreateRowColumn(dialog_, (char*)"toolRow", args, n);
     if (tools_.empty()) {
@@ -276,7 +278,7 @@ void NetStatus::build_dialog()
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNbottomAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNbottomWidget, row); n++;
-    XtSetArg(args[n], XmNbottomOffset, 6); n++;
+    XtSetArg(args[n], XmNbottomOffset, scaled(6)); n++;
     XtSetValues(XtParent(report_), args, n);
     XtManageChild(report_);
 

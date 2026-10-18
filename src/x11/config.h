@@ -22,6 +22,8 @@
  *                         at startup (core/startup.h)
  *   Ttr*xdgAutostart:     true | false: start ~/.config/autostart and
  *                         /etc/xdg/autostart entries (core/xdgautostart.h)
+ *   Ttr*uiScale:          100 .. 300 percent: everything ttr draws, and its
+ *                         fonts (core/scale.h)
  */
 #ifndef TTR_X11_CONFIG_H
 #define TTR_X11_CONFIG_H
@@ -51,15 +53,19 @@ struct Config {
     Str toolchest_files;    /* colon separated, ~ expanded */
     Str terminal;
     Str clock_format;
-    Str title_font;
+    Str title_font;         /* as set, at 100% */
     Str menu_font;
     Str taskbar_font;
+    Str title_xfont;        /* to load: scaled to ui_scale */
+    Str menu_xfont;
+    Str taskbar_xfont;
     int desktops;
     int dock_div;           /* 3: thirds, 2: halves */
     int notification_ms;
     Str notification_log;
     bool autostart_script;
     bool xdg_autostart;
+    int ui_scale;           /* percent */
 
     Config();
 };
@@ -76,6 +82,10 @@ void merge_settings_file(Widget toplevel, int argc, char** argv);
 
 /* Read the settings, and point Motif's fonts at menuFont. */
 void read_config(Widget toplevel, Config* cfg);
+
+/* An XLFD at 'percent' of its size: the nearest size the server has. Names
+ * that are not XLFDs, or have no size, are returned as they are. */
+Str scale_font(Display* dpy, const char* name, int percent);
 
 /* Defaults, for the Settings dialog's "Default" choices. */
 const char* config_default(const char* name);

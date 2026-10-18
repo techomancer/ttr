@@ -39,6 +39,7 @@ yet. A Wayland mode is planned for later (Linux only).
   on D-Bus), shown as small pop-ups above the taskbar.
 - **Startup programs:** a list in Settings, an `autostart.sh` script, and
   optionally the desktop's XDG autostart entries.
+- **UI scale** from 100% to 300%, for high-resolution screens.
 - **Settings dialog** (Start > Settings...) for all of the above, stored in
   a plain text file you can also edit by hand.
 
@@ -202,7 +203,8 @@ Start > Settings... opens the Settings dialog. Pick a category on the left:
 
 - **Windows:** focus, Alt+Tab style, docked width.
 - **Desktops:** the number of virtual desktops.
-- **Appearance:** fonts for window titles, menus and the taskbar.
+- **Appearance:** UI scale, and fonts for window titles, menus and the
+  taskbar.
 - **Taskbar:** clock format, how long notifications stay up.
 - **Start Menu:** where programs come from, the terminal to use, shortcuts.
 - **Startup:** programs to start with ttr, and the startup script.
@@ -242,6 +244,28 @@ When ttr starts, it starts these, in order:
    long-running programs with `&`.
 
 None of these run again when ttr restarts in place.
+
+### High-resolution screens
+
+Settings > Appearance > UI scale makes everything ttr draws larger: window
+frames, the taskbar, menus, dialogs, notifications and icons. Pick 100,
+125, 150, 175, 200, 250 or 300%. The setting is `uiScale` in the settings
+file, and any whole number from 100 to 300 works there.
+
+You choose fonts at their normal size, and ttr scales them. X bitmap fonts
+exist only in some sizes, so ttr uses the nearest size that is installed.
+
+The scale only applies to ttr. Other programs have their own settings. For
+most of them, put this in `~/.Xresources` (192 is 200% of the usual 96):
+
+```
+Xft.dpi: 192
+Xcursor.size: 48
+```
+
+GTK 3 programs also read `GDK_SCALE=2`, and Qt programs read
+`QT_SCALE_FACTOR=2`. Set these in `~/.xprofile` or in the script that
+starts your session.
 
 ### Optional helper programs
 

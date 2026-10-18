@@ -76,6 +76,8 @@ private:
                 Glyph fallback, XtCallbackProc cb, XtPointer closure,
                 Widget sub);
     Pixmap label_pixmap(const char* text, const Icon* icon, Glyph fallback);
+    int label_height();
+    int menu_rows();
 
     Widget parent_;
     WmLink* wm_;

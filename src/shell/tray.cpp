@@ -1,5 +1,6 @@
 #include "shell/tray.h"
 #include "core/painter.h"
+#include "core/scale.h"
 #include "shell/trayitem.h"
 #include "x11/xpainter.h"
 
@@ -13,9 +14,10 @@
 
 namespace ttr {
 
-static const int ICON = 16;     /* Windows 2000 tray icons */
-static const int GAP = 2;
-static const int PAD = 4;
+/* Windows 2000 tray metrics at 100%. */
+static int icon_size() { return scaled(16); }
+static int gap() { return scaled(2); }
+static int pad() { return scaled(4); }
 
 /* System Tray protocol opcodes and XEmbed messages. */
 enum {
@@ -133,7 +135,7 @@ void Tray::dock(Window icon)
 
     XAddToSaveSet(dpy_, icon);
     XReparentWindow(dpy_, icon, win_, 0, 0);
-    XResizeWindow(dpy_, icon, ICON, ICON);
+    XResizeWindow(dpy_, icon, icon_size(), icon_size());
 
     XEvent ev;
     memset(&ev, 0, sizeof(ev));
@@ -226,13 +228,14 @@ Rect Tray::item_rect(int i)
     Arg args[1];
     XtSetArg(args[0], XmNheight, &h);
     XtGetValues(area_, args, 1);
-    int x = PAD, k;
+    int x = pad(), k;
     for (k = 0; k < builtins_.size(); k++) {
         if (!builtins_[k]->visible())
             continue;
         if (k == i)
-            return Rect(x, ((int)h - ICON) / 2, ICON, ICON);
-        x += ICON + GAP;
+            return Rect(x, ((int)h - icon_size()) / 2, icon_size(),
+                        icon_size());
+        x += icon_size() + gap();
     }
     return Rect();
 }
@@ -264,9 +267,9 @@ int Tray::preferred_width()
     for (i = 0; i < builtins_.size(); i++)
         if (builtins_[i]->visible())
             n++;
-    int w = PAD + painter_->text_width(buf, (int)strlen(buf)) + 2 * PAD;
+    int w = pad() + painter_->text_width(buf, (int)strlen(buf)) + 2 * pad();
     if (n > 0)
-        w += n * (ICON + GAP) + PAD;
+        w += n * (icon_size() + gap()) + pad();
     return w;
 }
 
@@ -276,16 +279,17 @@ void Tray::layout()
     Arg args[1];
     XtSetArg(args[0], XmNheight, &h);
     XtGetValues(area_, args, 1);
-    int x = PAD, i;
+    int x = pad(), i;
     for (i = 0; i < builtins_.size(); i++)
         if (builtins_[i]->visible())
-            x += ICON + GAP;
+            x += icon_size() + gap();
     for (i = 0; i < items_.size(); i++) {
         if (!items_[i].mapped)
             continue;
-        XMoveResizeWindow(dpy_, items_[i].win, x, ((int)h - ICON) / 2,
-                          ICON, ICON);
-        x += ICON + GAP;
+        XMoveResizeWindow(dpy_, items_[i].win, x,
+                          ((int)h - icon_size()) / 2, icon_size(),
+                          icon_size());
+        x += icon_size() + gap();
     }
     int w = preferred_width();
     if (w != last_width_) {
@@ -308,13 +312,14 @@ void Tray::paint()
 
     painter_->begin(win_, w, h);
     painter_->fill(Rect(0, 0, w, h), cs_.bg);
-    draw_bevel(*painter_, Rect(0, 0, w, h), 1, cs_.bottom, cs_.top);
+    draw_bevel(*painter_, Rect(0, 0, w, h), scaled_line(1), cs_.bottom,
+               cs_.top);
     char buf[64];
     clock_text(buf, sizeof(buf));
     int len = (int)strlen(buf);
     int tw = painter_->text_width(buf, len);
     int asc = painter_->text_ascent(), desc = painter_->text_descent();
-    painter_->text(w - PAD - tw - PAD, (h - asc - desc) / 2 + asc, buf, len,
+    painter_->text(w - 2 * pad() - tw, (h - asc - desc) / 2 + asc, buf, len,
                    cs_.fg);
     int i;
     for (i = 0; i < builtins_.size(); i++) {

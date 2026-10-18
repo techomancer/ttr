@@ -75,6 +75,7 @@ private:
     Widget windows_switch_;
     Widget dock_third_;
     Widget desktops_;
+    Widget scale_;
     FontRow title_, menu_, taskbar_;
     Widget clock_;
     Widget notify_time_;

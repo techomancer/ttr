@@ -2,6 +2,7 @@
 #include "core/icon.h"
 #include "core/launch.h"
 #include "core/painter.h"
+#include "core/scale.h"
 #include "core/shortcuts.h"
 #include "x11/iconload.h"
 #include "x11/xpainter.h"
@@ -13,9 +14,10 @@
 
 namespace ttr {
 
-static const int ICON = 16;
-static const int BUTTON = 22;       /* icon plus a 3 pixel ring */
-static const int PAD = 4;           /* groove and gap at each end */
+/* Sizes at 100%. */
+static int icon_size() { return scaled(16); }
+static int button() { return scaled(22); }  /* icon plus a 3 pixel ring */
+static int pad() { return scaled(4); }      /* groove and gap at each end */
 static const unsigned long k_tip_ms = 600;
 
 QuickLaunch::QuickLaunch(Widget area, XPainter* painter, const ColorSet& cs,
@@ -34,7 +36,7 @@ QuickLaunch::QuickLaunch(Widget area, XPainter* painter, const ColorSet& cs,
         Item* it = new Item;
         it->name = s->name.empty() ? s->command : s->name;
         it->command = s->command;
-        it->icon = icons->load(s->icon.c_str(), ICON);
+        it->icon = icons->load(s->icon.c_str(), icon_size());
         items_.push_back(it);
     }
 
@@ -68,7 +70,7 @@ int QuickLaunch::preferred_width() const
 {
     if (items_.empty())
         return 2;
-    return 2 * PAD + items_.size() * BUTTON;
+    return 2 * pad() + items_.size() * button();
 }
 
 Rect QuickLaunch::slot(int i) const
@@ -77,7 +79,8 @@ Rect QuickLaunch::slot(int i) const
     Arg args[1];
     XtSetArg(args[0], XmNheight, &h);
     XtGetValues(area_, args, 1);
-    return Rect(PAD + i * BUTTON, ((int)h - BUTTON) / 2, BUTTON, BUTTON);
+    int b = button();
+    return Rect(pad() + i * b, ((int)h - b) / 2, b, b);
 }
 
 int QuickLaunch::hit(int x, int y) const
@@ -115,13 +118,15 @@ void QuickLaunch::paint()
     for (i = 0; i < items_.size(); i++) {
         Rect r = slot(i);
         bool down = i == pressed_ && i == hover_;
+        int line = scaled_line(1);
         if (down)
-            draw_bevel(*painter_, r, 1, cs_.bottom, cs_.top);
+            draw_bevel(*painter_, r, line, cs_.bottom, cs_.top);
         else if (i == hover_)
-            draw_bevel(*painter_, r, 1, cs_.top, cs_.bottom);
-        int off = down ? 1 : 0;
-        draw_app_icon(*painter_, items_[i]->icon, r.x + (BUTTON - ICON) / 2 + off,
-                      r.y + (BUTTON - ICON) / 2 + off, ICON, cs_);
+            draw_bevel(*painter_, r, line, cs_.top, cs_.bottom);
+        int off = down ? line : 0;
+        int in = (button() - icon_size()) / 2;
+        draw_app_icon(*painter_, items_[i]->icon, r.x + in + off,
+                      r.y + in + off, icon_size(), cs_);
     }
     painter_->end();
 }
@@ -193,17 +198,17 @@ void QuickLaunch::show_tip()
     const char* text = items_[hover_]->name.c_str();
     int len = (int)strlen(text);
     int asc = painter_->text_ascent(), desc = painter_->text_descent();
-    int w = painter_->text_width(text, len) + 8;
-    int h = asc + desc + 4;
+    int w = painter_->text_width(text, len) + scaled(8);
+    int h = asc + desc + scaled(4);
 
     Rect r = slot(hover_);
     int x = 0, y = 0;
     Window child;
     XTranslateCoordinates(dpy_, XtWindow(area_), DefaultRootWindow(dpy_), r.x,
                           r.y, &x, &y, &child);
-    y -= h + 4;
+    y -= h + scaled(4);
     if (y < 0)
-        y = r.y + r.h + 4;
+        y = r.y + r.h + scaled(4);
     int sw = DisplayWidth(dpy_, DefaultScreen(dpy_));
     if (x + w > sw)
         x = sw - w;
@@ -213,7 +218,7 @@ void QuickLaunch::show_tip()
     painter_->begin(tip_, w, h);
     painter_->fill(Rect(0, 0, w, h), Rgb(0, 0, 0));
     painter_->fill(Rect(1, 1, w - 2, h - 2), Rgb::hex(0xffffe1));
-    painter_->text(4, 2 + asc, text, len, Rgb(0, 0, 0));
+    painter_->text(scaled(4), scaled(2) + asc, text, len, Rgb(0, 0, 0));
     painter_->end();
 }
 

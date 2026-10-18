@@ -1,6 +1,7 @@
 #include "shell/settings.h"
 #include "shell/shortcutsdlg.h"
 #include "shell/startuppage.h"
+#include "core/scale.h"
 #include "core/settings.h"
 #include "x11/config.h"
 
@@ -31,6 +32,11 @@ static const char* const k_sizes[] = {
 static const int k_nsizes = (int)(sizeof(k_sizes) / sizeof(k_sizes[0]));
 
 static const char* const k_sources[] = { "auto", "desktop", "toolchest" };
+
+static const char* const k_scales[] = {
+    "100", "125", "150", "175", "200", "250", "300"
+};
+static const int k_nscales = (int)(sizeof(k_scales) / sizeof(k_scales[0]));
 
 static const char* const k_notify_times[] = {
     "3", "5", "8", "10", "15", "30", "60"
@@ -108,7 +114,7 @@ Widget SettingsDialog::page(Widget parent, int index)
     Arg args[6];
     int n = 0;
     XtSetArg(args[n], XmNorientation, XmVERTICAL); n++;
-    XtSetArg(args[n], XmNspacing, 6); n++;
+    XtSetArg(args[n], XmNspacing, scaled(6)); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
@@ -168,8 +174,8 @@ Widget SettingsDialog::frame(Widget parent, const char* title)
 
     Arg rargs[3];
     XtSetArg(rargs[0], XmNorientation, XmVERTICAL);
-    XtSetArg(rargs[1], XmNmarginWidth, 8);
-    XtSetArg(rargs[2], XmNmarginHeight, 6);
+    XtSetArg(rargs[1], XmNmarginWidth, scaled(8));
+    XtSetArg(rargs[2], XmNmarginHeight, scaled(6));
     Widget rc = XmCreateRowColumn(f, (char*)"rows", rargs, 3);
     XtManageChild(rc);
     XtManageChild(f);
@@ -188,7 +194,7 @@ Widget SettingsDialog::row(Widget parent, const char* label)
     XmString l = xmstr(label);
     int n = 0;
     XtSetArg(args[n], XmNlabelString, l); n++;
-    XtSetArg(args[n], XmNwidth, k_label_width); n++;
+    XtSetArg(args[n], XmNwidth, scaled(k_label_width)); n++;
     XtSetArg(args[n], XmNrecomputeSize, False); n++;
     XtSetArg(args[n], XmNalignment, XmALIGNMENT_BEGINNING); n++;
     XtManageChild(XmCreateLabel(rc, (char*)"label", args, n));
@@ -273,6 +279,33 @@ static Str selected_item(Widget combo, const char* const* items, int count)
     XtGetValues(list, args, 2);
     if (pos && n > 0 && pos[0] >= 1 && pos[0] <= count)
         result = items[pos[0] - 1];
+    return result;
+}
+
+/* The selected entry's text, read from the list itself. */
+static Str combo_text(Widget combo)
+{
+    Widget list = XtNameToWidget(combo, "*List");
+    int* pos = 0;
+    int n = 0;
+    XmStringTable items = 0;
+    int count = 0;
+    Str result("");
+    if (!list)
+        return result;
+    Arg args[4];
+    XtSetArg(args[0], XmNselectedPositions, &pos);
+    XtSetArg(args[1], XmNselectedPositionCount, &n);
+    XtSetArg(args[2], XmNitems, &items);
+    XtSetArg(args[3], XmNitemCount, &count);
+    XtGetValues(list, args, 4);
+    if (pos && n > 0 && pos[0] >= 1 && pos[0] <= count) {
+        char* t = (char*)XmStringUnparse(items[pos[0] - 1], 0,
+                                         XmCHARSET_TEXT, XmCHARSET_TEXT, 0, 0,
+                                         XmOUTPUT_ALL);
+        result = t ? t : "";
+        XtFree(t);
+    }
     return result;
 }
 
@@ -403,9 +436,12 @@ Str SettingsDialog::font_name(FontRow* r)
     return Str(buf);
 }
 
+/* At the scale ttr runs at, like the rest of the dialog; a new scale
+ * applies after OK. */
 void SettingsDialog::update_preview(FontRow* r)
 {
-    Str name = font_name(r);
+    Str name = scale_font(XtDisplay(parent_), font_name(r).c_str(),
+                          cfg_.ui_scale);
     XmFontListEntry e = XmFontListEntryLoad(XtDisplay(parent_),
                                             (char*)name.c_str(),
                                             XmFONT_IS_FONT,
@@ -441,8 +477,8 @@ void SettingsDialog::build()
     int n = 0;
     XtSetArg(args[n], XmNdialogTitle, title); n++;
     XtSetArg(args[n], XmNautoUnmanage, False); n++;
-    XtSetArg(args[n], XmNmarginWidth, 10); n++;
-    XtSetArg(args[n], XmNmarginHeight, 10); n++;
+    XtSetArg(args[n], XmNmarginWidth, scaled(10)); n++;
+    XtSetArg(args[n], XmNmarginHeight, scaled(10)); n++;
     dialog_ = XmCreateFormDialog(parent_, (char*)"settingsDialog", args, n);
     XmStringFree(title);
 
@@ -460,7 +496,7 @@ void SettingsDialog::build()
     XtSetArg(args[n], XmNitemCount, PAGE_COUNT); n++;
     XtSetArg(args[n], XmNvisibleItemCount, PAGE_COUNT); n++;
     XtSetArg(args[n], XmNselectionPolicy, XmBROWSE_SELECT); n++;
-    XtSetArg(args[n], XmNlistMarginWidth, 4); n++;
+    XtSetArg(args[n], XmNlistMarginWidth, scaled(4)); n++;
     categories_ = XmCreateScrolledList(dialog_, (char*)"categories", args, n);
     for (i = 0; i < PAGE_COUNT; i++)
         XmStringFree(items[i]);
@@ -476,7 +512,7 @@ void SettingsDialog::build()
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNleftWidget, XtParent(categories_)); n++;
-    XtSetArg(args[n], XmNleftOffset, 10); n++;
+    XtSetArg(args[n], XmNleftOffset, scaled(10)); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
     Widget content = XmCreateForm(dialog_, (char*)"pages", args, n);
 
@@ -514,6 +550,24 @@ void SettingsDialog::build()
 
     /* Appearance */
     pg = page(content, PAGE_APPEARANCE);
+    f = frame(pg, "Size");
+    Widget srow0 = row(f, "UI scale:");
+    scale_ = drop_down(srow0, "uiScale", k_scales, k_nscales, k_nscales, 3);
+    XmString pct = xmstr("%   for high-resolution screens");
+    Arg pargs[1];
+    XtSetArg(pargs[0], XmNlabelString, pct);
+    XtManageChild(XmCreateLabel(srow0, (char*)"unit", pargs, 1));
+    XmStringFree(pct);
+    /* A scale set by hand that is not on the list is added to it, so OK
+     * keeps it. */
+    char scale_now[16];
+    sprintf(scale_now, "%d", cfg_.ui_scale);
+    XmString cur = xmstr(scale_now);
+    Widget scale_list = XtNameToWidget(scale_, "*List");
+    if (scale_list && !XmListItemExists(scale_list, cur))
+        XmComboBoxAddItem(scale_, cur, 0, False);
+    XmStringFree(cur);
+    select_item(scale_, scale_now);
     f = frame(pg, "Fonts");
     font_row(&title_, f, "Window titles:", cfg_.title_font.c_str());
     font_row(&menu_, f, "Menus and dialogs:", cfg_.menu_font.c_str());
@@ -590,7 +644,7 @@ void SettingsDialog::build()
     n = 0;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNtopWidget, content); n++;
-    XtSetArg(args[n], XmNtopOffset, 10); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(10)); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
     Widget sep = XmCreateSeparator(dialog_, (char*)"sep", args, n);
@@ -601,7 +655,7 @@ void SettingsDialog::build()
     XtSetArg(args[n], XmNlabelString, note); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNtopWidget, sep); n++;
-    XtSetArg(args[n], XmNtopOffset, 10); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(10)); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     Widget label = XmCreateLabel(dialog_, (char*)"note", args, n);
     XmStringFree(note);
@@ -612,14 +666,14 @@ void SettingsDialog::build()
     XtSetArg(args[n], XmNlabelString, cancel); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNtopWidget, sep); n++;
-    XtSetArg(args[n], XmNtopOffset, 6); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(6)); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
     Widget cancel_b = XmCreatePushButton(dialog_, (char*)"cancel", args, n);
     n = 0;
     XtSetArg(args[n], XmNlabelString, ok); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNtopWidget, sep); n++;
-    XtSetArg(args[n], XmNtopOffset, 6); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(6)); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNrightWidget, cancel_b); n++;
     Widget ok_b = XmCreatePushButton(dialog_, (char*)"ok", args, n);
@@ -661,6 +715,7 @@ void SettingsDialog::save()
     file.set("titleFont", font_name(&title_).c_str());
     file.set("menuFont", font_name(&menu_).c_str());
     file.set("taskbarFont", font_name(&taskbar_).c_str());
+    file.set("uiScale", combo_text(scale_).c_str());
     file.set("clockFormat", text_value(clock_).c_str());
     file.set("notificationTime",
              selected_item(notify_time_, k_notify_times, k_nnotify).c_str());

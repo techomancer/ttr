@@ -3,6 +3,7 @@
 #include "core/icon.h"
 #include "core/launch.h"
 #include "core/painter.h"
+#include "core/scale.h"
 #include "shell/popup.h"
 #include "x11/config.h"
 #include "x11/iconload.h"
@@ -52,7 +53,7 @@ VolumeControl::VolumeControl(Widget parent, WmLink* wm, const Config& cfg,
     runner_ = new CommandRunner(XtWidgetToApplicationContext(parent));
     int i;
     for (i = 0; i < 4; i++)
-        icons_[i] = icons->load(k_icon_names[i], 16);
+        icons_[i] = icons->load(k_icon_names[i], scaled(16));
     find_sound_panels(cfg.terminal.c_str(), &panels_);
     probe(0);
 }
@@ -198,12 +199,13 @@ void VolumeControl::paint(Painter& p, const Rect& r)
         level = 2;
     else
         level = 3;
-    int x = r.x + (r.w - 16) / 2, y = r.y + (r.h - 16) / 2;
+    int size = r.w < r.h ? r.w : r.h;
+    int x = r.x + (r.w - size) / 2, y = r.y + (r.h - size) / 2;
     const Icon* ic = icons_[level];
     if (ic)
-        p.icon(*ic, x, y, 16, cs_.bg);
+        p.icon(*ic, x, y, size, cs_.bg);
     else
-        draw_speaker_icon(p, x, y, 16, level, state_.muted, cs_);
+        draw_speaker_icon(p, x, y, size, level, state_.muted, cs_);
 }
 
 void VolumeControl::button(XButtonEvent* ev)
@@ -244,14 +246,14 @@ void VolumeControl::build_dialog()
     int n = 0;
     XtSetArg(args[n], XmNdialogTitle, title); n++;
     XtSetArg(args[n], XmNautoUnmanage, False); n++;
-    XtSetArg(args[n], XmNmarginWidth, 10); n++;
-    XtSetArg(args[n], XmNmarginHeight, 10); n++;
+    XtSetArg(args[n], XmNmarginWidth, scaled(10)); n++;
+    XtSetArg(args[n], XmNmarginHeight, scaled(10)); n++;
     dialog_ = XmCreateFormDialog(parent_, (char*)"volumeDialog", args, n);
     XmStringFree(title);
 
     n = 0;
     XtSetArg(args[n], XmNorientation, XmVERTICAL); n++;
-    XtSetArg(args[n], XmNspacing, 8); n++;
+    XtSetArg(args[n], XmNspacing, scaled(8)); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
@@ -265,7 +267,7 @@ void VolumeControl::build_dialog()
     XtSetArg(args[n], XmNminimum, 0); n++;
     XtSetArg(args[n], XmNmaximum, 100); n++;
     XtSetArg(args[n], XmNshowValue, True); n++;
-    XtSetArg(args[n], XmNscaleWidth, 260); n++;
+    XtSetArg(args[n], XmNscaleWidth, scaled(260)); n++;
     scale_ = XmCreateScale(rc, (char*)"volume", args, n);
     XtAddCallback(scale_, XmNvalueChangedCallback, scale_cb, (XtPointer)this);
     XtAddCallback(scale_, XmNdragCallback, scale_cb, (XtPointer)this);
@@ -332,7 +334,7 @@ void VolumeControl::build_dialog()
     XtSetArg(args[n], XmNlabelString, cl); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
     XtSetArg(args[n], XmNtopWidget, rc); n++;
-    XtSetArg(args[n], XmNtopOffset, 10); n++;
+    XtSetArg(args[n], XmNtopOffset, scaled(10)); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
     Widget close = XmCreatePushButton(dialog_, (char*)"close", args, n);
     XmStringFree(cl);

@@ -51,6 +51,7 @@ OBJS = $(B)/main.o \
 	$(B)/core_launch.o \
 	$(B)/core_net.o \
 	$(B)/core_painter.o \
+	$(B)/core_scale.o \
 	$(B)/core_settings.o \
 	$(B)/core_shortcuts.o \
 	$(B)/core_startup.o \
@@ -97,7 +98,7 @@ CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
 	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h \
 	src/core/settings.h src/core/shortcuts.h src/core/launch.h \
-	src/core/startup.h src/core/xdgautostart.h \
+	src/core/startup.h src/core/xdgautostart.h src/core/scale.h \
 	src/core/audio.h src/core/net.h src/core/storage.h src/core/notify.h
 X11_H = src/x11/wm.h src/x11/hints.h src/x11/config.h src/x11/xpainter.h \
 	src/x11/iconload.h src/x11/svg.h src/x11/keys.h \
@@ -138,6 +139,9 @@ $(B)/core_net.o: $(B)/.dir src/core/net.cpp $(CORE_H)
 
 $(B)/core_painter.o: $(B)/.dir src/core/painter.cpp $(CORE_H)
 	$(COMPILE) -c src/core/painter.cpp -o $@
+
+$(B)/core_scale.o: $(B)/.dir src/core/scale.cpp $(CORE_H)
+	$(COMPILE) -c src/core/scale.cpp -o $@
 
 $(B)/core_settings.o: $(B)/.dir src/core/settings.cpp $(CORE_H)
 	$(COMPILE) -c src/core/settings.cpp -o $@

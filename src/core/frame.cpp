@@ -1,5 +1,6 @@
 #include "core/frame.h"
 #include "core/painter.h"
+#include "core/scale.h"
 
 #include <string.h>
 
@@ -27,7 +28,9 @@ FrameTheme::FrameTheme()
 
 void FrameTheme::fit_font(int font_height)
 {
-    title_h = font_height + 2 * shadow + 6;
+    border = scaled(6);
+    shadow = scaled_line(2);
+    title_h = font_height + 2 * shadow + scaled(6);
 }
 
 int FrameTheme::border_w(const FrameDecor& d) const
@@ -196,7 +199,7 @@ static void icon_box(Painter& p, const Rect& r, int w, int h,
                      const ColorSet& cs)
 {
     Rect b(r.x + (r.w - w) / 2, r.y + (r.h - h) / 2, w, h);
-    draw_bevel(p, b, 1, cs.top, cs.bottom);
+    draw_bevel(p, b, scaled_line(1), cs.top, cs.bottom);
 }
 
 void paint_frame(Painter& p, const FrameTheme& t, const FrameDecor& d,
@@ -234,7 +237,7 @@ void paint_frame(Painter& p, const FrameTheme& t, const FrameDecor& d,
     if (!d.title)
         return;
 
-    int small = T / 5 > 4 ? T / 5 : 4;
+    int small = T / 5 > scaled(4) ? T / 5 : scaled(4);
     if (d.menu) {
         Rect r = t.menu_rect(d, fw);
         button(p, r, S, pressed == FP_MENU, cs);
@@ -257,7 +260,7 @@ void paint_frame(Painter& p, const FrameTheme& t, const FrameDecor& d,
     button(p, tr, S, false, cs);
 
     int len = title ? (int)strlen(title) : 0;
-    int avail = tr.w - 2 * S - 8;
+    int avail = tr.w - 2 * S - scaled(8);
     while (len > 0 && p.text_width(title, len) > avail)
         len--;
     if (len > 0) {

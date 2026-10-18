@@ -5,6 +5,12 @@
 
 namespace ttr {
 
+/* Bevel width for a glyph of 'size': 1 pixel at 16, more when larger. */
+static int glyph_line(int size)
+{
+    return size / 16 > 1 ? size / 16 : 1;
+}
+
 void draw_bevel(Painter& p, const Rect& r, int thickness,
                 const Rgb& top, const Rgb& bottom)
 {
@@ -29,12 +35,12 @@ void draw_app_icon(Painter& p, const Icon* ic, int x, int y, int size,
         return;
     }
     /* A little window: frame, title bar, client area. */
-    int m = size / 8;
+    int m = size / 8, l = glyph_line(size);
     Rect r(x + m, y + m, size - 2 * m, size - 2 * m);
-    draw_bevel(p, r, 1, cs.top, cs.bottom);
+    draw_bevel(p, r, l, cs.top, cs.bottom);
     int t = size / 5 > 3 ? size / 5 : 3;
-    p.fill(Rect(r.x + 1, r.y + 1, r.w - 2, t), Rgb::hex(0x6080a8));
-    p.fill(Rect(r.x + 1, r.y + 1 + t, r.w - 2, r.h - 2 - t),
+    p.fill(Rect(r.x + l, r.y + l, r.w - 2 * l, t), Rgb::hex(0x6080a8));
+    p.fill(Rect(r.x + l, r.y + l + t, r.w - 2 * l, r.h - 2 * l - t),
            Rgb(0xffff, 0xffff, 0xffff));
 }
 
@@ -81,7 +87,7 @@ void draw_network_icon(Painter& p, int x, int y, int size, int kind,
             if (i < level)
                 p.fill(r, cs.fg);
             else
-                draw_bevel(p, r, 1, cs.bottom, cs.top);
+                draw_bevel(p, r, glyph_line(size), cs.bottom, cs.top);
         }
         return;
     }
@@ -111,7 +117,8 @@ void draw_storage_icon(Painter& p, int x, int y, int size, const ColorSet& cs)
     p.fill(Rect(x + 3 * u + u / 2, y + u, u, u), cs.fg);
     Rect body(x + 2 * u, y + 3 * u, 4 * u, size - 3 * u);
     p.fill(body, Rgb::hex(0x3060c0));
-    draw_bevel(p, body, 1, Rgb::hex(0x80a0e0), Rgb::hex(0x203060));
+    draw_bevel(p, body, glyph_line(size), Rgb::hex(0x80a0e0),
+               Rgb::hex(0x203060));
 }
 
 void draw_folder_icon(Painter& p, int x, int y, int size)

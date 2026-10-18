@@ -4,6 +4,7 @@
 #include "core/apps.h"
 #include "core/icon.h"
 #include "core/painter.h"
+#include "core/scale.h"
 #include "x11/config.h"
 #include "x11/iconload.h"
 #include "x11/xpainter.h"
@@ -22,8 +23,6 @@
 
 namespace ttr {
 
-/* Menus longer than this wrap into more columns. */
-static const int k_menu_rows = 30;
 
 static void load_apps(const Config& cfg, AppFolder* root)
 {
@@ -67,6 +66,7 @@ static const char* const k_menu_fonts[] = {
     0
 };
 
+/* At 100%; scaled() when used. */
 static const int k_icon = 16;       /* menu icon size */
 static const int k_icon_gap = 6;    /* between icon and text */
 
@@ -89,7 +89,7 @@ StartMenu::StartMenu(Widget parent, WmLink* wm, const Config& cfg)
     settings_ = new SettingsDialog(parent, wm, cfg, apps_);
     painter_ = new XPainter(dpy, DefaultScreen(dpy));
     const char* fonts[6];
-    fonts[0] = cfg.menu_font.c_str();
+    fonts[0] = cfg.menu_xfont.c_str();
     int k;
     for (k = 0; k < 5; k++)
         fonts[k + 1] = k_menu_fonts[k];
@@ -169,33 +169,48 @@ StartMenu::~StartMenu()
     delete apps_;
 }
 
+int StartMenu::label_height()
+{
+    int h = painter_->text_ascent() + painter_->text_descent() + scaled(4);
+    int icon = scaled(k_icon) + scaled(2);
+    return h > icon ? h : icon;
+}
+
+/* Menus longer than the screen wrap into more columns. A menu item is its
+ * label plus the gadget's margins and shadows. */
+int StartMenu::menu_rows()
+{
+    Display* dpy = XtDisplay(parent_);
+    int rows = DisplayHeight(dpy, DefaultScreen(dpy)) * 9 / 10 /
+               (label_height() + scaled(8));
+    return rows < 10 ? 10 : rows;
+}
+
 /* Motif 2.1 labels show text or a pixmap, not both, so the icon and the
  * text are drawn together into one pixmap. */
-Pixmap StartMenu::label_pixmap(const char* text, const Icon* icon,
+Pixmap StartMenu::label_pixmap(const char* text, const Icon* ic,
                                Glyph fallback)
 {
     Display* dpy = XtDisplay(parent_);
     int screen = DefaultScreen(dpy);
     int len = (int)strlen(text);
     int asc = painter_->text_ascent(), desc = painter_->text_descent();
-    int w = k_icon + k_icon_gap + painter_->text_width(text, len) + 2;
-    int h = asc + desc + 4;
-    if (h < k_icon + 2)
-        h = k_icon + 2;
+    int icon = scaled(k_icon), gap = scaled(k_icon_gap);
+    int w = icon + gap + painter_->text_width(text, len) + scaled(2);
+    int h = label_height();
 
     Pixmap pm = XCreatePixmap(dpy, RootWindow(dpy, screen), w, h,
                               DefaultDepth(dpy, screen));
     painter_->begin(pm, w, h);
     painter_->fill(Rect(0, 0, w, h), cs_.bg);
-    int iy = (h - k_icon) / 2;
-    if (icon)
-        painter_->icon(*icon, 0, iy, k_icon, cs_.bg);
+    int iy = (h - icon) / 2;
+    if (ic)
+        painter_->icon(*ic, 0, iy, icon, cs_.bg);
     else if (fallback == GLYPH_FOLDER)
-        draw_folder_icon(*painter_, 0, iy, k_icon);
+        draw_folder_icon(*painter_, 0, iy, icon);
     else if (fallback == GLYPH_APP)
-        draw_app_icon(*painter_, 0, 0, iy, k_icon, cs_);
-    painter_->text(k_icon + k_icon_gap, (h - asc - desc) / 2 + asc, text, len,
-                   cs_.fg);
+        draw_app_icon(*painter_, 0, 0, iy, icon, cs_);
+    painter_->text(icon + gap, (h - asc - desc) / 2 + asc, text, len, cs_.fg);
     painter_->end();
     pixmaps_.push_back(pm);
     return pm;
@@ -205,7 +220,7 @@ Widget StartMenu::item(Widget menu, const char* label, const char* icon,
                        Glyph fallback, XtCallbackProc cb, XtPointer closure,
                        Widget sub)
 {
-    Icon* ic = icon && *icon ? icons_->load(icon, k_icon) : 0;
+    Icon* ic = icon && *icon ? icons_->load(icon, scaled(k_icon)) : 0;
     Pixmap pm = label_pixmap(label, ic, fallback);
     delete ic;      /* the painter keeps its own pixmap */
 
@@ -245,12 +260,11 @@ void StartMenu::build(Widget menu, AppFolder* folder)
         }
     }
 
-    int count = folder->items.size();
-    if (count > k_menu_rows) {
+    int count = folder->items.size(), rows = menu_rows();
+    if (count > rows) {
         Arg args[2];
         XtSetArg(args[0], XmNpacking, XmPACK_COLUMN);
-        XtSetArg(args[1], XmNnumColumns,
-                 (short)((count + k_menu_rows - 1) / k_menu_rows));
+        XtSetArg(args[1], XmNnumColumns, (short)((count + rows - 1) / rows));
         XtSetValues(menu, args, 2);
     }
 }

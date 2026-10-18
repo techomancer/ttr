@@ -3,6 +3,7 @@
 #include "core/icon.h"
 #include "core/launch.h"
 #include "core/painter.h"
+#include "core/scale.h"
 #include "shell/popup.h"
 #include "x11/iconload.h"
 
@@ -40,7 +41,7 @@ StorageMenu::StorageMenu(Widget parent, WmLink* wm, IconLoader* icons,
     icon_ = 0;
     int i;
     for (i = 0; names[i] && !icon_; i++)
-        icon_ = icons->load(names[i], 16);
+        icon_ = icons->load(names[i], scaled(16));
     runner_ = new CommandRunner(XtWidgetToApplicationContext(parent));
     pending_.menu = this;
     pending_.op = OP_MOUNT;
@@ -110,11 +111,12 @@ StorageVolume* StorageMenu::find(const char* device)
 
 void StorageMenu::paint(Painter& p, const Rect& r)
 {
-    int x = r.x + (r.w - 16) / 2, y = r.y + (r.h - 16) / 2;
+    int size = r.w < r.h ? r.w : r.h;
+    int x = r.x + (r.w - size) / 2, y = r.y + (r.h - size) / 2;
     if (icon_)
-        p.icon(*icon_, x, y, 16, cs_.bg);
+        p.icon(*icon_, x, y, size, cs_.bg);
     else
-        draw_storage_icon(p, x, y, 16, cs_);
+        draw_storage_icon(p, x, y, size, cs_);
 }
 
 void StorageMenu::button(XButtonEvent* ev)

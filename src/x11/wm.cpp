@@ -2,6 +2,7 @@
 #include "x11/xpainter.h"
 #include "core/icon.h"
 #include "core/launch.h"
+#include "core/scale.h"
 #include "core/shortcuts.h"
 #include "x11/keys.h"
 #include "core/switcher.h"
@@ -265,7 +266,7 @@ bool Wm::init(int* argc, char** argv)
 
     painter_ = new XPainter(dpy_, screen_);
     const char* fonts[6];
-    fonts[0] = config_.title_font.c_str();
+    fonts[0] = config_.title_xfont.c_str();
     for (k = 0; k < 5; k++)
         fonts[k + 1] = k_title_fonts[k];
     if (!painter_->load_font(fonts)) {
@@ -1925,7 +1926,7 @@ void Wm::show_snap_preview(int snap)
         return;
     }
     Rect r = snap_rect(snap);
-    int t = k_preview_line;
+    int t = scaled(k_preview_line);
     XMoveResizeWindow(dpy_, snap_preview_[0], r.x, r.y, r.w, t);
     XMoveResizeWindow(dpy_, snap_preview_[1], r.x, r.y + r.h - t, r.w, t);
     XMoveResizeWindow(dpy_, snap_preview_[2], r.x, r.y, t, r.h);

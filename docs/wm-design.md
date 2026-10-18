@@ -387,6 +387,30 @@ widgets only when they are created. See [src/x11/config.h](../src/x11/config.h):
 | `Ttr*notificationLog` | file whose new lines become notifications | none |
 | `Ttr*autostartScript` | `true`, `false`: run `autostart.sh` at startup (§5.10) | `true` |
 | `Ttr*xdgAutostart` | `true`, `false`: start XDG autostart entries (§5.10) | `false` |
+| `Ttr*uiScale` | 100 to 300 (percent): scale of everything ttr draws | 100 |
+
+**UI scale.** For high-resolution screens, `uiScale` scales ttr in three
+ways, all applied once at startup (changing it restarts ttr):
+
+- **Fonts.** The font settings stay at their 100% size, which is what the
+  Settings dialog shows and saves. When loading a font, ttr scales its XLFD
+  pixel size. Bitmap fonts come in a few sizes, so it takes the nearest one
+  the server has ([src/x11/config.cpp](../src/x11/config.cpp)
+  `scale_font`).
+- **Our own drawing.** Pixel sizes in frames, the taskbar, the tray, menus,
+  pop-ups and dialog layout are written for 100% and go through `scaled()`.
+  Lines and bevels go through `scaled_line()`, which grows more slowly (1
+  pixel up to 199%) so they do not get heavy
+  ([src/core/scale.h](../src/core/scale.h)).
+- **Motif widgets.** They size themselves from their fonts. Their
+  pixel-sized resources (shadows, focus highlights, scroll bars, combo box
+  arrows) are scaled in the resource database, class by class, so widgets
+  that have none, such as labels and managers, do not get one.
+
+Icons are loaded at the scaled size. When a theme lacks that size, a larger
+bitmap is scaled down in preference to a smaller one scaled up. At 100%
+nothing changes: the screen is pixel-identical to before the setting
+existed.
 
 The start menu reads applications through the `AppSource` interface
 ([src/core/apps.h](../src/core/apps.h)): `DesktopAppSource` reads XDG
