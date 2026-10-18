@@ -420,9 +420,9 @@ static int font_path_error(Display* dpy, XErrorEvent* ev)
 /* Add the folders in 'list' (colon separated, ~ expanded) to the end of
  * the X server's font path, like xset fp+, so the fonts in them can be
  * used: Type1 and TrueType ones at any size. A folder needs a fonts.dir
- * index (made by mkfontscale and mkfontdir); others are skipped with a
- * message. Folders already on the path are left alone. */
-static void add_font_path(Display* dpy, const char* list)
+ * index (made by mkfontscale and mkfontdir); others are skipped, with a
+ * message unless 'quiet'. Folders already on the path are left alone. */
+static void add_font_path(Display* dpy, const char* list, bool quiet)
 {
     if (!list || !*list)
         return;
@@ -457,11 +457,16 @@ static void add_font_path(Display* dpy, const char* list)
                     present = true;
             }
             sprintf(index, "%s/fonts.dir", dir);
-            if (!present && access(index, R_OK) != 0)
-                fprintf(stderr, "ttr: fontPath: %s has no fonts.dir; run "
-                                "mkfontscale and mkfontdir in it\n", dir);
-            else if (!present)
+            if (!present && access(index, R_OK) != 0) {
+                /* A standard folder that is missing is fine; one with no
+                 * index is worth a word. */
+                if (!quiet || access(dir, F_OK) == 0)
+                    fprintf(stderr, "ttr: font folder %s has no fonts.dir; "
+                                    "run mkfontscale and mkfontdir in it\n",
+                            dir);
+            } else if (!present) {
                 dirs.push_back(Str(dir));
+            }
         }
         if (!e)
             break;
@@ -482,9 +487,26 @@ static void add_font_path(Display* dpy, const char* list)
     XSync(dpy, False);
     XSetErrorHandler(prev);
     delete [] path;
-    if (g_font_path_error)
-        fprintf(stderr, "ttr: the X server refused the fontPath folders\n");
+    if (g_font_path_error) {
+        fprintf(stderr, "ttr: the X server refused the font folders\n");
+        return;
+    }
+    for (i = had; i < dirs.size(); i++)
+        fprintf(stderr, "ttr: added %s to the X font path\n",
+                dirs[i].c_str());
 }
+
+/* The usual font folders on Linux and IRIX. The X server drops folders
+ * that are missing or empty when it starts, and installing fonts later
+ * does not bring them back (xset fp rehash only rereads the path), so
+ * the ones that exist now are added. */
+static const char* const k_std_font_dirs =
+    "/usr/share/fonts/misc:/usr/share/fonts/75dpi:/usr/share/fonts/100dpi:"
+    "/usr/share/fonts/Type1:/usr/share/fonts/TTF:/usr/share/fonts/OTF:"
+    "/usr/share/X11/fonts/misc:/usr/share/X11/fonts/75dpi:"
+    "/usr/share/X11/fonts/100dpi:/usr/share/X11/fonts/Type1:"
+    "/usr/lib/X11/fonts/misc:/usr/lib/X11/fonts/75dpi:"
+    "/usr/lib/X11/fonts/100dpi:/usr/lib/X11/fonts/Type1";
 
 static bool is(const char* a, const char* b)
 {
@@ -550,7 +572,8 @@ void read_config(Widget toplevel, Config* cfg)
         cfg->desktops = k_max_desktops;
 
     Display* dpy = XtDisplay(toplevel);
-    add_font_path(XtDisplay(toplevel), r.font_path);
+    add_font_path(XtDisplay(toplevel), k_std_font_dirs, true);
+    add_font_path(XtDisplay(toplevel), r.font_path, false);
     cfg->font_path = r.font_path ? r.font_path : "";
 
     /* As set; what is loaded is resolved below. */

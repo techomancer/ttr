@@ -403,8 +403,11 @@ ways, all applied once at startup (changing it restarts ttr):
   (Nimbus Sans, Liberation Sans, DejaVu Sans, ...), then the misc fixed
   fonts, then any font, and finally any weight. Aliases such as `fixed`
   are resolved to their XLFD first. Many systems have no bitmap fonts
-  beyond the server's built-in `fixed`, so `fontPath` can add font folders
-  to the server's path (like `xset fp+`; a folder needs a `fonts.dir`).
+  beyond the server's built-in `fixed`. The X server drops font folders
+  that are missing or empty when it starts, and installing fonts later
+  does not bring them back. So at startup ttr adds the usual Linux and IRIX
+  font folders that exist with a `fonts.dir`, and `fontPath` can add more
+  (both like `xset fp+`).
   Client-side Xft fonts are not used: IRIX has no Xft, and core fonts keep
   one code path.
 - **Our own drawing.** Pixel sizes in frames, the taskbar, the tray, menus,

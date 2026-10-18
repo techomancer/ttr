@@ -285,7 +285,18 @@ which is enough for 250%:
 | Debian, Ubuntu | `xfonts-75dpi xfonts-100dpi xfonts-base` |
 | Gentoo | `media-fonts/font-adobe-75dpi media-fonts/font-adobe-100dpi media-fonts/font-misc-misc` |
 
-Then log out and in again, or run `xset fp rehash`.
+ttr adds the usual font folders (`/usr/share/fonts/75dpi`, `100dpi`,
+`Type1`, `TTF` and others) to the X server's font path when it starts, and
+says so on its standard error. This matters because the X server only looks
+at its font folders when it starts. Folders that were missing or empty then
+are left out, and fonts installed later do not show up (`xset q` then shows
+a font path of just `built-ins`). So after installing fonts, use Start >
+Restart ttr. A folder needs a `fonts.dir` index. If ttr reports that one is
+missing, create it:
+
+```sh
+sudo mkfontscale /usr/share/fonts/75dpi && sudo mkfontdir /usr/share/fonts/75dpi
+```
 
 **Scalable fonts.** The X server can also draw Type1 and TrueType fonts at
 any size. It needs them in a folder on its font path, with a `fonts.dir`
