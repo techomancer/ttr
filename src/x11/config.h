@@ -15,6 +15,9 @@
  *   Ttr*taskbarFont:    for task buttons and the clock
  *   Ttr*desktops:       number of virtual desktops, 1 .. 16
  *   Ttr*dockWidth:      third | half (docked and snapped windows)
+ *   Ttr*notificationTime: seconds a notification stays up
+ *   Ttr*notificationLog:  a file whose new lines become notifications
+ *                         (e.g. /var/adm/SYSLOG on IRIX); empty: none
  */
 #ifndef TTR_X11_CONFIG_H
 #define TTR_X11_CONFIG_H
@@ -49,6 +52,8 @@ struct Config {
     Str taskbar_font;
     int desktops;
     int dock_div;           /* 3: thirds, 2: halves */
+    int notification_ms;
+    Str notification_log;
 
     Config();
 };

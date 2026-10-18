@@ -12,7 +12,12 @@
 
 namespace ttr {
 
+class DBusNotifySource;
+class IconLoader;
+class LogNotifySource;
+class Notifier;
 class StartMenu;
+class XNotifySource;
 class Taskbar;
 class WindowMenu;
 struct Config;
@@ -37,6 +42,11 @@ private:
     WindowMenu* winmenu_;
     StartMenu* start_;
     Taskbar* taskbar_;
+    IconLoader* icons_;
+    Notifier* notifier_;
+    DBusNotifySource* dbus_notify_;
+    XNotifySource* x_notify_;
+    LogNotifySource* log_notify_;
 };
 
 }

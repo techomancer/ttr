@@ -64,6 +64,7 @@ private:
     Widget desktops_;
     FontRow title_, menu_, taskbar_;
     Widget clock_;
+    Widget notify_time_;
     Widget source_;
     Widget toolchest_;
     Widget terminal_;

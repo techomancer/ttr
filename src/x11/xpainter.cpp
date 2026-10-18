@@ -27,7 +27,7 @@ static void mask_shift(unsigned long mask, int* shift, int* bits)
 static const int k_icon_cache = 128;
 
 XPainter::XPainter(Display* dpy, int screen)
-    : dpy_(dpy), screen_(screen), font_(0), buf_(None),
+    : dpy_(dpy), screen_(screen), font_(0), regular_(0), bold_(0), buf_(None),
       buf_w_(0), buf_h_(0), win_(None), w_(0), h_(0)
 {
     gc_ = XCreateGC(dpy_, RootWindow(dpy_, screen_), 0, 0);
@@ -45,25 +45,52 @@ XPainter::~XPainter()
         XFreePixmap(dpy_, icons_[i].pixmap);
     if (buf_ != None)
         XFreePixmap(dpy_, buf_);
-    if (font_)
-        XFreeFont(dpy_, font_);
+    if (regular_)
+        XFreeFont(dpy_, regular_);
+    if (bold_)
+        XFreeFont(dpy_, bold_);
     XFreeGC(dpy_, gc_);
+}
+
+static XFontStruct* first_font(Display* dpy, const char* const* names)
+{
+    int i;
+    for (i = 0; names[i]; i++) {
+        XFontStruct* f = XLoadQueryFont(dpy, names[i]);
+        if (f)
+            return f;
+    }
+    return 0;
 }
 
 bool XPainter::load_font(const char* const* names)
 {
-    int i;
-    for (i = 0; names[i]; i++) {
-        XFontStruct* f = XLoadQueryFont(dpy_, names[i]);
-        if (f) {
-            if (font_)
-                XFreeFont(dpy_, font_);
-            font_ = f;
-            XSetFont(dpy_, gc_, font_->fid);
-            return true;
-        }
-    }
-    return false;
+    XFontStruct* f = first_font(dpy_, names);
+    if (!f)
+        return false;
+    if (regular_)
+        XFreeFont(dpy_, regular_);
+    regular_ = f;
+    set_bold(false);
+    return true;
+}
+
+bool XPainter::load_bold_font(const char* const* names)
+{
+    XFontStruct* f = first_font(dpy_, names);
+    if (!f)
+        return false;
+    if (bold_)
+        XFreeFont(dpy_, bold_);
+    bold_ = f;
+    return true;
+}
+
+void XPainter::set_bold(bool on)
+{
+    font_ = on && bold_ ? bold_ : regular_;
+    if (font_)
+        XSetFont(dpy_, gc_, font_->fid);
 }
 
 void XPainter::begin(Window w, int width, int height)

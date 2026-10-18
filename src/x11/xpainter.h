@@ -19,6 +19,9 @@ public:
 
     /* Loads the first font that exists. Returns false if none does. */
     bool load_font(const char* const* names);
+    /* A second font for emphasis, chosen with set_bold(). */
+    bool load_bold_font(const char* const* names);
+    void set_bold(bool on);
 
     /* Paint into a back buffer; end() copies it onto the window. */
     void begin(Window w, int width, int height);
@@ -52,7 +55,9 @@ private:
     Display* dpy_;
     int screen_;
     GC gc_;
-    XFontStruct* font_;
+    XFontStruct* font_;         /* the one in use */
+    XFontStruct* regular_;
+    XFontStruct* bold_;
     Pixmap buf_;
     int buf_w_, buf_h_;
     Window win_;

@@ -56,6 +56,9 @@ public:
     virtual void request(ToplevelId id, WmAction action) = 0;
     virtual void switch_desktop(int desktop) = 0;
     virtual void move_to_desktop(ToplevelId id, int desktop) = 0;
+    /* Keep one of the shell's windows (a notification) above all others
+     * while it is shown. */
+    virtual void set_overlay(unsigned long window, bool on) = 0;
     /* One of the shell's menus was posted or popped down. While one is
      * up it owns the pointer and keyboard; the WM must keep out. */
     virtual void menu_shown(bool shown) = 0;

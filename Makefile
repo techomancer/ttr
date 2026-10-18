@@ -7,7 +7,7 @@
 #
 #   make CXX=clang++
 #   make CXX=CC CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF" WARNFLAGS= \
-#        CPPFLAGS="-Isrc -DTTR_HAVE_XPM -DTTR_HAVE_SVG" \
+#        CPPFLAGS="-Isrc -DTTR_HAVE_XPM -DTTR_HAVE_SVG" DBUS_CFLAGS= \
 #        LIBS="-lXm -lXt -lXpm -lX11 -lm"
 #                                                             (IRIX, MIPSpro)
 #
@@ -21,9 +21,14 @@
 CXX = g++
 CXXFLAGS = -std=c++98 -O2 -g -fno-exceptions -fno-rtti
 WARNFLAGS = -pedantic -Wall -Wextra
-CPPFLAGS = -Isrc -DTTR_HAVE_PNG -DTTR_HAVE_XPM -DTTR_HAVE_SVG
+CPPFLAGS = -Isrc -DTTR_HAVE_PNG -DTTR_HAVE_XPM -DTTR_HAVE_SVG -DTTR_HAVE_DBUS
+# libdbus-1 for desktop notifications. Its include directories differ per
+# distribution: make DBUS_CFLAGS="`pkg-config --cflags dbus-1`" if these
+# are wrong, or drop -DTTR_HAVE_DBUS and -ldbus-1 to build without it.
+DBUS_CFLAGS = -I/usr/include/dbus-1.0 -I/usr/lib64/dbus-1.0/include \
+	-I/usr/lib/dbus-1.0/include -I/usr/lib/x86_64-linux-gnu/dbus-1.0/include
 LDFLAGS =
-LIBS = -lXm -lXt -lXpm -lpng -lX11 -lm
+LIBS = -lXm -lXt -lXpm -lpng -ldbus-1 -lX11 -lm
 
 B = build
 COMPILE = $(CXX) $(CPPFLAGS) $(CXXFLAGS) $(WARNFLAGS)
@@ -45,6 +50,8 @@ OBJS = $(B)/main.o \
 	$(B)/core_switcher.o \
 	$(B)/core_text.o \
 	$(B)/shell_netstatus.o \
+	$(B)/shell_notifier.o \
+	$(B)/shell_notifysrc.o \
 	$(B)/shell_quicklaunch.o \
 	$(B)/shell_runcmd.o \
 	$(B)/shell_settings.o \
@@ -78,7 +85,7 @@ CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
 	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h \
 	src/core/settings.h src/core/shortcuts.h src/core/launch.h \
-	src/core/audio.h src/core/net.h src/core/storage.h
+	src/core/audio.h src/core/net.h src/core/storage.h src/core/notify.h
 X11_H = src/x11/wm.h src/x11/hints.h src/x11/config.h src/x11/xpainter.h \
 	src/x11/iconload.h src/x11/svg.h src/x11/keys.h \
 	$(CORE_H)
@@ -86,7 +93,8 @@ SHELL_H = src/shell/shell.h src/shell/startmenu.h src/shell/taskbar.h \
 	src/shell/tray.h src/shell/winmenu.h src/shell/quicklaunch.h \
 	src/shell/settings.h src/shell/shortcutsdlg.h src/shell/runcmd.h \
 	src/shell/volume.h src/shell/netstatus.h src/shell/trayitem.h \
-	src/shell/storagemenu.h src/shell/popup.h
+	src/shell/storagemenu.h src/shell/popup.h src/shell/notifier.h \
+	src/shell/notifysrc.h
 
 $(B)/main.o: $(B)/.dir src/main.cpp $(X11_H) $(SHELL_H)
 	$(COMPILE) -c src/main.cpp -o $@
@@ -138,6 +146,12 @@ $(B)/core_text.o: $(B)/.dir src/core/text.cpp $(CORE_H)
 
 $(B)/shell_netstatus.o: $(B)/.dir src/shell/netstatus.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/netstatus.cpp -o $@
+
+$(B)/shell_notifier.o: $(B)/.dir src/shell/notifier.cpp $(SHELL_H) $(X11_H)
+	$(COMPILE) -c src/shell/notifier.cpp -o $@
+
+$(B)/shell_notifysrc.o: $(B)/.dir src/shell/notifysrc.cpp $(SHELL_H) $(X11_H)
+	$(COMPILE) $(DBUS_CFLAGS) -c src/shell/notifysrc.cpp -o $@
 
 $(B)/shell_quicklaunch.o: $(B)/.dir src/shell/quicklaunch.cpp $(SHELL_H) \
 		$(X11_H)

@@ -77,6 +77,7 @@ public:
     void switch_desktop(int desktop);
     void move_to_desktop(ToplevelId id, int desktop);
     void menu_shown(bool shown);
+    void set_overlay(unsigned long window, bool on);
     void set_panel(unsigned long window, const Rect& r);
     void quit();
     void restart();
@@ -254,6 +255,9 @@ private:
     int current_;
     Window osd_win_;
     XtIntervalId osd_timer_;
+
+    /* Shell windows kept above everything (notifications). */
+    Vector<Window> overlays_;
 
     /* Outline of where a window will snap, while dragging. */
     Window snap_preview_[4];

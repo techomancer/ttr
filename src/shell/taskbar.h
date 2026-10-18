@@ -39,6 +39,8 @@ public:
     void remove(ToplevelId id);
     void set_active(ToplevelId id);
     void post_start_menu(unsigned long time);
+    /* Root coordinates of the bar. */
+    const Rect& geometry() const { return geom_; }
     void release();
 
 private:

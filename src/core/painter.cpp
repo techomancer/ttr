@@ -144,4 +144,53 @@ int fit_text(Painter& p, const char* s, int width, char* buf, int size)
     return len + 3;
 }
 
+void wrap_text(Painter& p, const char* text, int width, int max_lines,
+               Vector<Str>* out)
+{
+    int len = (int)strlen(text);
+    char* line = new char[len + 4];
+    int pos = 0;
+    while (pos < len && out->size() < max_lines) {
+        /* Take words while they fit; a newline ends the line. */
+        int n = 0, last_space = -1, i = pos;
+        while (i < len && text[i] != '\n') {
+            line[n] = text[i];
+            if (p.text_width(line, n + 1) > width) {
+                if (last_space > 0) {
+                    n = last_space;     /* break after the last word */
+                    i = pos + last_space + 1;
+                } else if (n == 0) {
+                    n = 1;              /* one character must fit */
+                    i++;
+                }
+                break;
+            }
+            if (text[i] == ' ')
+                last_space = n;
+            n++;
+            i++;
+        }
+        while (n > 0 && line[n - 1] == ' ')
+            n--;
+        line[n] = 0;
+        if (i < len && text[i] == '\n')
+            i++;
+        pos = i;
+        while (pos < len && text[pos] == ' ')
+            pos++;
+        if (out->size() == max_lines - 1 && pos < len) {
+            char buf[512];
+            fit_text(p, (Str(line).c_str()), width - p.text_width("...", 3),
+                     buf, sizeof(buf) - 4);
+            int bl = (int)strlen(buf);
+            if (bl < 3 || strcmp(buf + bl - 3, "...") != 0)
+                strcat(buf, "...");
+            out->push_back(Str(buf));
+            break;
+        }
+        out->push_back(Str(line));
+    }
+    delete [] line;
+}
+
 }

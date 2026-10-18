@@ -378,6 +378,8 @@ widgets only when they are created. See [src/x11/config.h](../src/x11/config.h):
 | `Ttr*taskbarFont` | for task buttons and the clock | Helvetica medium 12 |
 | `Ttr*desktops` | number of virtual desktops, 1 to 16 | 4 |
 | `Ttr*dockWidth` | `third`, `half`: size of docked and snapped windows | `third` |
+| `Ttr*notificationTime` | seconds a notification stays up | 5 |
+| `Ttr*notificationLog` | file whose new lines become notifications | none |
 
 The start menu reads applications through the `AppSource` interface
 ([src/core/apps.h](../src/core/apps.h)): `DesktopAppSource` reads XDG
@@ -513,7 +515,34 @@ run asynchronously; a failure shows the tool's own message. Open uses
 IRIX: another `storage_snapshot()` (removable media there are mostly
 CD-ROMs and floppies, mounted by mediad).
 
-### 5.8 Docking and snapping
+### 5.8 Notifications
+
+Notifications pop up at the bottom right, just above the taskbar, sliding
+up into place and stacking upward (five at most): a bevelled panel with the
+app's icon, the summary in bold and the body wrapped to four lines. A click
+dismisses one; otherwise it goes after `notificationTime` seconds or the
+app's own timeout; critical ones stay until clicked. The shell asks the WM
+to keep them above other windows (`WmLink::set_overlay`).
+
+Sources ([src/shell/notifysrc.h](../src/shell/notifysrc.h)), all feeding
+one sink:
+
+- **D-Bus** (Linux, libdbus-1, `TTR_HAVE_DBUS`): the freedesktop.org
+  `org.freedesktop.Notifications` service on the session bus: Notify
+  (with replaces_id, urgency, timeout, app_icon / image-path),
+  CloseNotification, GetCapabilities ("body"), GetServerInformation, and
+  the NotificationClosed signal. The connection's descriptor is watched
+  from the Xt loop; nothing blocks. If another daemon owns the name, ttr
+  leaves it alone.
+- **X11**: `ttr -notify SUMMARY [BODY]` appends a record to `_TTR_NOTIFY`
+  on the root window, so any X client on any machine can notify, IRIX
+  included. Motif claims the root window for its own screen object, so the
+  shell watches these through an Xt event dispatcher of its own, chained in
+  front of the WM's.
+- **Log file**: new lines in `notificationLog` (from start, three at most
+  per poll). On IRIX, console and kernel messages go to `/var/adm/SYSLOG`.
+
+### 5.9 Docking and snapping
 
 A window can be docked in one of three columns, left, center or right, of
 the full work area height and `dockWidth` (a third or half) of its width;
@@ -539,7 +568,7 @@ menu has the same operations under Snap. Docked columns set
 `_NET_WM_STATE_MAXIMIZED_VERT`, top and bottom `..._HORZ`, the nearest EWMH
 states.
 
-### 5.9 Wayland mode (`ttr-wayland`, later)
+### 5.10 Wayland mode (`ttr-wayland`, later)
 
 1. Bring up DRM/KMS, libinput and the scene graph, then create the Wayland
    socket.

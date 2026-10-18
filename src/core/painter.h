@@ -7,6 +7,8 @@
 
 #include "core/color.h"
 #include "core/geom.h"
+#include "core/str.h"
+#include "core/vector.h"
 
 namespace ttr {
 
@@ -47,6 +49,11 @@ void draw_storage_icon(Painter& p, int x, int y, int size, const ColorSet& cs);
 
 /* A closed folder, for menus. */
 void draw_folder_icon(Painter& p, int x, int y, int size);
+
+/* Word-wrap 'text' (with its own newlines) to 'width' pixels, at most
+ * 'max_lines' lines, the last ending in "..." if text was left over. */
+void wrap_text(Painter& p, const char* text, int width, int max_lines,
+               Vector<Str>* out);
 
 /* Longest prefix of s that fits in 'width' pixels, with "..." appended if
  * it had to be cut. Writes into buf (size bytes); returns its length. */

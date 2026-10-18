@@ -742,7 +742,7 @@ bool Wm::on_property(XPropertyEvent* ev)
 {
     Client* c = find_client(ev->window);
     if (!c)
-        return ev->window == root_;
+        return false;   /* the root's go on to Xt: the shell watches some */
     if (ev->atom == XA_WM_NAME || ev->atom == atoms_.net_wm_name) {
         c->title = read_title(dpy_, atoms_, c->win);
         paint(c);
@@ -1625,6 +1625,8 @@ void Wm::raise(Client* c)
         XRaiseWindow(dpy_, osd_win_);
     if (switching_)
         XRaiseWindow(dpy_, switch_win_);
+    for (i = 0; i < overlays_.size(); i++)
+        XRaiseWindow(dpy_, overlays_[i]);
     update_client_lists();
 }
 
@@ -2019,6 +2021,15 @@ void Wm::menu_shown(bool shown)
 {
     shell_menu_up_ = shown;
     popups_changed();
+}
+
+void Wm::set_overlay(unsigned long window, bool on)
+{
+    int i = overlays_.find((Window)window);
+    if (on && i < 0)
+        overlays_.push_back((Window)window);
+    else if (!on && i >= 0)
+        overlays_.remove_at(i);
 }
 
 bool Wm::menu_up() const

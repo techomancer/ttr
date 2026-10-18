@@ -31,6 +31,12 @@ static const int k_nsizes = (int)(sizeof(k_sizes) / sizeof(k_sizes[0]));
 
 static const char* const k_sources[] = { "auto", "desktop", "toolchest" };
 
+static const char* const k_notify_times[] = {
+    "3", "5", "8", "10", "15", "30", "60"
+};
+static const int k_nnotify =
+    (int)(sizeof(k_notify_times) / sizeof(k_notify_times[0]));
+
 static const char* const k_desktop_counts[] = {
     "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14",
     "15", "16"
@@ -403,7 +409,7 @@ void SettingsDialog::build()
 
     n = 0;
     XtSetArg(args[n], XmNorientation, XmVERTICAL); n++;
-    XtSetArg(args[n], XmNspacing, 8); n++;
+    XtSetArg(args[n], XmNspacing, 4); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
@@ -440,21 +446,22 @@ void SettingsDialog::build()
     font_row(&menu_, f, "Menus and dialogs:", cfg_.menu_font.c_str());
     font_row(&taskbar_, f, "Taskbar:", cfg_.taskbar_font.c_str());
 
-    f = frame(content, "Taskbar");
+    f = frame(content, "Taskbar and notifications");
     clock_ = text_field(row(f, "Clock format:"), cfg_.clock_format.c_str(),
                         12);
+    Widget nrow = row(f, "Notifications for:");
+    notify_time_ = drop_down(nrow, "notifyTime", k_notify_times, k_nnotify,
+                             k_nnotify, 3);
+    XmString secs_label = xmstr("seconds");
+    Arg largs[1];
+    XtSetArg(largs[0], XmNlabelString, secs_label);
+    XtManageChild(XmCreateLabel(nrow, (char*)"unit", largs, 1));
+    XmStringFree(secs_label);
+    char secs[16];
+    sprintf(secs, "%d", cfg_.notification_ms / 1000);
+    select_item(notify_time_, secs);
 
-    f = frame(content, "Shortcuts");
-    Widget srow = row(f, "Programs to launch:");
-    XmString sl = xmstr("Edit Shortcuts...");
-    Arg sargs[1];
-    XtSetArg(sargs[0], XmNlabelString, sl);
-    Widget sb = XmCreatePushButton(srow, (char*)"shortcuts", sargs, 1);
-    XmStringFree(sl);
-    XtAddCallback(sb, XmNactivateCallback, shortcuts_cb, (XtPointer)this);
-    XtManageChild(sb);
-
-    f = frame(content, "Start menu");
+    f = frame(content, "Start menu and shortcuts");
     source_ = drop_down(row(f, "Programs from:"), "source", k_sources, 3, 3,
                         10);
     select_item(source_, cfg_.app_source_name.c_str());
@@ -462,6 +469,14 @@ void SettingsDialog::build()
                             cfg_.toolchest_setting.c_str(), 40);
     terminal_ = text_field(row(f, "Terminal command:"),
                            cfg_.terminal.c_str(), 20);
+    Widget srow = row(f, "Shortcuts:");
+    XmString sl = xmstr("Edit Shortcuts...");
+    Arg sargs[1];
+    XtSetArg(sargs[0], XmNlabelString, sl);
+    Widget sb = XmCreatePushButton(srow, (char*)"shortcuts", sargs, 1);
+    XmStringFree(sl);
+    XtAddCallback(sb, XmNactivateCallback, shortcuts_cb, (XtPointer)this);
+    XtManageChild(sb);
     XtManageChild(content);
 
     /* OK and Cancel along the bottom. */
@@ -540,6 +555,8 @@ void SettingsDialog::save()
     file.set("menuFont", font_name(&menu_).c_str());
     file.set("taskbarFont", font_name(&taskbar_).c_str());
     file.set("clockFormat", text_value(clock_).c_str());
+    file.set("notificationTime",
+             selected_item(notify_time_, k_notify_times, k_nnotify).c_str());
     file.set("appSource", selected_item(source_, k_sources, 3).c_str());
     file.set("toolchestFiles", text_value(toolchest_).c_str());
     file.set("terminal", text_value(terminal_).c_str());

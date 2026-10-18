@@ -47,6 +47,8 @@ struct Resources {
     String taskbar_font;
     String desktops;
     String dock_width;
+    String notification_time;
+    String notification_log;
 };
 
 #define RES(name, cls, field, def) \
@@ -65,7 +67,9 @@ static XtResource k_resources[] = {
     RES("menuFont", "Font", menu_font, BOLD_12),
     RES("taskbarFont", "Font", taskbar_font, MEDIUM_12),
     RES("desktops", "Desktops", desktops, "4"),
-    RES("dockWidth", "DockWidth", dock_width, "third")
+    RES("dockWidth", "DockWidth", dock_width, "third"),
+    RES("notificationTime", "NotificationTime", notification_time, "5"),
+    RES("notificationLog", "NotificationLog", notification_log, "")
 };
 
 #undef RES
@@ -75,7 +79,7 @@ Config::Config()
       app_source(APPS_DESKTOP), app_source_name("auto"),
       terminal("xterm -e"), clock_format("%H:%M"), title_font(BOLD_12),
       menu_font(BOLD_12), taskbar_font(MEDIUM_12), desktops(4),
-      dock_div(3)
+      dock_div(3), notification_ms(5000)
 {
 }
 
@@ -227,6 +231,11 @@ void read_config(Widget toplevel, Config* cfg)
     else if (!is(r.dock_width, "third"))
         fprintf(stderr, "ttr: unknown dockWidth '%s', using third\n",
                 r.dock_width);
+
+    int secs = r.notification_time ? atoi(r.notification_time) : 5;
+    cfg->notification_ms = (secs < 1 ? 1 : secs > 300 ? 300 : secs) * 1000;
+    cfg->notification_log = expand_home(r.notification_log ? r.notification_log
+                                                            : "");
 
     cfg->desktops = r.desktops ? atoi(r.desktops) : 4;
     if (cfg->desktops < 1)

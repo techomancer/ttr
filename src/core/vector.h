@@ -26,6 +26,15 @@ public:
         data_[size_++] = v;
     }
 
+    void insert_front(const T& v)
+    {
+        push_back(v);
+        int j;
+        for (j = size_ - 1; j > 0; j--)
+            data_[j] = data_[j - 1];
+        data_[0] = v;
+    }
+
     void remove_at(int i)
     {
         int j;
