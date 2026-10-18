@@ -252,7 +252,7 @@ void NetStatus::build_dialog()
     }
     XtManageChild(row);
 
-    /* The report, in a fixed width font, above. */
+    /* The report, in a fixed width font at the UI scale, above. */
     n = 0;
     XtSetArg(args[n], XmNeditMode, XmMULTI_LINE_EDIT); n++;
     XtSetArg(args[n], XmNeditable, False); n++;
@@ -260,8 +260,10 @@ void NetStatus::build_dialog()
     XtSetArg(args[n], XmNrows, 18); n++;
     XtSetArg(args[n], XmNcolumns, 66); n++;
     XtSetArg(args[n], XmNtraversalOn, False); n++;
+    Str font = scale_font(XtDisplay(parent_), "fixed", ui_scale());
     XmFontListEntry fe = XmFontListEntryLoad(XtDisplay(parent_),
-                                             (char*)"fixed", XmFONT_IS_FONT,
+                                             (char*)font.c_str(),
+                                             XmFONT_IS_FONT,
                                              (char*)XmFONTLIST_DEFAULT_TAG);
     XmFontList fl = fe ? XmFontListAppendEntry(0, fe) : 0;
     if (fe)
