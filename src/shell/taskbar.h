@@ -80,6 +80,7 @@ private:
     Vector<Task*> list_;
     ToplevelId active_;
     int pressed_;
+    bool closing_;          /* after release(): the WM is freeing windows */
 };
 
 }

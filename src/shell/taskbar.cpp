@@ -35,7 +35,7 @@ static const int k_margin = 2;
 Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
                  StartMenu* start, WindowMenu* winmenu)
     : wm_(wm), start_menu_(start), winmenu_(winmenu), tray_(0), icons_(0),
-      quick_(0), volume_(0), active_(0), pressed_(-1)
+      quick_(0), volume_(0), active_(0), pressed_(-1), closing_(false)
 {
     Display* dpy = XtDisplay(parent);
     int screen = DefaultScreen(dpy);
@@ -167,20 +167,29 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
 
 Taskbar::~Taskbar()
 {
-    if (tray_)
-        tray_->set_volume(0);
+    /* No relayout on the way out: it would repaint widgets that are
+     * going away. The tray goes before the volume icon it shows. */
+    delete tray_;
+    tray_ = 0;
     delete volume_;
     delete quick_;
     delete icons_;
-    delete tray_;
     int i;
     for (i = 0; i < list_.size(); i++)
         delete list_[i];
     delete painter_;
 }
 
+/* The WM is about to free every window, and with them the icons our
+ * task buttons point at: drop the buttons and paint nothing more. */
 void Taskbar::release()
 {
+    closing_ = true;
+    int i;
+    for (i = 0; i < list_.size(); i++)
+        delete list_[i];
+    list_.clear();
+    active_ = 0;
     if (tray_)
         tray_->release();
 }
@@ -317,7 +326,7 @@ int Taskbar::hit(int x, int y)
 
 void Taskbar::paint_tasks()
 {
-    if (!XtIsRealized(tasks_))
+    if (closing_ || !XtIsRealized(tasks_))
         return;
     Dimension dw = 0, dh = 0;
     Arg args[2];

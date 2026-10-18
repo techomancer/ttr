@@ -181,5 +181,12 @@ $(B)/x11_wm.o: $(B)/.dir src/x11/wm.cpp $(X11_H)
 $(B)/x11_xpainter.o: $(B)/.dir src/x11/xpainter.cpp $(X11_H)
 	$(COMPILE) -c src/x11/xpainter.cpp -o $@
 
+# A separate build with AddressSanitizer (gcc or clang), for chasing memory
+# errors: build-asan/ttr. Run with ASAN_OPTIONS=detect_leaks=0.
+asan:
+	$(MAKE) B=build-asan \
+		CXXFLAGS="-std=c++98 -g -O0 -fno-exceptions -fno-rtti -fsanitize=address -fno-omit-frame-pointer" \
+		LDFLAGS=-fsanitize=address
+
 clean:
-	rm -rf $(B)
+	rm -rf $(B) build-asan
