@@ -68,6 +68,41 @@ void draw_speaker_icon(Painter& p, int x, int y, int size, int level,
     }
 }
 
+void draw_network_icon(Painter& p, int x, int y, int size, int kind,
+                       int level, const ColorSet& cs)
+{
+    int u = size / 8 > 1 ? size / 8 : 1;
+    if (kind == 2) {
+        /* Four bars of rising height, the first 'level' filled. */
+        int i;
+        for (i = 0; i < 4; i++) {
+            int h = (i + 1) * 3 * u / 2 + u;
+            Rect r(x + u + i * 2 * u, y + size - u - h, u + u / 2, h);
+            if (i < level)
+                p.fill(r, cs.fg);
+            else
+                draw_bevel(p, r, 1, cs.bottom, cs.top);
+        }
+        return;
+    }
+    /* A small monitor on a stand. */
+    Rect screen(x + u, y + u, size - 2 * u, size - 5 * u);
+    p.fill(screen, cs.fg);
+    p.fill(Rect(screen.x + u, screen.y + u, screen.w - 2 * u,
+                screen.h - 2 * u), kind == 1 ? Rgb::hex(0x3060c0)
+                                             : Rgb::hex(0x808080));
+    p.fill(Rect(x + size / 2 - u, y + size - 4 * u, 2 * u, 2 * u), cs.fg);
+    p.fill(Rect(x + 2 * u, y + size - 2 * u, size - 4 * u, u), cs.fg);
+    if (kind == 0) {
+        Rgb red = Rgb::hex(0xc00000);
+        int i;
+        for (i = 0; i < 4 * u; i++) {
+            p.fill(Rect(x + size - 5 * u + i, y + size - 5 * u + i, u, u), red);
+            p.fill(Rect(x + size - 5 * u + i, y + size - u - i, u, u), red);
+        }
+    }
+}
+
 void draw_folder_icon(Painter& p, int x, int y, int size)
 {
     Rgb edge = Rgb::hex(0x806010), face = Rgb::hex(0xf0d060),

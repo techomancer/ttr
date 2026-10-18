@@ -1,6 +1,6 @@
 #include "shell/tray.h"
 #include "core/painter.h"
-#include "shell/volume.h"
+#include "shell/trayitem.h"
 #include "x11/xpainter.h"
 
 #include <Xm/Xm.h>
@@ -28,8 +28,7 @@ Tray::Tray(Widget area, XPainter* painter, const ColorSet& cs,
            const char* clock_format, void (*resized)(void*), void* closure)
     : area_(area), dpy_(XtDisplay(area)), win_(XtWindow(area)),
       painter_(painter), cs_(cs), clock_format_(clock_format),
-      resized_(resized), closure_(closure), owner_(false), last_width_(0),
-      volume_(0)
+      resized_(resized), closure_(closure), owner_(false), last_width_(0)
 {
     char name[64];
     sprintf(name, "_NET_SYSTEM_TRAY_S%d", DefaultScreen(dpy_));
@@ -214,22 +213,28 @@ void Tray::clock_text(char* buf, int size)
         buf[0] = 0;
 }
 
-void Tray::set_volume(VolumeControl* v)
+void Tray::add_item(TrayItem* item)
 {
-    volume_ = v;
+    builtins_.push_back(item);
     layout();
 }
 
-/* The built-in volume icon comes first, then the docked icons. */
-Rect Tray::volume_rect()
+/* Built-in icons come first, then the docked ones. Empty if hidden. */
+Rect Tray::item_rect(int i)
 {
     Dimension h = 0;
     Arg args[1];
     XtSetArg(args[0], XmNheight, &h);
     XtGetValues(area_, args, 1);
-    if (!volume_ || !volume_->available())
-        return Rect();
-    return Rect(PAD, ((int)h - ICON) / 2, ICON, ICON);
+    int x = PAD, k;
+    for (k = 0; k < builtins_.size(); k++) {
+        if (!builtins_[k]->visible())
+            continue;
+        if (k == i)
+            return Rect(x, ((int)h - ICON) / 2, ICON, ICON);
+        x += ICON + GAP;
+    }
+    return Rect();
 }
 
 void Tray::input_cb(Widget w, XtPointer closure, XtPointer call)
@@ -239,8 +244,13 @@ void Tray::input_cb(Widget w, XtPointer closure, XtPointer call)
     XEvent* ev = ((XmDrawingAreaCallbackStruct*)call)->event;
     if (!ev || (ev->type != ButtonPress && ev->type != ButtonRelease))
         return;
-    if (self->volume_rect().contains(ev->xbutton.x, ev->xbutton.y))
-        self->volume_->button(&ev->xbutton);
+    int i;
+    for (i = 0; i < self->builtins_.size(); i++) {
+        if (self->item_rect(i).contains(ev->xbutton.x, ev->xbutton.y)) {
+            self->builtins_[i]->button(&ev->xbutton);
+            break;
+        }
+    }
 }
 
 int Tray::preferred_width()
@@ -251,8 +261,9 @@ int Tray::preferred_width()
     for (i = 0; i < items_.size(); i++)
         if (items_[i].mapped)
             n++;
-    if (volume_ && volume_->available())
-        n++;
+    for (i = 0; i < builtins_.size(); i++)
+        if (builtins_[i]->visible())
+            n++;
     int w = PAD + painter_->text_width(buf, (int)strlen(buf)) + 2 * PAD;
     if (n > 0)
         w += n * (ICON + GAP) + PAD;
@@ -266,8 +277,9 @@ void Tray::layout()
     XtSetArg(args[0], XmNheight, &h);
     XtGetValues(area_, args, 1);
     int x = PAD, i;
-    if (volume_ && volume_->available())
-        x += ICON + GAP;
+    for (i = 0; i < builtins_.size(); i++)
+        if (builtins_[i]->visible())
+            x += ICON + GAP;
     for (i = 0; i < items_.size(); i++) {
         if (!items_[i].mapped)
             continue;
@@ -304,9 +316,12 @@ void Tray::paint()
     int asc = painter_->text_ascent(), desc = painter_->text_descent();
     painter_->text(w - PAD - tw - PAD, (h - asc - desc) / 2 + asc, buf, len,
                    cs_.fg);
-    Rect vr = volume_rect();
-    if (vr.w > 0)
-        volume_->paint(*painter_, vr);
+    int i;
+    for (i = 0; i < builtins_.size(); i++) {
+        Rect r = item_rect(i);
+        if (r.w > 0)
+            builtins_[i]->paint(*painter_, r);
+    }
     painter_->end();
 }
 

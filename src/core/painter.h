@@ -37,6 +37,11 @@ void draw_app_icon(Painter& p, const Icon* ic, int x, int y, int size,
 void draw_speaker_icon(Painter& p, int x, int y, int size, int level,
                        bool muted, const ColorSet& cs);
 
+/* Network state: kind 0 offline, 1 wired, 2 wireless with 'level' 0..4
+ * signal bars. */
+void draw_network_icon(Painter& p, int x, int y, int size, int kind,
+                       int level, const ColorSet& cs);
+
 /* A closed folder, for menus. */
 void draw_folder_icon(Painter& p, int x, int y, int size);
 

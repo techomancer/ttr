@@ -14,7 +14,7 @@
 
 namespace ttr {
 
-class VolumeControl;
+class TrayItem;
 class XPainter;
 
 class Tray {
@@ -27,8 +27,8 @@ public:
 
     int preferred_width();
     void paint();
-    /* Show this control's icon first in the area (0: none). */
-    void set_volume(VolumeControl* v);
+    /* Built-in icons, left to right, before the docked ones. */
+    void add_item(TrayItem* item);
     /* Something about the built-in icons changed. */
     void relayout() { layout(); }
     /* Hand docked icons back to the root window. */
@@ -44,7 +44,7 @@ private:
                          Boolean* cont);
     static void clock_cb(XtPointer closure, XtIntervalId* id);
     static void input_cb(Widget w, XtPointer closure, XtPointer call);
-    Rect volume_rect();
+    Rect item_rect(int i);
 
     void acquire();
     void dock(Window icon);
@@ -67,7 +67,7 @@ private:
     Atom orientation_, visual_;
     Vector<Item> items_;
     int last_width_;
-    VolumeControl* volume_;
+    Vector<TrayItem*> builtins_;
 };
 
 }

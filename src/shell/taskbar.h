@@ -21,6 +21,7 @@ class IconLoader;
 class QuickLaunch;
 class StartMenu;
 class Tray;
+class NetStatus;
 class VolumeControl;
 class WindowMenu;
 class XPainter;
@@ -74,6 +75,7 @@ private:
     Tray* tray_;
     IconLoader* icons_;
     QuickLaunch* quick_;
+    NetStatus* net_;
     VolumeControl* volume_;
     static void volume_changed(void* closure);
     Rect geom_;             /* root coordinates of the bar */

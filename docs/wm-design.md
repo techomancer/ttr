@@ -354,7 +354,7 @@ Pitfalls of running the shell in the WM's own process, found the hard way:
 - **Use real timestamps for focus.** Toolkits ignore `WM_TAKE_FOCUS` with
   `CurrentTime`; use the last timestamp Xt processed.
 
-### 5.3 Configuration
+### 5.2 Configuration
 
 Settings are X resources, as in mwm. In increasing order of precedence they
 come from app-defaults, `~/.Xresources`, the settings file
@@ -391,7 +391,7 @@ a pixmap, so each label is drawn by us into one pixmap (icon, then text, in
 the menu's own colors) and set with `XmNlabelType: XmPIXMAP`. This costs the
 mnemonic underline on those entries.
 
-### 5.4 Virtual desktops
+### 5.3 Virtual desktops
 
 Each window is on one desktop or on all of them (docks and other panels
 always are). Switching desktops unmaps the frames of the other desktops'
@@ -414,7 +414,7 @@ published through EWMH (`_NET_NUMBER_OF_DESKTOPS`, `_NET_CURRENT_DESKTOP`,
 external pagers and `wmctrl` work. Windows keep their `_NET_WM_DESKTOP`, and
 a restart keeps the current desktop.
 
-### 5.5 Shortcuts and quick launch
+### 5.4 Shortcuts and quick launch
 
 Program shortcuts live in `~/.config/ttr/shortcuts`, in order, one
 `[shortcut]` block each with `name`, `command`, optional `icon` (theme name or
@@ -433,7 +433,7 @@ rewrites the file, so comments in it do not survive a save from there.
 The Windows key opens Start when released, and only if no other key was
 pressed with it, so Super+key shortcuts work.
 
-### 5.6 Volume
+### 5.5 Volume
 
 The notification area shows the default output's master volume, through
 the sound server's own tools so ttr links no audio library
@@ -463,6 +463,30 @@ Our own Motif popups (menus, option menus, combo box lists) all take a
 pointer grab. Besides menus the shell reports, the WM treats any of our own
 override-redirect shells being mapped as a popup being up, and keeps out of
 pointer and key events until it is gone.
+
+### 5.6 Network
+
+A network icon left of the volume shows the state of the interface with
+the default route: wired, Wi-Fi signal strength, or offline. Everything is
+read from the kernel, no tools are run ([src/core/net.h](../src/core/net.h)):
+counters from `/proc/net/dev`, state from `/sys/class/net`, the default
+route from `/proc/net/route`, IPv4 by `SIOCGIFCONF`, IPv6 from
+`/proc/net/if_inet6`, signal from `/proc/net/wireless`, and SSID and BSSID
+by the wireless extensions ioctls (still answered by cfg80211 drivers). It
+is polled every two seconds; counters are doubles, exact far past 2^32
+without `long long`.
+
+Left click opens a Network dialog: every interface's state, addresses,
+packets, bytes and current rates, and on Wi-Fi the network, BSSID and
+signal; and a network settings tool to open. Right click lists the same
+tools. Tools are found on `$PATH` (nm-connection-editor, GNOME and KDE
+network settings, nmtui, cmst, connman-gtk, iwgtk, iwctl, wpa_gui, wicd)
+and those whose daemon is running (NetworkManager, connmand, iwd,
+wpa_supplicant, wicd) come first. A system configured by scripts simply has
+none to offer.
+
+IRIX: another `net_snapshot()` (`SIOCGIFCONF` works there too; counters
+from `netstat` or the kernel's interface statistics), no settings tools.
 
 ### 5.7 Docking and snapping
 

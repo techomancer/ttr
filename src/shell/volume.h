@@ -17,6 +17,7 @@
 #include "core/str.h"
 #include "core/vector.h"
 #include "core/wmlink.h"
+#include "shell/trayitem.h"
 
 #include <X11/Intrinsic.h>
 
@@ -28,7 +29,7 @@ class IconLoader;
 class Painter;
 struct Config;
 
-class VolumeControl {
+class VolumeControl : public TrayItem {
 public:
     /* 'changed' is called when the icon appears or its look changes. */
     VolumeControl(Widget parent, WmLink* wm, const Config& cfg,
@@ -37,6 +38,7 @@ public:
     ~VolumeControl();
 
     bool available() const { return server_ != AUDIO_NONE; }
+    bool visible() const { return available(); }
     void paint(Painter& p, const Rect& r);
     /* A button event inside the icon (from the notification area). */
     void button(XButtonEvent* ev);
