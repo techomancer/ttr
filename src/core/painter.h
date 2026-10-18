@@ -42,6 +42,9 @@ void draw_speaker_icon(Painter& p, int x, int y, int size, int level,
 void draw_network_icon(Painter& p, int x, int y, int size, int kind,
                        int level, const ColorSet& cs);
 
+/* A USB stick, for removable storage. */
+void draw_storage_icon(Painter& p, int x, int y, int size, const ColorSet& cs);
+
 /* A closed folder, for menus. */
 void draw_folder_icon(Painter& p, int x, int y, int size);
 

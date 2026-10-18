@@ -23,9 +23,10 @@ public:
     ~CommandRunner();
 
     bool busy() const { return pid_ > 0; }
-    /* False if busy or the command could not be started. */
+    /* False if busy or the command could not be started. With
+     * 'with_stderr' its error output is collected too. */
     bool run(const char* command, unsigned long timeout_ms, Done done,
-             void* closure);
+             void* closure, bool with_stderr = false);
 
 private:
     static void input_cb(XtPointer closure, int* fd, XtInputId* id);

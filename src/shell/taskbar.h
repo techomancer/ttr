@@ -22,6 +22,7 @@ class QuickLaunch;
 class StartMenu;
 class Tray;
 class NetStatus;
+class StorageMenu;
 class VolumeControl;
 class WindowMenu;
 class XPainter;
@@ -75,6 +76,7 @@ private:
     Tray* tray_;
     IconLoader* icons_;
     QuickLaunch* quick_;
+    StorageMenu* storage_;
     NetStatus* net_;
     VolumeControl* volume_;
     static void volume_changed(void* closure);

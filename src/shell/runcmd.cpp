@@ -30,7 +30,7 @@ CommandRunner::~CommandRunner()
 }
 
 bool CommandRunner::run(const char* command, unsigned long timeout_ms,
-                        Done done, void* closure)
+                        Done done, void* closure, bool with_stderr)
 {
     if (busy())
         return false;
@@ -45,10 +45,13 @@ bool CommandRunner::run(const char* command, unsigned long timeout_ms,
     }
     if (pid == 0) {
         dup2(fds[1], 1);
+        if (with_stderr)
+            dup2(fds[1], 2);
         int null = open("/dev/null", O_RDWR);
         if (null >= 0) {
             dup2(null, 0);
-            dup2(null, 2);
+            if (!with_stderr)
+                dup2(null, 2);
         }
         close(fds[0]);
         close(fds[1]);

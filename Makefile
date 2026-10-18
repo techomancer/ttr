@@ -40,6 +40,7 @@ OBJS = $(B)/main.o \
 	$(B)/core_painter.o \
 	$(B)/core_settings.o \
 	$(B)/core_shortcuts.o \
+	$(B)/core_storage.o \
 	$(B)/core_str.o \
 	$(B)/core_switcher.o \
 	$(B)/core_text.o \
@@ -50,6 +51,7 @@ OBJS = $(B)/main.o \
 	$(B)/shell_shell.o \
 	$(B)/shell_shortcutsdlg.o \
 	$(B)/shell_startmenu.o \
+	$(B)/shell_storagemenu.o \
 	$(B)/shell_taskbar.o \
 	$(B)/shell_tray.o \
 	$(B)/shell_volume.o \
@@ -76,14 +78,15 @@ CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
 	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h \
 	src/core/settings.h src/core/shortcuts.h src/core/launch.h \
-	src/core/audio.h src/core/net.h
+	src/core/audio.h src/core/net.h src/core/storage.h
 X11_H = src/x11/wm.h src/x11/hints.h src/x11/config.h src/x11/xpainter.h \
 	src/x11/iconload.h src/x11/svg.h src/x11/keys.h \
 	$(CORE_H)
 SHELL_H = src/shell/shell.h src/shell/startmenu.h src/shell/taskbar.h \
 	src/shell/tray.h src/shell/winmenu.h src/shell/quicklaunch.h \
 	src/shell/settings.h src/shell/shortcutsdlg.h src/shell/runcmd.h \
-	src/shell/volume.h src/shell/netstatus.h src/shell/trayitem.h
+	src/shell/volume.h src/shell/netstatus.h src/shell/trayitem.h \
+	src/shell/storagemenu.h src/shell/popup.h
 
 $(B)/main.o: $(B)/.dir src/main.cpp $(X11_H) $(SHELL_H)
 	$(COMPILE) -c src/main.cpp -o $@
@@ -121,6 +124,9 @@ $(B)/core_settings.o: $(B)/.dir src/core/settings.cpp $(CORE_H)
 $(B)/core_shortcuts.o: $(B)/.dir src/core/shortcuts.cpp $(CORE_H)
 	$(COMPILE) -c src/core/shortcuts.cpp -o $@
 
+$(B)/core_storage.o: $(B)/.dir src/core/storage.cpp $(CORE_H)
+	$(COMPILE) -c src/core/storage.cpp -o $@
+
 $(B)/core_str.o: $(B)/.dir src/core/str.cpp $(CORE_H)
 	$(COMPILE) -c src/core/str.cpp -o $@
 
@@ -155,6 +161,10 @@ $(B)/shell_startmenu.o: $(B)/.dir src/shell/startmenu.cpp $(SHELL_H) $(X11_H)
 
 $(B)/shell_taskbar.o: $(B)/.dir src/shell/taskbar.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/taskbar.cpp -o $@
+
+$(B)/shell_storagemenu.o: $(B)/.dir src/shell/storagemenu.cpp $(SHELL_H) \
+		$(X11_H)
+	$(COMPILE) -c src/shell/storagemenu.cpp -o $@
 
 $(B)/shell_tray.o: $(B)/.dir src/shell/tray.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/tray.cpp -o $@

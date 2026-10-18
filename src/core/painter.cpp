@@ -103,6 +103,17 @@ void draw_network_icon(Painter& p, int x, int y, int size, int kind,
     }
 }
 
+void draw_storage_icon(Painter& p, int x, int y, int size, const ColorSet& cs)
+{
+    int u = size / 8 > 1 ? size / 8 : 1;
+    /* Plug on top, body below. */
+    p.fill(Rect(x + 3 * u, y, 2 * u, 3 * u), Rgb::hex(0xa0a0a0));
+    p.fill(Rect(x + 3 * u + u / 2, y + u, u, u), cs.fg);
+    Rect body(x + 2 * u, y + 3 * u, 4 * u, size - 3 * u);
+    p.fill(body, Rgb::hex(0x3060c0));
+    draw_bevel(p, body, 1, Rgb::hex(0x80a0e0), Rgb::hex(0x203060));
+}
+
 void draw_folder_icon(Painter& p, int x, int y, int size)
 {
     Rgb edge = Rgb::hex(0x806010), face = Rgb::hex(0xf0d060),

@@ -2,6 +2,7 @@
 #include "core/icon.h"
 #include "core/launch.h"
 #include "core/painter.h"
+#include "shell/popup.h"
 #include "x11/config.h"
 #include "x11/iconload.h"
 
@@ -425,9 +426,7 @@ void NetStatus::post_menu(XButtonEvent* ev)
             XtManageChild(b);
         }
     }
-    XButtonEvent bev = *ev;
-    XmMenuPosition(menu_, &bev);
-    XtManageChild(menu_);
+    post_popup_above(menu_, ev);
 }
 
 /* Run after the menu has popped down. */

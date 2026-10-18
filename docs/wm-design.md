@@ -488,7 +488,32 @@ none to offer.
 IRIX: another `net_snapshot()` (`SIOCGIFCONF` works there too; counters
 from `netstat` or the kernel's interface statistics), no settings tools.
 
-### 5.7 Docking and snapping
+### 5.7 Removable storage
+
+While a USB stick or memory card is present, an icon appears left of the
+network icon, like Windows' "Safely Remove Hardware". Either click opens a
+menu with a submenu per volume: Mount and Open, Mount, Open, Unmount, and
+Eject, which unmounts every volume of the disk and powers it off
+(`udisksctl power-off`) or ejects it.
+
+Volumes are found without running anything
+([src/core/storage.h](../src/core/storage.h)): disks in `/sys/block` that are
+removable or sit on a USB path, their partitions, filesystem type and label
+from the udev database (`/run/udev/data/b<major>:<minor>`), and mount points
+from `/proc/self/mounts`; polled every two seconds.
+
+ttr never runs as root, so each volume uses the first unprivileged way the
+system offers: an `/etc/fstab` entry with `user` or `users` (`mount` is
+setuid), udisks2 (`udisksctl`; polkit lets the active session mount, which
+on OpenRC needs elogind or ConsoleKit), pmount, or udevil. With none, the
+menu says what to install instead of asking for a root password. Commands
+run asynchronously; a failure shows the tool's own message. Open uses
+`xdg-open`, else a known file manager.
+
+IRIX: another `storage_snapshot()` (removable media there are mostly
+CD-ROMs and floppies, mounted by mediad).
+
+### 5.8 Docking and snapping
 
 A window can be docked in one of three columns, left, center or right, of
 the full work area height and `dockWidth` (a third or half) of its width;
@@ -514,7 +539,7 @@ menu has the same operations under Snap. Docked columns set
 `_NET_WM_STATE_MAXIMIZED_VERT`, top and bottom `..._HORZ`, the nearest EWMH
 states.
 
-### 5.8 Wayland mode (`ttr-wayland`, later)
+### 5.9 Wayland mode (`ttr-wayland`, later)
 
 1. Bring up DRM/KMS, libinput and the scene graph, then create the Wayland
    socket.

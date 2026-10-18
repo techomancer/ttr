@@ -2,6 +2,7 @@
 #include "shell/netstatus.h"
 #include "shell/quicklaunch.h"
 #include "shell/startmenu.h"
+#include "shell/storagemenu.h"
 #include "shell/tray.h"
 #include "shell/volume.h"
 #include "shell/winmenu.h"
@@ -36,7 +37,7 @@ static const int k_margin = 2;
 Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
                  StartMenu* start, WindowMenu* winmenu)
     : wm_(wm), start_menu_(start), winmenu_(winmenu), tray_(0), icons_(0),
-      quick_(0), net_(0), volume_(0), active_(0), pressed_(-1), closing_(false)
+      quick_(0), storage_(0), net_(0), volume_(0), active_(0), pressed_(-1), closing_(false)
 {
     Display* dpy = XtDisplay(parent);
     int screen = DefaultScreen(dpy);
@@ -159,7 +160,10 @@ Taskbar::Taskbar(Widget parent, WmLink* wm, const Config& cfg,
     XtSetArg(qargs[0], XmNwidth, quick_->preferred_width());
     XtSetValues(quick_area_, qargs, 1);
 
-    /* Network, then volume, as on Windows. */
+    /* Removable storage, network, volume, as on Windows. */
+    storage_ = new StorageMenu(parent, wm, icons_, cs_, volume_changed,
+                               (void*)this);
+    tray_->add_item(storage_);
     net_ = new NetStatus(parent, wm, cfg, icons_, cs_, volume_changed,
                          (void*)this);
     tray_->add_item(net_);
@@ -176,6 +180,7 @@ Taskbar::~Taskbar()
      * going away. The tray goes before the volume icon it shows. */
     delete tray_;
     tray_ = 0;
+    delete storage_;
     delete net_;
     delete volume_;
     delete quick_;

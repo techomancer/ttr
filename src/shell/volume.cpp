@@ -3,6 +3,7 @@
 #include "core/icon.h"
 #include "core/launch.h"
 #include "core/painter.h"
+#include "shell/popup.h"
 #include "x11/config.h"
 #include "x11/iconload.h"
 
@@ -483,9 +484,7 @@ void VolumeControl::post_menu(XButtonEvent* ev)
     if (!menu_)
         build_menu();
     update_widgets();
-    XButtonEvent bev = *ev;
-    XmMenuPosition(menu_, &bev);
-    XtManageChild(menu_);
+    post_popup_above(menu_, ev);
 }
 
 /* Run after the menu has popped down. */
