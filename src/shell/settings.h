@@ -16,6 +16,7 @@ namespace ttr {
 
 class ShortcutsDialog;
 class StartupPage;
+class XdgAutostartPage;
 struct AppFolder;
 struct Config;
 
@@ -60,7 +61,7 @@ private:
     static void page_cb(Widget w, XtPointer closure, XtPointer call);
 
     enum { PAGE_WINDOWS, PAGE_DESKTOPS, PAGE_APPEARANCE, PAGE_TASKBAR,
-           PAGE_START, PAGE_STARTUP, PAGE_COUNT };
+           PAGE_START, PAGE_STARTUP, PAGE_XDG, PAGE_COUNT };
     Widget page(Widget parent, int index);
     void show_page(int index);
     static void cancel_cb(Widget w, XtPointer closure, XtPointer call);
@@ -86,6 +87,7 @@ private:
     int current_page_;          /* kept across opening the dialog */
     ShortcutsDialog* shortcuts_;
     StartupPage* startup_;      /* rebuilt with the dialog */
+    XdgAutostartPage* xdg_;
 };
 
 }

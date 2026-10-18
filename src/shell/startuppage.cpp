@@ -408,4 +408,214 @@ bool StartupPage::save(Str* error)
     return false;
 }
 
+/* ------------------------------------------------------------------ */
+/* XDG autostart                                                       */
+
+static Widget read_only(Widget t)
+{
+    Arg args[2];
+    XtSetArg(args[0], XmNeditable, False);
+    XtSetArg(args[1], XmNcursorPositionVisible, False);
+    XtSetValues(t, args, 2);
+    return t;
+}
+
+static Widget label(Widget parent, const char* text)
+{
+    XmString l = xmstr(text);
+    Arg args[2];
+    XtSetArg(args[0], XmNlabelString, l);
+    XtSetArg(args[1], XmNalignment, XmALIGNMENT_BEGINNING);
+    Widget w = XmCreateLabel(parent, (char*)"note", args, 2);
+    XmStringFree(l);
+    XtManageChild(w);
+    return w;
+}
+
+/* "~/.config/autostart, /etc/xdg/autostart" */
+static Str autostart_dirs_text()
+{
+    Str user = tilde_path(xdg_autostart_user_dir().c_str());
+    char buf[1400];
+    sprintf(buf, "%.600s", user.c_str());
+    const char* dirs = getenv("XDG_CONFIG_DIRS");
+    if (!dirs || !*dirs)
+        dirs = "/etc/xdg";
+    const char* p = dirs;
+    while (*p && strlen(buf) < 1000) {
+        const char* e = strchr(p, ':');
+        int n = e ? (int)(e - p) : (int)strlen(p);
+        if (n > 0 && n < 300)
+            sprintf(buf + strlen(buf), ", %.*s/autostart", n, p);
+        if (!e)
+            break;
+        p = e + 1;
+    }
+    return Str(buf);
+}
+
+XdgAutostartPage::XdgAutostartPage(SettingsDialog* dialog, Widget page,
+                                   const Config& cfg)
+    : current_(-1)
+{
+    xdg_autostart_scan(&entries_);
+    int i;
+    for (i = 0; i < entries_.size(); i++)
+        wanted_.push_back(entries_[i]->status == XdgAutostartEntry::START);
+
+    Widget f = dialog->frame(page, "Desktop autostart (XDG)");
+    Arg args[8];
+    XmString l = xmstr("Start the programs that ask for it");
+    XtSetArg(args[0], XmNlabelString, l);
+    enabled_ = XmCreateToggleButton(f, (char*)"xdgAutostart", args, 1);
+    XmStringFree(l);
+    XmToggleButtonSetState(enabled_, cfg.xdg_autostart, False);
+    XtManageChild(enabled_);
+
+    /* As on the Startup page: a fixed-size form keeps long names from
+     * widening the dialog. */
+    int n = 0;
+    XtSetArg(args[n], XmNresizePolicy, XmRESIZE_NONE); n++;
+    Widget box = XmCreateForm(f, (char*)"listBox", args, n);
+    n = 0;
+    XtSetArg(args[n], XmNvisibleItemCount, 8); n++;
+    XtSetArg(args[n], XmNselectionPolicy, XmBROWSE_SELECT); n++;
+    XtSetArg(args[n], XmNscrollBarDisplayPolicy, XmSTATIC); n++;
+    XtSetArg(args[n], XmNlistSizePolicy, XmCONSTANT); n++;
+    list_ = XmCreateScrolledList(box, (char*)"entries", args, n);
+    XtAddCallback(list_, XmNbrowseSelectionCallback, list_cb,
+                  (XtPointer)this);
+    XtManageChild(list_);
+    XtWidgetGeometry pref;
+    XtQueryGeometry(XtParent(list_), 0, &pref);
+    n = 0;
+    XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
+    XtSetArg(args[n], XmNbottomAttachment, XmATTACH_FORM); n++;
+    XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
+    XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
+    XtSetValues(XtParent(list_), args, n);
+    n = 0;
+    XtSetArg(args[n], XmNwidth, 300); n++;
+    XtSetArg(args[n], XmNheight, pref.height); n++;
+    XtSetValues(box, args, n);
+    XtManageChild(box);
+
+    command_ = read_only(dialog->text_field(dialog->row(f, "Command:"), "",
+                                            40));
+    status_ = read_only(dialog->text_field(dialog->row(f, "Status:"), "",
+                                           40));
+    Widget r = dialog->row(f, "");
+    l = xmstr("Start this program");
+    XtSetArg(args[0], XmNlabelString, l);
+    start_ = XmCreateToggleButton(r, (char*)"start", args, 1);
+    Str dirs = autostart_dirs_text();
+    read_only(dialog->text_field(dialog->row(f, "Folders:"), dirs.c_str(),
+                                 40));
+    XmStringFree(l);
+    XtAddCallback(start_, XmNvalueChangedCallback, start_cb, (XtPointer)this);
+    XtManageChild(start_);
+
+    label(page, "Turning a program off saves a copy of it with Hidden=true "
+                "in your own folder.");
+
+    for (i = 0; i < entries_.size(); i++) {
+        Str t = label_for(i);
+        XmString s = xmstr(t.c_str());
+        XmListAddItemUnselected(list_, s, 0);
+        XmStringFree(s);
+    }
+    select(entries_.size() > 0 ? 0 : -1);
+}
+
+XdgAutostartPage::~XdgAutostartPage()
+{
+    xdg_autostart_free(&entries_);
+}
+
+bool XdgAutostartPage::enabled() const
+{
+    return XmToggleButtonGetState(enabled_);
+}
+
+static bool switchable(const XdgAutostartEntry* e)
+{
+    return e->status == XdgAutostartEntry::START ||
+           e->status == XdgAutostartEntry::OFF;
+}
+
+Str XdgAutostartPage::label_for(int i)
+{
+    const XdgAutostartEntry* e = entries_[i];
+    const char* mark = !switchable(e) ? "(skipped)  "
+                       : wanted_[i] ? "" : "(off)  ";
+    char buf[600];
+    sprintf(buf, "%s%.400s", mark, e->name.c_str());
+    return Str(buf);
+}
+
+void XdgAutostartPage::select(int i)
+{
+    current_ = i;
+    const XdgAutostartEntry* e = i >= 0 ? entries_[i] : 0;
+    if (e) {
+        XmListSelectPos(list_, i + 1, False);
+        XmListSetBottomPos(list_, i + 1);
+    }
+    XmTextFieldSetString(command_, (char*)(e ? e->command.c_str() : ""));
+    const char* status = "";
+    if (e)
+        status = !switchable(e) ? e->detail.c_str()
+                 : wanted_[i] ? "Starts with ttr" : "Turned off";
+    XmTextFieldSetString(status_, (char*)status);
+    XmToggleButtonSetState(start_, e && wanted_[i], False);
+    XtSetSensitive(start_, e && switchable(e));
+}
+
+void XdgAutostartPage::list_cb(Widget w, XtPointer closure, XtPointer call)
+{
+    (void)w;
+    XdgAutostartPage* self = (XdgAutostartPage*)closure;
+    XmListCallbackStruct* cbs = (XmListCallbackStruct*)call;
+    self->select(cbs->item_position - 1);
+}
+
+void XdgAutostartPage::start_cb(Widget w, XtPointer closure, XtPointer call)
+{
+    (void)call;
+    XdgAutostartPage* self = (XdgAutostartPage*)closure;
+    int i = self->current_;
+    if (i < 0)
+        return;
+    self->wanted_[i] = XmToggleButtonGetState(w) ? 1 : 0;
+    Str t = self->label_for(i);
+    XmString s = xmstr(t.c_str());
+    XmListReplaceItemsPos(self->list_, &s, 1, i + 1);
+    XmStringFree(s);
+    XmListSelectPos(self->list_, i + 1, False);
+    XmTextFieldSetString(self->status_, (char*)(self->wanted_[i]
+                                                    ? "Starts with ttr"
+                                                    : "Turned off"));
+}
+
+bool XdgAutostartPage::save(Str* error)
+{
+    int i;
+    for (i = 0; i < entries_.size(); i++) {
+        const XdgAutostartEntry* e = entries_[i];
+        if (!switchable(e))
+            continue;
+        bool was = e->status == XdgAutostartEntry::START;
+        if ((wanted_[i] != 0) == was)
+            continue;
+        if (!xdg_autostart_set_enabled(*e, wanted_[i] != 0)) {
+            char msg[1200];
+            sprintf(msg, "Could not write %.300s to %.800s", e->id.c_str(),
+                    xdg_autostart_user_dir().c_str());
+            *error = msg;
+            return false;
+        }
+    }
+    return true;
+}
+
 }

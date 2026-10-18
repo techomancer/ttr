@@ -155,8 +155,7 @@ static void trim(char* s)
 /* ------------------------------------------------------------------ */
 /* XDG desktop entries                                                 */
 
-/* Desktop entry string escapes: \s \n \t \r \\, in place. */
-static void unescape(char* s)
+void desktop_unescape(char* s)
 {
     char* o = s;
     while (*s) {
@@ -334,7 +333,7 @@ void DesktopAppSource::parse(const char* path, AppFolder* root)
         char* val = eq + 1;
         trim(key);
         trim(val);
-        unescape(val);
+        desktop_unescape(val);
         if (strcmp(key, "Name") == 0) name = val;
         else if (strcmp(key, "Exec") == 0) exec = val;
         else if (strcmp(key, "Icon") == 0) icon = val;

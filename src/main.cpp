@@ -52,7 +52,9 @@ int main(int argc, char** argv)
         wm.set_shell(&shell);
         wm.start();
         if (!restarted)
-            ttr::run_startup(wm.config().autostart_script);
+            ttr::run_startup(wm.config().xdg_autostart,
+                             wm.config().autostart_script,
+                             wm.config().terminal.c_str());
         status = wm.run();
         restart = wm.restart_requested();
     }

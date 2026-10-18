@@ -50,6 +50,7 @@ struct Resources {
     String notification_time;
     String notification_log;
     String autostart_script;
+    String xdg_autostart;
 };
 
 #define RES(name, cls, field, def) \
@@ -71,7 +72,8 @@ static XtResource k_resources[] = {
     RES("dockWidth", "DockWidth", dock_width, "third"),
     RES("notificationTime", "NotificationTime", notification_time, "5"),
     RES("notificationLog", "NotificationLog", notification_log, ""),
-    RES("autostartScript", "AutostartScript", autostart_script, "true")
+    RES("autostartScript", "AutostartScript", autostart_script, "true"),
+    RES("xdgAutostart", "XdgAutostart", xdg_autostart, "false")
 };
 
 #undef RES
@@ -81,7 +83,8 @@ Config::Config()
       app_source(APPS_DESKTOP), app_source_name("auto"),
       terminal("xterm -e"), clock_format("%H:%M"), title_font(BOLD_12),
       menu_font(BOLD_12), taskbar_font(MEDIUM_12), desktops(4),
-      dock_div(3), notification_ms(5000), autostart_script(true)
+      dock_div(3), notification_ms(5000), autostart_script(true),
+      xdg_autostart(false)
 {
 }
 
@@ -240,6 +243,7 @@ void read_config(Widget toplevel, Config* cfg)
                                                             : "");
 
     cfg->autostart_script = !is(r.autostart_script, "false");
+    cfg->xdg_autostart = is(r.xdg_autostart, "true");
 
     cfg->desktops = r.desktops ? atoi(r.desktops) : 4;
     if (cfg->desktops < 1)

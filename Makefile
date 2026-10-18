@@ -50,6 +50,7 @@ OBJS = $(B)/main.o \
 	$(B)/core_str.o \
 	$(B)/core_switcher.o \
 	$(B)/core_text.o \
+	$(B)/core_xdgautostart.o \
 	$(B)/shell_netstatus.o \
 	$(B)/shell_notifier.o \
 	$(B)/shell_notifysrc.o \
@@ -88,7 +89,7 @@ CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
 	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h \
 	src/core/settings.h src/core/shortcuts.h src/core/launch.h \
-	src/core/startup.h \
+	src/core/startup.h src/core/xdgautostart.h \
 	src/core/audio.h src/core/net.h src/core/storage.h src/core/notify.h
 X11_H = src/x11/wm.h src/x11/hints.h src/x11/config.h src/x11/xpainter.h \
 	src/x11/iconload.h src/x11/svg.h src/x11/keys.h \
@@ -150,6 +151,9 @@ $(B)/core_switcher.o: $(B)/.dir src/core/switcher.cpp $(CORE_H)
 
 $(B)/core_text.o: $(B)/.dir src/core/text.cpp $(CORE_H)
 	$(COMPILE) -c src/core/text.cpp -o $@
+
+$(B)/core_xdgautostart.o: $(B)/.dir src/core/xdgautostart.cpp $(CORE_H)
+	$(COMPILE) -c src/core/xdgautostart.cpp -o $@
 
 $(B)/shell_netstatus.o: $(B)/.dir src/shell/netstatus.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/netstatus.cpp -o $@

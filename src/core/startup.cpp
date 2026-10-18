@@ -1,6 +1,7 @@
 #include "core/startup.h"
 #include "core/launch.h"
 #include "core/settings.h"
+#include "core/xdgautostart.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -165,8 +166,10 @@ bool create_autostart_script(const char* path)
     return ok;
 }
 
-void run_startup(bool script)
+void run_startup(bool xdg, bool script, const char* terminal)
 {
+    if (xdg)
+        run_xdg_autostart(terminal);
     StartupList list;
     Str path = StartupList::default_path();
     if (list.load(path.c_str())) {

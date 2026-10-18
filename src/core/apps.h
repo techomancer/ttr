@@ -117,6 +117,9 @@ private:
 /* Remove XDG field codes (%f, %U, ...) from an Exec value. */
 Str strip_exec_codes(const char* exec);
 
+/* Desktop entry string escapes: \s \n \t \r \\, in place. */
+void desktop_unescape(char* s);
+
 }
 
 #endif

@@ -20,6 +20,8 @@
  *                         (e.g. /var/adm/SYSLOG on IRIX); empty: none
  *   Ttr*autostartScript:  true | false: run ~/.config/ttr/autostart.sh
  *                         at startup (core/startup.h)
+ *   Ttr*xdgAutostart:     true | false: start ~/.config/autostart and
+ *                         /etc/xdg/autostart entries (core/xdgautostart.h)
  */
 #ifndef TTR_X11_CONFIG_H
 #define TTR_X11_CONFIG_H
@@ -57,6 +59,7 @@ struct Config {
     int notification_ms;
     Str notification_log;
     bool autostart_script;
+    bool xdg_autostart;
 
     Config();
 };

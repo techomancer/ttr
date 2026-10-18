@@ -3,12 +3,18 @@
  * which can be turned off, and whether to run autostart.sh after them
  * (core/startup.h). The list is read when the page is built and written
  * by save().
+ *
+ * Settings > XDG Autostart: whether to start the desktop's autostart
+ * entries, and each entry, which can be turned off or on
+ * (core/xdgautostart.h).
  */
 #ifndef TTR_SHELL_STARTUPPAGE_H
 #define TTR_SHELL_STARTUPPAGE_H
 
 #include "core/startup.h"
 #include "core/str.h"
+#include "core/vector.h"
+#include "core/xdgautostart.h"
 
 #include <X11/Intrinsic.h>
 
@@ -71,6 +77,33 @@ private:
     Widget script_;
     ProgramPicker* programs_;
     FileBrowser* browser_;
+};
+
+class XdgAutostartPage {
+public:
+    XdgAutostartPage(SettingsDialog* dialog, Widget page, const Config& cfg);
+    ~XdgAutostartPage();
+
+    bool enabled() const;
+    /* Write the entries turned off or on. False, with *error set, if one
+     * cannot be written. */
+    bool save(Str* error);
+
+private:
+    XdgAutostartPage(const XdgAutostartPage&);
+    XdgAutostartPage& operator=(const XdgAutostartPage&);
+
+    Str label_for(int i);
+    void select(int i);
+    static void list_cb(Widget w, XtPointer closure, XtPointer call);
+    static void start_cb(Widget w, XtPointer closure, XtPointer call);
+
+    Vector<XdgAutostartEntry*> entries_;
+    Vector<int> wanted_;        /* 1: start it, per entry */
+    int current_;
+    Widget enabled_;
+    Widget list_;
+    Widget command_, status_, start_;
 };
 
 }

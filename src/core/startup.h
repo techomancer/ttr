@@ -2,6 +2,9 @@
  * Programs started with ttr. When ttr starts (but not when it restarts
  * in place), it runs, in order:
  *
+ *   0. XDG autostart entries (core/xdgautostart.h), if xdgAutostart is
+ *      true (default false): the desktop's own helpers and services.
+ *
  *   1. the enabled entries of the startup list, ~/.config/ttr/startup,
  *      edited on Settings > Startup or by hand:
  *
@@ -64,8 +67,9 @@ Str autostart_script_path();
  * be written. */
 bool create_autostart_script(const char* path);
 
-/* Start the list, then the script if 'script'. */
-void run_startup(bool script);
+/* Start XDG autostart if 'xdg' (Terminal=true entries with 'terminal'),
+ * then the list, then the script if 'script'. */
+void run_startup(bool xdg, bool script, const char* terminal);
 
 }
 

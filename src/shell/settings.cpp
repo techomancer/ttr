@@ -90,12 +90,14 @@ SettingsDialog::SettingsDialog(Widget parent, WmLink* wm, const Config& cfg,
                                const AppFolder* apps)
     : parent_(parent), wm_(wm), cfg_(cfg), apps_(apps), dialog_(0),
       categories_(0), current_page_(0),
-      shortcuts_(new ShortcutsDialog(parent, wm, apps)), startup_(0)
+      shortcuts_(new ShortcutsDialog(parent, wm, apps)), startup_(0),
+      xdg_(0)
 {
 }
 
 SettingsDialog::~SettingsDialog()
 {
+    delete xdg_;
     delete startup_;
     delete shortcuts_;
 }
@@ -447,7 +449,7 @@ void SettingsDialog::build()
     /* Categories on the left, the chosen page on the right. */
     static const char* const names[PAGE_COUNT] = {
         "Windows", "Desktops", "Appearance", "Taskbar", "Start Menu",
-        "Startup"
+        "Startup", "XDG Autostart"
     };
     XmString items[PAGE_COUNT];
     int i;
@@ -560,6 +562,11 @@ void SettingsDialog::build()
     delete startup_;
     startup_ = new StartupPage(this, pg, cfg_, apps_);
 
+    /* XDG Autostart */
+    pg = page(content, PAGE_XDG);
+    delete xdg_;
+    xdg_ = new XdgAutostartPage(this, pg, cfg_);
+
     /* The page area is as big as the biggest page, so switching pages
      * does not resize the dialog. */
     Dimension pw = 0, ph = 0;
@@ -661,9 +668,10 @@ void SettingsDialog::save()
     file.set("toolchestFiles", text_value(toolchest_).c_str());
     file.set("terminal", text_value(terminal_).c_str());
     file.set("autostartScript", startup_->run_script() ? "true" : "false");
+    file.set("xdgAutostart", xdg_->enabled() ? "true" : "false");
 
     Str failed;
-    if (!startup_->save(&failed)) {
+    if (!startup_->save(&failed) || !xdg_->save(&failed)) {
         error(failed.c_str());
         return;
     }

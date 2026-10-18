@@ -386,6 +386,7 @@ widgets only when they are created. See [src/x11/config.h](../src/x11/config.h):
 | `Ttr*notificationTime` | seconds a notification stays up | 5 |
 | `Ttr*notificationLog` | file whose new lines become notifications | none |
 | `Ttr*autostartScript` | `true`, `false`: run `autostart.sh` at startup (§5.10) | `true` |
+| `Ttr*xdgAutostart` | `true`, `false`: start XDG autostart entries (§5.10) | `false` |
 
 The start menu reads applications through the `AppSource` interface
 ([src/core/apps.h](../src/core/apps.h)): `DesktopAppSource` reads XDG
@@ -576,28 +577,49 @@ states.
 
 ### 5.10 Startup programs
 
-Two ways to start programs with ttr, and both run, in this order:
+There are three ways to start programs with ttr, and all of them run, in
+this order:
 
-1. **The startup list**, `~/.config/ttr/startup`, edited on Settings >
+1. **XDG autostart** (Linux desktops), the freedesktop.org autostart spec:
+   `.desktop` files in `~/.config/autostart`, which override those of the
+   same name in `$XDG_CONFIG_DIRS/autostart` (`/etc/xdg/autostart`). Off by
+   default (`xdgAutostart`), because turning it on starts whatever the
+   distribution put there (PipeWire, PulseAudio, Bluetooth applets) and
+   would change an existing setup without asking. An entry is skipped if:
+   - it is turned off (`Hidden=true`, `X-GNOME-Autostart-enabled=false`);
+   - `OnlyShowIn`/`NotShowIn` leave us out (we match
+     `$XDG_CURRENT_DESKTOP` and `TTR`; ttr does not set the variable);
+   - its `TryExec` program is missing;
+   - its `AutostartCondition` does not hold. Only `if-exists` and
+     `unless-exists` can be checked; the GNOME and GSettings conditions
+     count as false;
+   - it is `X-GNOME-HiddenUnderSystemd`/`X-KDE-HiddenUnderSystemd` and
+     systemd is running, because systemd user units start those.
+
+   Settings > XDG Autostart lists every entry with its status. Turning one
+   off or on writes the user's copy with or without `Hidden=true`, as other
+   desktops do, so the choice holds for any desktop the user runs.
+2. **The startup list**, `~/.config/ttr/startup`, edited on Settings >
    Startup (or by hand). It is an ordered list of shell commands, added by
    hand, browsed for, or picked from the start menu's programs. An entry can
    be turned off without deleting it. It is easy to set up and shows at a
    glance what starts.
-2. **The startup script**, `~/.config/ttr/autostart.sh`, as in Openbox. It
+3. **The startup script**, `~/.config/ttr/autostart.sh`, as in Openbox. It
    runs with `sh` (it need not be executable). It suits anything the list
    cannot do: conditions, environment, `xset`, waiting for one program before
    another. Settings > Startup can turn it off, and "Edit Script..." creates
    a commented example and opens it in `$VISUAL` or `$EDITOR` in the
    configured terminal.
 
+The list and the script work on IRIX too. XDG autostart has nothing to read
+there.
+
 Everything is started detached, like the start menu does, and ttr does not
 wait for it. Startup programs run when ttr starts, **not** when it restarts
 in place: before `execvp`, ttr sets `TTR_RESTARTED=1`. The new image reads
-it and clears it at once, so programs it starts do not inherit it. XDG
-autostart (`~/.config/autostart/*.desktop`) is not read: on Linux it would
-also start desktop environments' own helpers from `/etc/xdg/autostart`.
-Supporting it is left as an option for later (§10). See
-[src/core/startup.h](../src/core/startup.h).
+it and clears it at once, so programs it starts do not inherit it. See
+[src/core/startup.h](../src/core/startup.h) and
+[src/core/xdgautostart.h](../src/core/xdgautostart.h).
 
 ### 5.11 Wayland mode (`ttr-wayland`, later)
 
@@ -758,6 +780,3 @@ config/        per-platform make fragments
 - Multi-head policy per backend (RandR, Xinerama, IRIX multi-head, our output
   abstraction).
 - Whether to support session management (XSMP). Optional, decide later.
-- Whether to also start XDG autostart entries (`~/.config/autostart`), and
-  which ones: only the user's, or `/etc/xdg/autostart` too, filtered by
-  `OnlyShowIn`/`NotShowIn`.
