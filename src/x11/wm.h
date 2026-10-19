@@ -165,6 +165,10 @@ private:
     void set_maximized(Client* c, bool on);
     void set_fullscreen(Client* c, bool on);
     void set_minimized(Client* c, bool on);
+    void minimize_all(Time t);
+    void restore_all(Time t);
+    void leave_showing_desktop();
+    void publish_showing_desktop();
     void apply_state(Client* c, bool restore);
 
     void menu_double_click(XButtonEvent* ev);
@@ -264,6 +268,12 @@ private:
 
     /* Windows-style Alt+Tab */
     bool switching_;
+    /* Super+D, Super+M: the windows minimized to show the desktop, and
+     * the one that was active, to bring back as they were. */
+    bool showing_desktop_;
+    bool restoring_desktop_;
+    Vector<Window> shown_away_;
+    Window shown_active_;
     Window switch_win_;
     Vector<Client*> switch_list_;
     int switch_sel_;

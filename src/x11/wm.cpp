@@ -67,7 +67,10 @@ enum KeyCommand {
     KC_DESK_PREV,   /* switch desktop */
     KC_DESK_NEXT,
     KC_TAKE_PREV,   /* move the active window along, and follow it */
-    KC_TAKE_NEXT
+    KC_TAKE_NEXT,
+    KC_SHOW_DESKTOP,    /* minimize all, or bring them back */
+    KC_MINIMIZE_ALL,
+    KC_RESTORE_ALL
 };
 
 struct KeyBinding {
@@ -110,6 +113,10 @@ static const KeyBinding k_keys[] = {
     { "Right", Mod4Mask, KC_ACTION, ACT_DOCK_RIGHT },
     { "Up", Mod4Mask, KC_ACTION, ACT_SNAP_TOP },
     { "Down", Mod4Mask, KC_ACTION, ACT_SNAP_BOTTOM },
+    /* Windows' show desktop and minimize all. */
+    { "d", Mod4Mask, KC_SHOW_DESKTOP, ACT_COUNT },
+    { "m", Mod4Mask, KC_MINIMIZE_ALL, ACT_COUNT },
+    { "m", Mod4Mask | ShiftMask, KC_RESTORE_ALL, ACT_COUNT },
     /* The active window's taskbar button. */
     { "Home", ControlMask | Mod4Mask, KC_ACTION, ACT_TASK_FIRST },
     { "Left", ControlMask | Mod4Mask, KC_ACTION, ACT_TASK_LEFT },
@@ -182,7 +189,8 @@ Wm::Wm()
       menu_click_win_(None),
       close_after_menu_(None), desktops_(1), current_(0), osd_win_(None),
       osd_timer_(0),
-      switching_(false), switch_win_(None), switch_sel_(0)
+      switching_(false), showing_desktop_(false), restoring_desktop_(false),
+      shown_active_(None), switch_win_(None), switch_sel_(0)
 {
     signal_pipe_[0] = signal_pipe_[1] = -1;
     memset(&drag_, 0, sizeof(drag_));
@@ -410,7 +418,7 @@ void Wm::setup_ewmh()
         atoms_.net_wm_window_type, atoms_.net_number_of_desktops,
         atoms_.net_current_desktop, atoms_.net_wm_desktop,
         atoms_.net_desktop_names, atoms_.net_desktop_geometry,
-        atoms_.net_desktop_viewport,
+        atoms_.net_desktop_viewport, atoms_.net_showing_desktop,
         atoms_.net_type_desktop, atoms_.net_type_dock,
         atoms_.net_type_toolbar, atoms_.net_type_menu,
         atoms_.net_type_utility, atoms_.net_type_splash,
@@ -422,6 +430,7 @@ void Wm::setup_ewmh()
                     (int)(sizeof(supported) / sizeof(supported[0])));
     update_client_lists();
     publish_desktops();
+    publish_showing_desktop();
 }
 
 void Wm::load_user_keys()
@@ -794,6 +803,13 @@ bool Wm::on_client_message(XClientMessageEvent* ev)
             switch_desktop((int)ev->data.l[0]);
             return true;
         }
+        if (ev->message_type == atoms_.net_showing_desktop) {
+            if (ev->data.l[0] && !showing_desktop_)
+                minimize_all(CurrentTime);
+            else if (!ev->data.l[0] && showing_desktop_)
+                restore_all(CurrentTime);
+            return true;
+        }
         return false;
     }
 
@@ -1098,6 +1114,18 @@ bool Wm::on_key_press(XKeyEvent* ev)
         case KC_DESK_NEXT:
             switch_desktop(current_ + 1);
             break;
+        case KC_SHOW_DESKTOP:
+            if (showing_desktop_)
+                restore_all(ev->time);
+            else
+                minimize_all(ev->time);
+            break;
+        case KC_MINIMIZE_ALL:
+            minimize_all(ev->time);
+            break;
+        case KC_RESTORE_ALL:
+            restore_all(ev->time);
+            break;
         case KC_TAKE_PREV:
         case KC_TAKE_NEXT: {
             int d = current_ + (k_keys[i].cmd == KC_TAKE_NEXT ? 1 : -1);
@@ -1153,6 +1181,9 @@ void Wm::on_mapping(XMappingEvent* ev)
 
 void Wm::manage(Window w, ManageMode mode)
 {
+    /* A new window ends showing the desktop. */
+    if (mode == MANAGE_NEW || mode == MANAGE_OWN)
+        leave_showing_desktop();
     XWindowAttributes attr;
     if (!XGetWindowAttributes(dpy_, w, &attr) || attr.override_redirect)
         return;
@@ -1962,6 +1993,10 @@ void Wm::set_minimized(Client* c, bool on)
 {
     if (c->minimized == on)
         return;
+    /* Bringing a window back any other way ends showing the desktop; the
+     * others stay minimized, as on Windows. */
+    if (!on && !restoring_desktop_)
+        leave_showing_desktop();
     c->minimized = on;
     if (on) {
         c->ignore_unmap++;
@@ -1995,6 +2030,74 @@ void Wm::set_minimized(Client* c, bool on)
     }
     set_net_state(c);
     notify(c);
+}
+
+/* Super+D, Super+M: minimize every window that has a taskbar button on
+ * this desktop (their dialogs go with them), remembering which, to show
+ * the desktop. Again while showing it adds windows opened since. */
+void Wm::minimize_all(Time t)
+{
+    (void)t;
+    if (!shell_)
+        return;     /* without a taskbar they could not be brought back */
+    if (!showing_desktop_) {
+        shown_away_.clear();
+        shown_active_ = active_ ? active_->win : None;
+    }
+    Vector<Client*> list;
+    int i;
+    for (i = 0; i < clients_.size(); i++) {
+        Client* c = clients_[i];
+        if (on_taskbar(c) && on_current(c) && !c->minimized)
+            list.push_back(c);
+    }
+    for (i = 0; i < list.size(); i++) {
+        shown_away_.push_back(list[i]->win);
+        set_minimized(list[i], true);
+    }
+    showing_desktop_ = true;
+    publish_showing_desktop();
+}
+
+/* Super+D again, Super+Shift+M: bring back what minimize_all() hid. */
+void Wm::restore_all(Time t)
+{
+    if (!showing_desktop_)
+        return;
+    restoring_desktop_ = true;
+    int i;
+    /* In the order they went, so the stacking comes back too. */
+    for (i = 0; i < shown_away_.size(); i++) {
+        Client* c = find_client(shown_away_[i]);
+        if (c && c->minimized && on_current(c)) {
+            set_minimized(c, false);
+            raise(c);
+        }
+    }
+    restoring_desktop_ = false;
+    Client* a = shown_active_ != None ? find_client(shown_active_) : 0;
+    if (a && !a->minimized && on_current(a))
+        activate(a, t);
+    leave_showing_desktop();
+}
+
+/* Forget the windows minimized to show the desktop, leaving them as they
+ * are. */
+void Wm::leave_showing_desktop()
+{
+    if (!showing_desktop_)
+        return;
+    showing_desktop_ = false;
+    shown_away_.clear();
+    shown_active_ = None;
+    publish_showing_desktop();
+}
+
+void Wm::publish_showing_desktop()
+{
+    long v = showing_desktop_ ? 1 : 0;
+    XChangeProperty(dpy_, root_, atoms_.net_showing_desktop, XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char*)&v, 1);
 }
 
 /* Lay the window out for its current state and decoration. 'restore'
@@ -2131,6 +2234,7 @@ void Wm::switch_desktop(int desktop)
 {
     if (desktop < 0 || desktop >= desktops_ || desktop == current_)
         return;
+    leave_showing_desktop();
     if (switching_)
         end_switch(false, CurrentTime);
     current_ = desktop;

@@ -203,6 +203,8 @@ window. Pressing OK in Settings does the same.
 | Super+Up / Down | snap to the top / bottom half |
 | Ctrl+Super+Left / Right | move the active window's taskbar button one place |
 | Ctrl+Super+Home | move the active window's taskbar button to the start |
+| Super+D | show the desktop: minimize all windows; again brings them back |
+| Super+M / Super+Shift+M | minimize all windows / bring them back |
 
 The Alt+function keys are mwm's and CDE's. The docking keys use the Windows
 (Super) key, which CDE never used, so the two sets do not collide. You can

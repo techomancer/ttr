@@ -27,6 +27,7 @@ struct Atoms {
     Atom net_wm_state_hidden, net_wm_icon, net_workarea;
     Atom net_number_of_desktops, net_current_desktop, net_wm_desktop;
     Atom net_desktop_names, net_desktop_geometry, net_desktop_viewport;
+    Atom net_showing_desktop;
     Atom net_wm_window_type;
     Atom net_type_desktop, net_type_dock, net_type_toolbar, net_type_menu;
     Atom net_type_utility, net_type_splash, net_type_dialog;

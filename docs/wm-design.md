@@ -497,6 +497,16 @@ buttons. The shell keeps the order in `_TTR_TASK_ORDER` on the root
 window, so a restart, which adopts windows in stacking order, puts the
 buttons back where they were. New windows go at the end.
 
+**Show desktop.** mwm and CDE had no key for it, so ttr takes Windows'
+keys. Super+D minimizes every window that has a taskbar button on the
+current desktop, and their dialogs go with them. Pressing it again brings
+back the same windows and the one that was active. Super+M and
+Super+Shift+M do the two halves. As on Windows, the mode ends, leaving
+the windows as they are, when a window is brought back another way, a
+new window opens or the desktop changes. The mode is EWMH's
+`_NET_SHOWING_DESKTOP`, so `wmctrl -k on` and pagers work too. The WM
+remembers window ids, not clients, so closing a hidden window is harmless.
+
 The task buttons take their button events with an event handler, not
 `XmDrawingArea`'s input callback. Its translations include a press
 followed by a release, so Xt holds a press back and then reports only the
