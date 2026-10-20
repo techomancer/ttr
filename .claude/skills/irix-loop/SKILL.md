@@ -20,6 +20,7 @@ disk image, own control socket, so both can run at once.
 | Guest shell | `tools/irix-sh.py run 'cmd' ['cmd' ...]`, `push`, `pull`, `wait`, `mount-shared` (telnet, root, no password, `/bin/sh`, cwd `/tmp`, `DISPLAY=:0.0`) |
 | File exchange | the ttr tree is the NFS export: guest `/shared` == this directory, read-write, mounted from the guest's `/etc/fstab` at boot. **noexec**: copy binaries to `/tmp` before running them |
 | IRIX build | `tools/irix-build.sh [target...]` builds with MIPSpro into `build-irix/` (gitignored, separate from the Linux `build/`) |
+| tl tests on IRIX | `tools/irix-test.sh` builds `build-irix/tl_test`, copies it and `tl/test/data` to `/tmp` in the guest and runs it (about 2.5 minutes) |
 | Monitor | `tools/mon.py "status" "cpu regs"` (iris monitor on 127.0.0.1:8889; `help` lists commands) |
 | Screenshot | `tools/irix-shot.sh [out.png]` (monitor `rex fbdump`, cropped to 1280x1024; view with the Read tool) |
 

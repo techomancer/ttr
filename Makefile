@@ -99,6 +99,40 @@ $(B)/.dir:
 	mkdir -p $(B)
 	touch $@
 
+# tl, the terminal emulation library (tl/DESIGN.md): libtl.a and its tests.
+# "make tl-test" builds and runs the tests; "make $(B)/tl_test" only
+# builds them (on IRIX the binary must be copied off the NFS share to run).
+TL_OBJS = $(B)/tl_parser.o \
+	$(B)/tl_unicode.o \
+	$(B)/tl_unicode_data.o
+TL_TEST_OBJS = $(B)/tl_test_main.o \
+	$(B)/tl_test_parser.o \
+	$(B)/tl_test_unicode.o
+AR = ar
+
+$(B)/libtl.a: $(TL_OBJS)
+	rm -f $@
+	$(AR) rc $@ $(TL_OBJS)
+
+$(B)/tl_test: $(B)/libtl.a $(TL_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TL_TEST_OBJS) $(B)/libtl.a
+
+tl-test: $(B)/tl_test
+	$(B)/tl_test -d tl/test/data
+
+$(B)/tl_parser.o: $(B)/.dir tl/parser.cpp tl/parser.h tl/port.h
+	$(COMPILE) -c tl/parser.cpp -o $@
+$(B)/tl_unicode.o: $(B)/.dir tl/unicode.cpp tl/unicode.h tl/port.h
+	$(COMPILE) -c tl/unicode.cpp -o $@
+$(B)/tl_unicode_data.o: $(B)/.dir tl/unicode_data.cpp tl/unicode.h tl/port.h
+	$(COMPILE) -c tl/unicode_data.cpp -o $@
+$(B)/tl_test_main.o: $(B)/.dir tl/test/test_main.cpp tl/test/tltest.h tl/port.h
+	$(COMPILE) -c tl/test/test_main.cpp -o $@
+$(B)/tl_test_parser.o: $(B)/.dir tl/test/test_parser.cpp tl/test/tltest.h tl/parser.h tl/port.h
+	$(COMPILE) -c tl/test/test_parser.cpp -o $@
+$(B)/tl_test_unicode.o: $(B)/.dir tl/test/test_unicode.cpp tl/test/tltest.h tl/unicode.h tl/port.h
+	$(COMPILE) -c tl/test/test_unicode.cpp -o $@
+
 # Header groups, to keep the rules below short.
 CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \

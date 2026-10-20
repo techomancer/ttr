@@ -1,6 +1,7 @@
 # tl: the ttr terminal emulation library
 
-Status: initial plan, 2026-10-19. Nothing in `tl/` is implemented yet.
+Status: plan written 2026-10-19. Milestone 1 (parser, UTF-8, Unicode
+tables, test harness) is done and passes on g++, clang++ and MIPSpro.
 
 `tl` is a terminal emulation engine with no dependency on an operating
 system, a pty, a toolkit or a display. It turns a byte stream into a
@@ -184,9 +185,11 @@ gets `ttr::` and `tl::`, no clash.
 
 ### 4.1 State machine
 
-Paul Williams' DEC ANSI parser (vt100.net), implemented as a 256 by
-14 transition table of packed (action, next state) bytes, generated once
-by a script and checked in as a C array. States: ground, escape, escape
+Paul Williams' DEC ANSI parser (vt100.net), implemented as one switch
+per state with range tests (`tl/parser.cpp`); his transition table is the
+specification and the unit tests check it. A generated table would be no
+faster here, since the printable-run fast path handles the bulk of the
+bytes. States: ground, escape, escape
 intermediate, csi entry, csi param, csi intermediate, csi ignore, dcs
 entry, dcs param, dcs intermediate, dcs passthrough, dcs ignore, osc
 string, sos/pm/apc string. Actions: print, execute, clear, collect,
