@@ -36,7 +36,7 @@ static void cursor_reset(Cursor& c)
 Terminal::Terminal()
     : host_(&null_host_), alt_(false), cols_(0), rows_(0), scrollback_(0),
       cursor_shape_(CURSOR_BLOCK), top_(0), bot_(0), tabs_(0),
-      ambiguous_wide_(false), prev_valid_(false), prev_x_(0), prev_y_(0), last_cp_(0)
+      ambiguous_wide_(false), reflow_(true), prev_valid_(false), prev_x_(0), prev_y_(0), last_cp_(0)
 {
     parser_.set_sink(this);
     modes_.reset();
@@ -113,12 +113,30 @@ bool Terminal::resize(int cols, int rows)
     if (cols > 4096) cols = 4096;
     if (cols == cols_ && rows == rows_)
         return true;
+    /* The primary screen: reflow it around its cursor, which is the live
+     * one or, while the alternate screen is up, the one 1049 saved. */
+    bool did_reflow = false;
+    if (reflow_ && cols != cols_) {
+        Cursor& pc = alt_ ? primary_.saved : cur_;
+        int x = pc.x, y = pc.y;
+        bool pend = pc.pending_wrap;
+        if (!primary_.grid.reflow(cols, rows, &x, &y, &pend))
+            return false;
+        pc.x = x;
+        pc.y = y;
+        pc.pending_wrap = pend;
+        did_reflow = true;
+    }
     int cy = cur_.y;
-    int pcy = cy, acy = cy;
-    if (!primary_.grid.resize(cols, rows, alt_ ? &pcy : &cy))
+    int pcy = alt_ ? primary_.saved.y : cy, acy = cy;
+    if (!did_reflow && !primary_.grid.resize(cols, rows, alt_ ? &pcy : &cy))
         return false;
+    if (!did_reflow && alt_)
+        primary_.saved.y = pcy;
     if (!alt_screen_.grid.resize(cols, rows, alt_ ? &cy : &acy))
         return false;
+    if (did_reflow && !alt_)
+        cy = cur_.y;
     bool* nt = (bool*)calloc((size_t)cols, sizeof(bool));
     if (!nt)
         return false;
@@ -131,10 +149,12 @@ bool Terminal::resize(int cols, int rows)
     top_ = 0;
     bot_ = rows - 1;
     cur_.y = cy;
-    /* Growing wider lets a pending wrap continue on the same line. */
-    if (cur_.pending_wrap && cols > cur_.x + 1)
-        cur_.x++;
-    cur_.pending_wrap = false;
+    if (!(did_reflow && !alt_)) {
+        /* Growing wider lets a pending wrap continue on the same line. */
+        if (cur_.pending_wrap && cols > cur_.x + 1)
+            cur_.x++;
+        cur_.pending_wrap = false;
+    }
     if (cur_.x >= cols) cur_.x = cols - 1;
     if (cur_.y >= rows) cur_.y = rows - 1;
     if (cur_.y < 0) cur_.y = 0;

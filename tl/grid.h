@@ -157,6 +157,13 @@ public:
     /* Change the size without reflow: rows are cut or padded, the active
      * area keeps its bottom rows (cursor_y tells which rows must stay). */
     bool resize(int cols, int rows, int* cursor_y);
+    /* Change the size and re-wrap soft-wrapped lines to the new width.
+     * The cursor (active coordinates; pending: a wrap is pending) keeps
+     * its character and is updated. Blank rows below the cursor are
+     * dropped before re-wrapping; the last rows of the result become the
+     * active area, so a narrower screen pushes rows into the scrollback
+     * and a wider one pulls them back. */
+    bool reflow(int cols, int rows, int* cursor_x, int* cursor_y, bool* pending);
     /* Rebuild the grapheme pool from the cells that use it. */
     void compact_graphemes();
 

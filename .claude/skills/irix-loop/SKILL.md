@@ -138,6 +138,11 @@ monitor confirms the guest is halted, kill it by pid.
 - Objects written by the guest appear as owned by the host user on the
   host (the NFS server maps root), so `make clean` on either side works.
 - `/tmp` in the guest is emptied at boot; `/var/tmp` persists.
+- Never run two guest builds at once (for example a background
+  `tools/irix-test.sh` and another build): they share `build-irix/` and
+  leave empty or mixed objects ("ld32: file is empty", or a test binary
+  linked from objects of different source states). After an overlap,
+  `rm -f build-irix/tl_*` (or the affected objects) and rebuild.
 - The emulator's `prom.bin` warning at startup is harmless (embedded PROM).
 - `ignore/iris.toml` is read at start: a change (ports, `jitv2` threads,
   RAM) needs `tools/iris.sh stop` and `start`.

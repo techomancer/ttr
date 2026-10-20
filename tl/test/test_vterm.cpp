@@ -33,6 +33,7 @@ struct Runner {
     Terminal* term;
     NullHost host;
     bool utf8;
+    bool reflow;            /* libvterm reflows only with WANTSCREEN r */
     const char* file;
     int line;
     char label[128];
@@ -41,7 +42,7 @@ struct Runner {
     int n_known;
     bool verbose;
 
-    Runner() : term(0), utf8(false), file(""), line(0), checks(0), fails(0),
+    Runner() : term(0), utf8(false), reflow(false), file(""), line(0), checks(0), fails(0),
                known_fails(0), skipped(0), known(0), n_known(0), verbose(false)
     {
         label[0] = 0;
@@ -55,6 +56,7 @@ struct Runner {
         term->init(80, 25, 0);
         term->set_host(&host);
         term->set_utf8(utf8);
+        term->set_reflow(reflow);
     }
 
     Known* find_known()
@@ -257,6 +259,17 @@ struct Runner {
                 init();
             return;
         }
+        if (strncmp(l, "WANTSCREEN", 10) == 0) {
+            bool sense = true;
+            for (const char* p = l + 10; *p; p++) {
+                if (*p == '+') sense = true;
+                else if (*p == '-') sense = false;
+                else if (*p == 'r') reflow = sense;
+            }
+            if (term)
+                term->set_reflow(reflow);
+            return;
+        }
         if (strncmp(l, "UTF8 ", 5) == 0) {
             utf8 = atoi(l + 5) != 0;
             if (term)
@@ -343,6 +356,7 @@ struct Runner {
         line = 0;
         label[0] = 0;
         utf8 = false;
+        reflow = false;
         delete term;
         term = 0;
         char buf[4096];

@@ -12,21 +12,3 @@
 63screen_resize.test:105 harness-made scrollback
 63screen_resize.test:106 harness-made scrollback
 #
-# Reflow on resize: DESIGN.md milestone 3.
-69screen_reflow.test:17 reflow not implemented yet
-69screen_reflow.test:18 reflow not implemented yet
-69screen_reflow.test:20 reflow not implemented yet
-69screen_reflow.test:22 reflow not implemented yet
-69screen_reflow.test:23 reflow not implemented yet
-69screen_reflow.test:25 reflow not implemented yet
-69screen_reflow.test:37 reflow not implemented yet
-69screen_reflow.test:39 reflow not implemented yet
-69screen_reflow.test:42 reflow not implemented yet
-69screen_reflow.test:44 reflow not implemented yet
-69screen_reflow.test:60 reflow not implemented yet
-69screen_reflow.test:61 reflow not implemented yet
-69screen_reflow.test:68 reflow not implemented yet
-69screen_reflow.test:69 reflow not implemented yet
-69screen_reflow.test:76 reflow not implemented yet
-69screen_reflow.test:78 reflow not implemented yet
-69screen_reflow.test:79 reflow not implemented yet

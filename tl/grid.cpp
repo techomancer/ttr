@@ -374,6 +374,227 @@ bool Grid::resize(int cols, int rows, int* cursor_y)
     return true;
 }
 
+/* ---- reflow ------------------------------------------------------------ */
+
+namespace {
+
+/* A growable array of rows under construction. */
+struct RowList {
+    Row* rows;
+    size_t n, cap;
+    RowList() : rows(0), n(0), cap(0) {}
+    ~RowList()
+    {
+        for (size_t i = 0; i < n; i++)
+            free(rows[i].cells);
+        free(rows);
+    }
+    Row* add(int cols)
+    {
+        if (n == cap) {
+            size_t ncap = cap ? cap * 2 : 64;
+            Row* p = (Row*)realloc(rows, ncap * sizeof(Row));
+            if (!p)
+                return 0;
+            rows = p;
+            cap = ncap;
+        }
+        Row& r = rows[n];
+        memset(&r, 0, sizeof(Row));
+        r.cells = (Cell*)calloc((size_t)cols, sizeof(Cell));
+        if (!r.cells)
+            return 0;
+        r.cols = (uint16_t)cols;
+        r.damage_all();
+        n++;
+        return &r;
+    }
+};
+
+void note_cell(Row& r, const Cell& c)
+{
+    if (c.style)
+        r.flags |= ROW_HAS_STYLES;
+    if (c.is_grapheme())
+        r.flags |= ROW_HAS_GRAPHEMES;
+    if (c.link)
+        r.flags |= ROW_HAS_LINKS;
+}
+
+} /* namespace */
+
+bool Grid::reflow(int ncols, int nrows, int* cursor_x, int* cursor_y, bool* pending)
+{
+    uint64_t end = base_ + len_;
+    uint64_t cabs = active_top() + (uint64_t)*cursor_y;
+    int cur_off_in_row = *cursor_x + (*pending ? 1 : 0);
+
+    /* Blank rows after the cursor row carry nothing worth keeping. */
+    uint64_t last = end - 1;
+    while (last > cabs && row_blank(abs_row(last)) && !(abs_row(last - 1).flags & ROW_WRAPPED))
+        last--;
+
+    RowList out;
+    long cur_row = -1;
+    int cur_col = 0;
+    bool cur_pending = false;
+
+    Cell* line = 0;
+    size_t line_cap = 0;
+
+    uint64_t a = base_;
+    while (a <= last) {
+        uint64_t b = a;
+        while (b < last && (abs_row(b).flags & ROW_WRAPPED) && abs_row(b).line_attr == LINE_SINGLE)
+            b++;
+
+        /* Gather the logical line a..b. */
+        size_t need = (size_t)(b - a + 1) * (size_t)cols_;
+        if (need > line_cap) {
+            Cell* p = (Cell*)realloc(line, need * sizeof(Cell));
+            if (!p) {
+                free(line);
+                return false;
+            }
+            line = p;
+            line_cap = need;
+        }
+        size_t len = 0;
+        long cur_off = -1;
+        for (uint64_t r = a; r <= b; r++) {
+            const Row& row = abs_row(r);
+            if (r == cabs)
+                cur_off = (long)len + cur_off_in_row;
+            int n = row.cols;
+            if (r < b && n > 0 && row.cells[n - 1].wide() == CELL_SPACER_HEAD)
+                n--;
+            memcpy(line + len, row.cells, (size_t)n * sizeof(Cell));
+            len += (size_t)n;
+        }
+        /* Trailing blanks are not content. */
+        while (len > 0 && line[len - 1].is_empty() && !line[len - 1].style &&
+               line[len - 1].wide() != CELL_SPACER_TAIL)
+            len--;
+
+        /* Cut it at the new width. */
+        Row* row = out.add(ncols);
+        if (!row) {
+            free(line);
+            return false;
+        }
+        row->semantic = abs_row(a).semantic;
+        row->line_attr = abs_row(a).line_attr;
+        int col = 0;
+        bool cursor_done = false;
+        for (size_t i = 0; i < len; i++) {
+            Cell c = line[i];
+            if (c.wide() == CELL_SPACER_TAIL)
+                continue;
+            int w = c.wide() == CELL_WIDE ? 2 : 1;
+            if (w == 2 && ncols < 2) {
+                c = Cell();
+                w = 1;
+            }
+            if (col + w > ncols) {
+                if (col < ncols) {
+                    Cell& h = row->cells[col];
+                    h = Cell();
+                    h.ch = (uint32_t)CELL_SPACER_HEAD << Cell::WIDE_SHIFT;
+                }
+                row->flags |= ROW_WRAPPED;
+                row = out.add(ncols);
+                if (!row) {
+                    free(line);
+                    return false;
+                }
+                row->semantic = abs_row(a).semantic;
+                col = 0;
+            }
+            if (!cursor_done && cur_off >= 0 && (long)i == cur_off) {
+                cur_row = (long)out.n - 1;
+                cur_col = col;
+                cursor_done = true;
+            }
+            row->cells[col] = c;
+            note_cell(*row, c);
+            if (w == 2) {
+                Cell t = c;
+                t.ch = (uint32_t)CELL_SPACER_TAIL << Cell::WIDE_SHIFT;
+                row->cells[col + 1] = t;
+            }
+            col += w;
+        }
+        if (cur_off >= 0 && !cursor_done) {
+            /* The cursor is past the end of the content. */
+            long extra = cur_off - (long)len;
+            cur_row = (long)out.n - 1;
+            if (col + extra >= ncols) {
+                if (col + extra == ncols && extra == 0 && *pending) {
+                    cur_col = ncols - 1;
+                    cur_pending = true;
+                } else {
+                    cur_col = ncols - 1;
+                }
+            } else {
+                cur_col = col + (int)extra;
+            }
+        }
+        a = b + 1;
+    }
+    free(line);
+
+    if (cur_row < 0) {
+        cur_row = out.n ? (long)out.n - 1 : 0;
+        cur_col = 0;
+    }
+
+    /* The active area is the last nrows rows, padded below if short, and
+     * it must contain the cursor. */
+    while (out.n < (size_t)nrows) {
+        if (!out.add(ncols))
+            return false;
+    }
+    size_t top = out.n - (size_t)nrows;
+    if ((size_t)cur_row < top) {
+        top = (size_t)cur_row;
+        while (out.n > top + (size_t)nrows) {
+            out.n--;
+            free(out.rows[out.n].cells);
+        }
+    }
+    size_t dropped = 0;
+    if (top > max_history_) {
+        dropped = top - max_history_;
+        for (size_t i = 0; i < dropped; i++)
+            free(out.rows[i].cells);
+    }
+
+    /* Install the new rows. */
+    for (size_t i = 0; i < cap_; i++)
+        free(ring_[i].cells);
+    free(ring_);
+    size_t n = out.n - dropped;
+    ring_ = (Row*)malloc((n ? n : 1) * sizeof(Row));
+    if (!ring_) {
+        cap_ = start_ = len_ = 0;
+        return false;
+    }
+    memcpy(ring_, out.rows + dropped, n * sizeof(Row));
+    out.n = 0;                           /* ownership moved */
+    cap_ = n;
+    start_ = 0;
+    len_ = n;
+    base_ += dropped;
+    cols_ = ncols;
+    rows_ = nrows;
+    full_damage = true;
+
+    *cursor_x = cur_col;
+    *cursor_y = (int)((size_t)cur_row - top);
+    *pending = cur_pending;
+    return true;
+}
+
 void Grid::compact_graphemes()
 {
     GraphemePool np;

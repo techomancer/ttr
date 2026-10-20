@@ -413,6 +413,77 @@ void resizing()
     TL_CHECK(a.term.rows() == 5);
 }
 
+void reflowing()
+{
+    /* Narrower pushes into the scrollback, wider pulls back. */
+    T t(10, 3, 100);
+    t.feed("0123456789abcdef\r\nxy");
+    TL_CHECK_STR(t.screen(), "0123456789\nabcdef\nxy");
+    t.term.resize(5, 3);
+    TL_CHECK_STR(t.screen(), "abcde\nf\nxy");
+    TL_CHECK(t.term.grid().history() == 2);
+    CHECK_CURSOR(t, 2, 2);
+    t.term.resize(20, 3);
+    TL_CHECK_STR(t.screen(), "0123456789abcdef\nxy");
+    TL_CHECK(t.term.grid().history() == 0);
+    CHECK_CURSOR(t, 2, 1);
+    TL_CHECK((t.term.grid().row(0).flags & ROW_WRAPPED) == 0);
+    /* Typing continues on the reflowed line. */
+    t.feed("z");
+    TL_CHECK_STR(t.row(1), "xyz");
+
+    /* Cursor in the middle of a wrapped line stays on its character. */
+    T m(6, 4, 100);
+    m.feed("abcdefghij\x1b[2;2H");          /* on 'h' */
+    m.term.resize(4, 4);
+    TL_CHECK_STR(m.screen(), "abcd\nefgh\nij");
+    CHECK_CURSOR(m, 3, 1);
+    m.feed("X");
+    TL_CHECK_STR(m.row(1), "efgX");
+
+    /* Pending wrap at the end of a full line. */
+    T p(5, 3, 100);
+    p.feed("abcde");
+    TL_CHECK(p.term.cursor().pending_wrap);
+    p.term.resize(10, 3);
+    CHECK_CURSOR(p, 5, 0);
+    TL_CHECK(!p.term.cursor().pending_wrap);
+    p.feed("f");
+    TL_CHECK_STR(p.row(0), "abcdef");
+
+    /* A wide character that no longer fits leaves a spacer head. */
+    T w(6, 3, 100);
+    w.feed("abcd\xe4\xb8\xadx");
+    w.term.resize(5, 3);
+    TL_CHECK_STR(w.screen(), "abcd\n\xe4\xb8\xadx");
+    TL_CHECK(w.term.grid().row(0).cells[4].wide() == CELL_SPACER_HEAD);
+    w.term.resize(8, 3);
+    TL_CHECK_STR(w.screen(), "abcd\xe4\xb8\xadx");
+
+    /* Hard line breaks are kept. */
+    T h(10, 4, 100);
+    h.feed("ab\r\ncd");
+    h.term.resize(4, 4);
+    TL_CHECK_STR(h.screen(), "ab\ncd");
+
+    /* Reflow off: rows are cut. */
+    T o(10, 3, 100);
+    o.term.set_reflow(false);
+    o.feed("0123456789ab");
+    o.term.resize(5, 3);
+    TL_CHECK_STR(o.screen(), "01234\nab");
+
+    /* The alternate screen is not reflowed; the primary one behind it is,
+     * around the cursor that 1049 saved. */
+    T a(10, 3, 100);
+    a.feed("0123456789abc\x1b[?1049h\x1b[HALT");
+    a.term.resize(5, 3);
+    TL_CHECK_STR(a.screen(), "ALT");
+    a.feed("\x1b[?1049l");
+    TL_CHECK_STR(a.screen(), "01234\n56789\nabc");
+    CHECK_CURSOR(a, 3, 2);
+}
+
 } /* namespace */
 
 void tl_test_terminal()
@@ -425,4 +496,5 @@ void tl_test_terminal()
     attributes();
     reports_and_modes();
     resizing();
+    reflowing();
 }

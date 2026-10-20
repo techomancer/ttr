@@ -75,8 +75,11 @@ public:
 
     void feed(const uint8_t* data, size_t n);
     void feed(const char* s);
-    /* Change the size. No reflow yet: rows are cut or padded. */
+    /* Change the size. The primary screen's soft-wrapped lines are
+     * re-wrapped to the new width unless reflow is off; the alternate
+     * screen is cut or padded. */
     bool resize(int cols, int rows);
+    void set_reflow(bool on) { reflow_ = on; }
     /* RIS: full reset. */
     void reset();
 
@@ -186,6 +189,7 @@ private:
     bool* tabs_;
     Buffer title_;
     bool ambiguous_wide_;
+    bool reflow_;
 
     /* Last printed cell, for combining characters and REP. */
     bool prev_valid_;
