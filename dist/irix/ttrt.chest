@@ -1,0 +1,4 @@
+Menu Desktop
+{
+    "ttrt Terminal"     f.checkexec "/usr/bin/ttrt &"
+}

@@ -40,8 +40,12 @@ PREFIX = /usr
 BINDIR = $(PREFIX)/bin
 XSESSIONDIR = $(PREFIX)/share/xsessions
 DATADIR = $(PREFIX)/share/ttr
-# Compiled terminfo entries; IRIX keeps them in /usr/share/lib/terminfo.
-TERMINFO_DIR = $(PREFIX)/share/terminfo
+# Where tic puts ttrt's compiled terminfo entry. Empty: tic's own default,
+# the system directory every user's curses reads (/usr/share/lib/terminfo
+# on IRIX, /usr/share/terminfo with ncurses). Packages built with DESTDIR
+# must name it: TERMINFO_DIR=/usr/share/terminfo (Linux) or
+# /usr/share/lib/terminfo (IRIX).
+TERMINFO_DIR =
 DESTDIR =
 
 B = build
@@ -205,6 +209,10 @@ TW_FONTS = third_party/misc-misc/6x13.bdf third_party/misc-misc/6x13B.bdf \
 	third_party/misc-misc/10x20.bdf third_party/misc-misc/6x12.bdf \
 	third_party/misc-misc/6x10.bdf third_party/misc-misc/6x9.bdf \
 	third_party/misc-misc/5x8.bdf third_party/misc-misc/5x7.bdf
+
+# Print the font list (for packaging scripts).
+tw-fonts:
+	@echo $(TW_FONTS)
 
 # tw tests that need no display: "make tw-test".
 TW_TEST_OBJS = $(B)/tw_bdf.o $(B)/tw_fonts.o $(B)/tw_glyphs.o $(B)/tw_test_tw.o
@@ -454,8 +462,15 @@ install: $(B)/ttr $(B)/ttrt
 	mkdir -p $(DESTDIR)$(DATADIR)/fonts
 	cp $(TW_FONTS) third_party/misc-misc/COPYING $(DESTDIR)$(DATADIR)/fonts
 	chmod 644 $(DESTDIR)$(DATADIR)/fonts/*
-	mkdir -p $(DESTDIR)$(TERMINFO_DIR)
-	-TERMINFO=$(DESTDIR)$(TERMINFO_DIR) tic data/ttrt.ti
+	if [ -n "$(TERMINFO_DIR)" ]; then \
+		mkdir -p $(DESTDIR)$(TERMINFO_DIR) && \
+		TERMINFO=$(DESTDIR)$(TERMINFO_DIR) tic data/ttrt.ti; \
+	elif [ -n "$(DESTDIR)" ]; then \
+		echo "make install: DESTDIR needs TERMINFO_DIR for ttrt's terminfo entry" >&2; \
+		exit 1; \
+	else \
+		tic data/ttrt.ti || echo "tic failed: ttrt will use TERM=xterm" >&2; \
+	fi
 	cp dist/ttr-session $(DESTDIR)$(BINDIR)/ttr-session
 	chmod 755 $(DESTDIR)$(BINDIR)/ttr-session
 	cp dist/ttr.desktop $(DESTDIR)$(XSESSIONDIR)/ttr.desktop
@@ -472,6 +487,8 @@ uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old \
 		$(DESTDIR)$(BINDIR)/ttrt $(DESTDIR)$(BINDIR)/ttr-session \
 		$(DESTDIR)$(TERMINFO_DIR)/t/ttrt \
+		$(DESTDIR)/usr/share/terminfo/t/ttrt \
+		$(DESTDIR)/usr/share/lib/terminfo/t/ttrt \
 		$(DESTDIR)$(XSESSIONDIR)/ttr.desktop
 	rm -rf $(DESTDIR)$(DATADIR)
 

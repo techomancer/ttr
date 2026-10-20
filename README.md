@@ -146,7 +146,7 @@ This installs:
 | `/usr/bin/ttr` | the window manager and desktop |
 | `/usr/bin/ttrt` | the terminal |
 | `/usr/share/ttr/fonts/` | ttrt's Unicode fonts (public domain misc-fixed BDF) |
-| `/usr/share/terminfo/t/ttrt` | ttrt's terminfo entry (`TERMINFO_DIR=` to change; IRIX keeps them in `/usr/share/lib/terminfo`) |
+| `/usr/share/terminfo/t/ttrt` | ttrt's terminfo entry (`/usr/share/lib/terminfo` on IRIX; packages built with `DESTDIR` set `TERMINFO_DIR`) |
 | `/usr/bin/ttr-session` | starts a ttr session (see below) |
 | `/usr/share/xsessions/ttr.desktop` | makes display managers offer "To The Roots" |
 | `/usr/share/ttr/schemes/` | the color themes |
@@ -167,6 +167,20 @@ pacman tracks the files:
 cd dist/arch
 makepkg -si
 ```
+
+On **IRIX**, build an inst package (a `.tardist`) and install it with `inst`
+or Software Manager. `tools/irix-dist.sh` builds it in the IRIX test guest
+(see "Building on IRIX"); the version defaults to today's date:
+
+```sh
+tools/irix-dist.sh                      # writes build-irix/ttr-VERSION.tardist
+inst -f ttr-VERSION.tardist             # on IRIX, as root
+```
+
+The package has two subsystems, `ttr.sw.wm` (ttr and its themes) and
+`ttr.sw.term` (ttrt, its fonts and a Desktop toolchest entry). Installing it
+compiles ttrt's terminfo entry into `/usr/share/lib/terminfo` with `tic`, and
+removing it deletes the entry.
 
 ## Running
 
@@ -396,9 +410,14 @@ terminal uses the mouse itself (vim with `mouse=a`, mc, htop), hold
 Shift to select instead. The Edit menu also has Select All, Clear
 Scrollback and Reset Terminal.
 
-ttrt sets `TERM` to `ttrt` when its terminfo entry is installed (`make
-install` compiles `data/ttrt.ti`; for one user, `tic -o ~/.terminfo
-data/ttrt.ti`, or on IRIX `TERMINFO=$HOME/.terminfo tic data/ttrt.ti`).
+ttrt sets `TERM` to `ttrt` when its terminfo entry is installed. `make
+install` compiles `data/ttrt.ti` with `tic` into the system's terminfo
+directory, where every user's programs find it (`/usr/share/lib/terminfo`
+on IRIX, `/usr/share/terminfo` on Linux). Without root, one user can
+install it with `tic -o ~/.terminfo data/ttrt.ti` (ncurses) or
+`TERMINFO=$HOME/.terminfo tic data/ttrt.ti` (IRIX, where ttrt then sets
+`TERMINFO` for its shell, since IRIX's curses does not look in
+`~/.terminfo` by itself).
 Otherwise it uses the best entry the system has: `xterm-256color` on
 Linux, `xterm` on IRIX 6.5, whose old entry knows only 8 colours.
 
