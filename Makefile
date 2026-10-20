@@ -40,6 +40,8 @@ PREFIX = /usr
 BINDIR = $(PREFIX)/bin
 XSESSIONDIR = $(PREFIX)/share/xsessions
 DATADIR = $(PREFIX)/share/ttr
+# Compiled terminfo entries; IRIX keeps them in /usr/share/lib/terminfo.
+TERMINFO_DIR = $(PREFIX)/share/terminfo
 DESTDIR =
 
 B = build
@@ -452,6 +454,8 @@ install: $(B)/ttr $(B)/ttrt
 	mkdir -p $(DESTDIR)$(DATADIR)/fonts
 	cp $(TW_FONTS) third_party/misc-misc/COPYING $(DESTDIR)$(DATADIR)/fonts
 	chmod 644 $(DESTDIR)$(DATADIR)/fonts/*
+	mkdir -p $(DESTDIR)$(TERMINFO_DIR)
+	-TERMINFO=$(DESTDIR)$(TERMINFO_DIR) tic data/ttrt.ti
 	cp dist/ttr-session $(DESTDIR)$(BINDIR)/ttr-session
 	chmod 755 $(DESTDIR)$(BINDIR)/ttr-session
 	cp dist/ttr.desktop $(DESTDIR)$(XSESSIONDIR)/ttr.desktop
@@ -467,6 +471,7 @@ install: $(B)/ttr $(B)/ttrt
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old \
 		$(DESTDIR)$(BINDIR)/ttrt $(DESTDIR)$(BINDIR)/ttr-session \
+		$(DESTDIR)$(TERMINFO_DIR)/t/ttrt \
 		$(DESTDIR)$(XSESSIONDIR)/ttr.desktop
 	rm -rf $(DESTDIR)$(DATADIR)
 

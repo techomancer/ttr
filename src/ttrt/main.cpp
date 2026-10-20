@@ -85,6 +85,7 @@ const char* const k_fonts[] = {
 
 class App;
 const char* pick_term();
+extern char g_terminfo_dir[512];
 
 class Host : public tl::Host {
 public:
@@ -284,8 +285,14 @@ void App::start_session(int cols, int rows)
     bool truecolor = vis->c_class == TrueColor && DefaultDepth(XtDisplay(top), DefaultScreen(XtDisplay(top))) >= 15;
     char term_env[64];
     sprintf(term_env, "TERM=%s", pick_term());
+    char terminfo_env[540];
+    if (g_terminfo_dir[0])
+        sprintf(terminfo_env, "TERMINFO=%s", g_terminfo_dir);
+    else
+        strcpy(terminfo_env, "COLUMNS");    /* nothing to set: unset a harmless name */
     const char* env[] = {
         term_env,
+        terminfo_env,
         truecolor ? "COLORTERM=truecolor" : "COLORTERM",
         windowid,
         "COLUMNS", "LINES", "TERMCAP",
@@ -834,10 +841,15 @@ void delete_window_cb(Widget w, XtPointer data, XtPointer)
     close_cb(w, data, 0);
 }
 
+/* The directory pick_term() found a private entry in ($TERMINFO or
+ * ~/.terminfo), or "" for the system's. */
+char g_terminfo_dir[512];
+
 /* The first TERM name this system's terminfo knows: ttrt's own entry,
  * then xterm-256color, then xterm (IRIX 6.5 has only xterm). */
 const char* pick_term()
 {
+    g_terminfo_dir[0] = 0;
     static const char* const names[] = { "ttrt", "xterm-256color", "xterm", 0 };
     char home_ti[512];
     const char* home = getenv("HOME");
@@ -854,11 +866,18 @@ const char* pick_term()
             char path[600];
             /* The usual layout is x/xterm; macOS uses hex: 78/xterm. */
             sprintf(path, "%s/%c/%s", dirs[d], names[n][0], names[n]);
-            if (access(path, R_OK) == 0)
+            bool found = access(path, R_OK) == 0;
+            if (!found) {
+                sprintf(path, "%s/%02x/%s", dirs[d], (unsigned char)names[n][0], names[n]);
+                found = access(path, R_OK) == 0;
+            }
+            if (found) {
+                /* SVR4 curses (IRIX) reads only $TERMINFO and the system
+                 * directory, not ~/.terminfo: pass a private one on. */
+                if (d < 2)
+                    sprintf(g_terminfo_dir, "%.500s", dirs[d]);
                 return names[n];
-            sprintf(path, "%s/%02x/%s", dirs[d], (unsigned char)names[n][0], names[n]);
-            if (access(path, R_OK) == 0)
-                return names[n];
+            }
         }
     }
     return "xterm";

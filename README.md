@@ -146,6 +146,7 @@ This installs:
 | `/usr/bin/ttr` | the window manager and desktop |
 | `/usr/bin/ttrt` | the terminal |
 | `/usr/share/ttr/fonts/` | ttrt's Unicode fonts (public domain misc-fixed BDF) |
+| `/usr/share/terminfo/t/ttrt` | ttrt's terminfo entry (`TERMINFO_DIR=` to change; IRIX keeps them in `/usr/share/lib/terminfo`) |
 | `/usr/bin/ttr-session` | starts a ttr session (see below) |
 | `/usr/share/xsessions/ttr.desktop` | makes display managers offer "To The Roots" |
 | `/usr/share/ttr/schemes/` | the color themes |
@@ -395,8 +396,11 @@ terminal uses the mouse itself (vim with `mouse=a`, mc, htop), hold
 Shift to select instead. The Edit menu also has Select All, Clear
 Scrollback and Reset Terminal.
 
-ttrt sets `TERM` to the best entry the system's terminfo has:
-`xterm-256color` on Linux, `xterm` on IRIX 6.5.
+ttrt sets `TERM` to `ttrt` when its terminfo entry is installed (`make
+install` compiles `data/ttrt.ti`; for one user, `tic -o ~/.terminfo
+data/ttrt.ti`, or on IRIX `TERMINFO=$HOME/.terminfo tic data/ttrt.ti`).
+Otherwise it uses the best entry the system has: `xterm-256color` on
+Linux, `xterm` on IRIX 6.5, whose old entry knows only 8 colours.
 
 ### High-resolution screens
 

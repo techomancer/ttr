@@ -251,8 +251,11 @@ active ttr colour scheme (or the IRIX scheme), so ttrt matches the
 desktop like xwsh's `winterm` resources do.
 
 `TERM` is `ttrt` when the terminfo entry is installed (shipped as
-`data/ttrt.ti`, compiled by `make install` with `tic`), `xterm-256color`
-otherwise; `COLORTERM=truecolor` only with a TrueColor renderer.
+`data/ttrt.ti`, standard capabilities only so that both ncurses `tic` and
+IRIX's SVR4 `tic` compile it; `make install` runs `tic`), else
+`xterm-256color`, else `xterm`. When the entry is found in `$TERMINFO` or
+`~/.terminfo`, ttrt passes `TERMINFO` to the shell: IRIX's curses does not
+look in `~/.terminfo`. `COLORTERM=truecolor` only with a TrueColor visual.
 
 ## 9. Settings and command line
 
