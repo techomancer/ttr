@@ -95,6 +95,29 @@ leave out `TTR_HAVE_PNG`, `TTR_HAVE_XPM` or `TTR_HAVE_SVG` (and the
 matching library) to drop an icon format. The top of the
 [Makefile](Makefile) has an example command line for IRIX with MIPSpro.
 
+### Building on IRIX
+
+On an IRIX 6.5 machine with MIPSpro 7.4, the Motif development files,
+libXpm and libpng, in the source directory:
+
+```sh
+make B=build-irix CXX=CC WARNFLAGS= DBUS_CFLAGS= \
+     CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF -no_prelink -ptused" \
+     CPPFLAGS="-Isrc -DTTR_HAVE_XPM -DTTR_HAVE_SVG -DTTR_HAVE_PNG" \
+     LIBS="-lXm -lXt -lXpm -lpng -lX11 -lm"
+```
+
+`B=build-irix` keeps the IRIX objects apart from a Linux build of the same
+tree, which matters when the tree is shared over NFS. `-no_prelink
+-ptused` makes MIPSpro instantiate templates in each object instead of
+through its prelinker, whose `ii_files/` directory does not work on an
+NFS mount.
+
+`tools/irix-build.sh` runs exactly this build inside the iris Indy
+emulator (see `tools/iris.sh` and the comments in both scripts): the
+emulator exports the source tree over NFS, the guest builds it, and the
+result appears in `build-irix/`.
+
 ### Installing
 
 ```sh

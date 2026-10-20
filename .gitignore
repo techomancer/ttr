@@ -1,2 +1,4 @@
 build/
 build-asan/
+ignore/
+build-irix/
