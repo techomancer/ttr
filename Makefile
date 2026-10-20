@@ -102,12 +102,20 @@ $(B)/.dir:
 # tl, the terminal emulation library (tl/DESIGN.md): libtl.a and its tests.
 # "make tl-test" builds and runs the tests; "make $(B)/tl_test" only
 # builds them (on IRIX the binary must be copied off the NFS share to run).
-TL_OBJS = $(B)/tl_parser.o \
+TL_OBJS = $(B)/tl_charset.o \
+	$(B)/tl_grid.o \
+	$(B)/tl_parser.o \
+	$(B)/tl_style.o \
+	$(B)/tl_terminal.o \
 	$(B)/tl_unicode.o \
 	$(B)/tl_unicode_data.o
 TL_TEST_OBJS = $(B)/tl_test_main.o \
 	$(B)/tl_test_parser.o \
-	$(B)/tl_test_unicode.o
+	$(B)/tl_test_terminal.o \
+	$(B)/tl_test_unicode.o \
+	$(B)/tl_test_vterm.o
+TL_TERMINAL_H = tl/terminal.h tl/buffer.h tl/charset.h tl/grid.h tl/host.h \
+	tl/parser.h tl/style.h tl/unicode.h tl/port.h
 AR = ar
 
 $(B)/libtl.a: $(TL_OBJS)
@@ -118,8 +126,20 @@ $(B)/tl_test: $(B)/libtl.a $(TL_TEST_OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TL_TEST_OBJS) $(B)/libtl.a
 
 tl-test: $(B)/tl_test
-	$(B)/tl_test -d tl/test/data
+	$(B)/tl_test -d tl/test/data -v third_party/libvterm/t
 
+$(B)/tl_charset.o: $(B)/.dir tl/charset.cpp tl/charset.h tl/port.h
+	$(COMPILE) -c tl/charset.cpp -o $@
+$(B)/tl_grid.o: $(B)/.dir tl/grid.cpp tl/grid.h tl/port.h
+	$(COMPILE) -c tl/grid.cpp -o $@
+$(B)/tl_style.o: $(B)/.dir tl/style.cpp tl/style.h tl/port.h
+	$(COMPILE) -c tl/style.cpp -o $@
+$(B)/tl_terminal.o: $(B)/.dir tl/terminal.cpp $(TL_TERMINAL_H)
+	$(COMPILE) -c tl/terminal.cpp -o $@
+$(B)/tl_test_terminal.o: $(B)/.dir tl/test/test_terminal.cpp tl/test/tltest.h $(TL_TERMINAL_H)
+	$(COMPILE) -c tl/test/test_terminal.cpp -o $@
+$(B)/tl_test_vterm.o: $(B)/.dir tl/test/test_vterm.cpp tl/test/tltest.h $(TL_TERMINAL_H)
+	$(COMPILE) -c tl/test/test_vterm.cpp -o $@
 $(B)/tl_parser.o: $(B)/.dir tl/parser.cpp tl/parser.h tl/port.h
 	$(COMPILE) -c tl/parser.cpp -o $@
 $(B)/tl_unicode.o: $(B)/.dir tl/unicode.cpp tl/unicode.h tl/port.h

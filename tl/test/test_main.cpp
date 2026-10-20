@@ -28,13 +28,20 @@ int main(int argc, char** argv)
     const char* env = getenv("TL_TEST_DATA");
     if (env)
         tl_test_data_dir = env;
+    env = getenv("TL_TEST_VTERM");
+    if (env)
+        tl_test_vterm_dir = env;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-d") == 0 && i + 1 < argc)
             tl_test_data_dir = argv[++i];
+        else if (strcmp(argv[i], "-v") == 0 && i + 1 < argc)
+            tl_test_vterm_dir = argv[++i];
     }
 
     tl_test_parser();
     tl_test_unicode();
+    tl_test_terminal();
+    tl_test_vterm();
 
     printf("tl tests: %d checks, %d failures\n", tl_test_checks, tl_test_failures);
     return tl_test_failures ? 1 : 0;

@@ -18,8 +18,12 @@ bool tl_check_str(const char* file, int line, const char* got, const char* want)
 /* Each test file exports one entry point. */
 void tl_test_parser();
 void tl_test_unicode();
+void tl_test_terminal();
+void tl_test_vterm();
 
 /* Directory with test data files; from -d or TL_TEST_DATA. */
 extern const char* tl_test_data_dir;
+/* libvterm's t/ directory; from -v or TL_TEST_VTERM. */
+extern const char* tl_test_vterm_dir;
 
 #endif

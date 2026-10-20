@@ -1,7 +1,11 @@
 # tl: the ttr terminal emulation library
 
 Status: plan written 2026-10-19. Milestone 1 (parser, UTF-8, Unicode
-tables, test harness) is done and passes on g++, clang++ and MIPSpro.
+tables, test harness) is done. Milestone 2 is mostly done: the VT102
+screen, styles, charsets, alternate screen, DA/DSR/DECRQM, and a runner
+for libvterm's fixtures (`tl/test/test_vterm.cpp`, known differences in
+`tl/test/data/vterm-known.txt`). Missing from it: the pty-driven
+vttest/esctest runs. All of it passes on g++, clang++ and MIPSpro.
 
 `tl` is a terminal emulation engine with no dependency on an operating
 system, a pty, a toolkit or a display. It turns a byte stream into a

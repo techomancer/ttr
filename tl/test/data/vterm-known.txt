@@ -1,0 +1,32 @@
+# libvterm fixture assertions where tl differs on purpose or lacks a
+# feature yet. Format: file:line reason. tl/test/test_vterm.cpp reads it;
+# an entry that starts passing is reported so it can be removed.
+#
+# DECSLRM / left-right margins (mode 69): DESIGN.md milestone 5.
+15state_mode.test:72 DECSLRM not implemented yet
+#
+# The libvterm harness invents scrollback lines ("ABCDE") in sb_popline;
+# tl keeps its own scrollback and the fixture terminal has none.
+63screen_resize.test:103 harness-made scrollback
+63screen_resize.test:104 harness-made scrollback
+63screen_resize.test:105 harness-made scrollback
+63screen_resize.test:106 harness-made scrollback
+#
+# Reflow on resize: DESIGN.md milestone 3.
+69screen_reflow.test:17 reflow not implemented yet
+69screen_reflow.test:18 reflow not implemented yet
+69screen_reflow.test:20 reflow not implemented yet
+69screen_reflow.test:22 reflow not implemented yet
+69screen_reflow.test:23 reflow not implemented yet
+69screen_reflow.test:25 reflow not implemented yet
+69screen_reflow.test:37 reflow not implemented yet
+69screen_reflow.test:39 reflow not implemented yet
+69screen_reflow.test:42 reflow not implemented yet
+69screen_reflow.test:44 reflow not implemented yet
+69screen_reflow.test:60 reflow not implemented yet
+69screen_reflow.test:61 reflow not implemented yet
+69screen_reflow.test:68 reflow not implemented yet
+69screen_reflow.test:69 reflow not implemented yet
+69screen_reflow.test:76 reflow not implemented yet
+69screen_reflow.test:78 reflow not implemented yet
+69screen_reflow.test:79 reflow not implemented yet
