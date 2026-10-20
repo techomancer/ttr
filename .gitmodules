@@ -1,3 +1,12 @@
 [submodule "third_party/nanosvg"]
 	path = third_party/nanosvg
 	url = https://github.com/memononen/nanosvg
+[submodule "third_party/vttest"]
+	path = third_party/vttest
+	url = https://github.com/ThomasDickey/vttest-snapshots
+[submodule "third_party/esctest2"]
+	path = third_party/esctest2
+	url = https://github.com/ThomasDickey/esctest2
+[submodule "third_party/libvterm"]
+	path = third_party/libvterm
+	url = https://github.com/neovim/libvterm
