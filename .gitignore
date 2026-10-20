@@ -2,3 +2,4 @@ build/
 build-asan/
 ignore/
 build-irix/
+__pycache__/
