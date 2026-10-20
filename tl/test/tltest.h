@@ -20,6 +20,7 @@ void tl_test_parser();
 void tl_test_unicode();
 void tl_test_terminal();
 void tl_test_vterm();
+void tl_test_view();
 
 /* Directory with test data files; from -d or TL_TEST_DATA. */
 extern const char* tl_test_data_dir;

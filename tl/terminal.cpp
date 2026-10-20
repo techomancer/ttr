@@ -36,12 +36,40 @@ static void cursor_reset(Cursor& c)
 Terminal::Terminal()
     : host_(&null_host_), alt_(false), cols_(0), rows_(0), scrollback_(0),
       cursor_shape_(CURSOR_BLOCK), top_(0), bot_(0), tabs_(0),
-      ambiguous_wide_(false), reflow_(true), prev_valid_(false), prev_x_(0), prev_y_(0), last_cp_(0)
+      ambiguous_wide_(false), reflow_(true), bold_bright_(true), full_damage_(true),
+      vp_anchor_(0), follow_(true), last_valid_(false), last_at_bottom_(true), last_alt_(false),
+      last_top_(0), last_cx_(0), last_cy_(0), last_cwide_(false), prev_valid_(false), prev_x_(0), prev_y_(0), last_cp_(0)
 {
     parser_.set_sink(this);
+    /* xterm's default palette. */
+    static const uint8_t base16[16][3] = {
+        {0x00, 0x00, 0x00}, {0xcd, 0x00, 0x00}, {0x00, 0xcd, 0x00}, {0xcd, 0xcd, 0x00},
+        {0x00, 0x00, 0xee}, {0xcd, 0x00, 0xcd}, {0x00, 0xcd, 0xcd}, {0xe5, 0xe5, 0xe5},
+        {0x7f, 0x7f, 0x7f}, {0xff, 0x00, 0x00}, {0x00, 0xff, 0x00}, {0xff, 0xff, 0x00},
+        {0x5c, 0x5c, 0xff}, {0xff, 0x00, 0xff}, {0x00, 0xff, 0xff}, {0xff, 0xff, 0xff}
+    };
+    for (int i = 0; i < 16; i++) {
+        palette_[i].r = base16[i][0];
+        palette_[i].g = base16[i][1];
+        palette_[i].b = base16[i][2];
+    }
+    static const uint8_t level[6] = { 0, 95, 135, 175, 215, 255 };
+    for (int i = 0; i < 216; i++) {
+        palette_[16 + i].r = level[i / 36];
+        palette_[16 + i].g = level[(i / 6) % 6];
+        palette_[16 + i].b = level[i % 6];
+    }
+    for (int i = 0; i < 24; i++) {
+        uint8_t v = (uint8_t)(8 + 10 * i);
+        palette_[232 + i].r = palette_[232 + i].g = palette_[232 + i].b = v;
+    }
+    fg_ = palette_[7];
+    bg_ = palette_[0];
     modes_.reset();
     cursor_reset(cur_);
     gstate_.reset();
+    cursor_reset(primary_.saved);
+    cursor_reset(alt_screen_.saved);
     primary_.has_saved = alt_screen_.has_saved = false;
 }
 
@@ -62,6 +90,8 @@ bool Terminal::init(int cols, int rows, size_t scrollback)
         return false;
     if (!alt_screen_.grid.init(cols, rows, 0))
         return false;
+    if (!vp_anchor_)
+        vp_anchor_ = primary_.grid.anchor_new(0, 0);
     free(tabs_);
     tabs_ = (bool*)calloc((size_t)cols, sizeof(bool));
     if (!tabs_)
@@ -82,6 +112,8 @@ void Terminal::reset()
     bot_ = rows_ - 1;
     for (int x = 0; x < cols_; x++)
         tabs_[x] = x > 0 && x % 8 == 0;
+    cursor_reset(primary_.saved);
+    cursor_reset(alt_screen_.saved);
     primary_.has_saved = alt_screen_.has_saved = false;
     Cell b = Cell();
     for (int y = 0; y < rows_; y++) {
@@ -91,6 +123,8 @@ void Terminal::reset()
     primary_.grid.clear_history();
     primary_.grid.full_damage = true;
     title_.clear();
+    follow_ = true;
+    full_damage_ = true;
     prev_valid_ = false;
     last_cp_ = 0;
     gstate_.reset();
@@ -187,10 +221,19 @@ int Terminal::cell_text(const Cell& c, uint32_t* out, int max) const
 void Terminal::row_text(int y, Buffer& out) const
 {
     const Row& r = screen().grid.row(y);
-    int last = r.cols - 1;
-    while (last >= 0 && r.cells[last].is_empty())
+    append_cells(r, 0, r.cols - 1, out, false);
+}
+
+/* Cells lo..hi of a row as UTF-8, trailing empty cells dropped. */
+void Terminal::append_cells(const Row& r, int lo, int hi, Buffer& out, bool trim_spaces) const
+{
+    if (hi >= r.cols)
+        hi = r.cols - 1;
+    int last = hi;
+    while (last >= lo && (r.cells[last].is_empty() ||
+                          (trim_spaces && r.cells[last].cp() == ' ' && !r.cells[last].is_grapheme())))
         last--;
-    for (int x = 0; x <= last; x++) {
+    for (int x = lo; x <= last; x++) {
         const Cell& c = r.cells[x];
         if (c.wide() == CELL_SPACER_TAIL)
             continue;
@@ -223,6 +266,201 @@ void Terminal::screen_text(Buffer& out) const
     }
 }
 
+/* ---- presenting -------------------------------------------------------- */
+
+uint64_t Terminal::viewport_top() const
+{
+    const Grid& g = screen().grid;
+    if (alt_ || follow_)
+        return g.active_top();
+    const Anchor* a = primary_.grid.anchor(vp_anchor_);
+    if (!a || a->lost || a->row < g.base())
+        return g.base();
+    if (a->row > g.active_top())
+        return g.active_top();
+    return a->row;
+}
+
+void Terminal::scroll_viewport(long n)
+{
+    if (alt_ || n == 0)
+        return;
+    const Grid& g = primary_.grid;
+    uint64_t top = viewport_top();
+    uint64_t lo = g.base(), hi = g.active_top();
+    uint64_t t;
+    if (n < 0)
+        t = (uint64_t)(-n) > top - lo ? lo : top - (uint64_t)(-n);
+    else
+        t = (uint64_t)n > hi - top ? hi : top + (uint64_t)n;
+    if (t == top)
+        return;
+    follow_ = t == hi;
+    primary_.grid.anchor_set(vp_anchor_, t, 0);
+    full_damage_ = true;
+}
+
+void Terminal::scroll_to_bottom()
+{
+    if (!follow_) {
+        follow_ = true;
+        full_damage_ = true;
+    }
+}
+
+void Terminal::scroll_to_top()
+{
+    if (alt_)
+        return;
+    scroll_viewport(-(long)(viewport_top() - primary_.grid.base()));
+}
+
+void Terminal::set_default_colors(Rgb fg, Rgb bg)
+{
+    fg_ = fg;
+    bg_ = bg;
+    full_damage_ = true;
+}
+
+void Terminal::set_palette(int index, Rgb c)
+{
+    palette_[index & 255] = c;
+    full_damage_ = true;
+}
+
+View Terminal::view() const
+{
+    View v;
+    const Grid& g = screen().grid;
+    v.term_ = this;
+    v.grid_ = &g;
+    v.cols_ = cols_;
+    v.rows_ = rows_;
+    v.top_ = viewport_top();
+    v.at_bottom_ = v.top_ == g.active_top();
+    v.held_ = modes_.sync_output;
+    v.n_scroll_ = 0;
+    bool full = g.full_damage || full_damage_ || !last_valid_ || alt_ != last_alt_;
+    if (!full) {
+        if (v.at_bottom_ && last_at_bottom_) {
+            /* Following the output: the grid's records are viewport moves. */
+            v.n_scroll_ = g.scroll_record_count();
+            for (int i = 0; i < v.n_scroll_; i++)
+                v.scroll_[i] = g.scroll_record(i);
+        } else if (v.top_ != last_top_ || v.at_bottom_ != last_at_bottom_) {
+            full = true;
+        } else if (g.scroll_record_count() > 0 && v.top_ + (uint64_t)rows_ > g.active_top()) {
+            /* Scrolled back, but part of the active area is visible and
+             * moved under the viewport. */
+            full = true;
+        }
+    }
+    v.full_ = full;
+
+    ViewCursor& c = v.cursor_;
+    uint64_t abs = g.active_top() + (uint64_t)cur_.y;
+    c.x = cur_.x;
+    c.y = abs >= v.top_ && abs < v.top_ + (uint64_t)rows_ ? (int)(abs - v.top_) : -1;
+    c.visible = modes_.cursor_visible && c.y >= 0;
+    c.blink = modes_.cursor_blink;
+    c.shape = cursor_shape_;
+    c.wide = false;
+    if (c.y >= 0) {
+        const Row& r = g.abs_row(abs);
+        c.wide = r.cells[c.x].wide() == CELL_WIDE && c.x + 1 < cols_;
+        if (c.x > 0 && r.cells[c.x].wide() == CELL_SPACER_TAIL) {
+            c.x--;
+            c.wide = true;
+        }
+    }
+
+    /* The cell the cursor was drawn on last time, moved along with any
+     * scrolled rows, must be repainted to remove it. */
+    v.prev_cursor_x_ = last_cx_;
+    v.prev_cursor_wide_ = last_cwide_;
+    v.prev_cursor_y_ = -1;
+    if (!full && last_cy_ >= 0) {
+        int y = last_cy_;
+        for (int i = 0; i < v.n_scroll_ && y >= 0; i++) {
+            const ScrollRecord& s = v.scroll_[i];
+            if (y < s.top || y > s.bottom)
+                continue;
+            y -= s.count;
+            if (y < s.top || y > s.bottom)
+                y = -1;
+        }
+        v.prev_cursor_y_ = y;
+    }
+    return v;
+}
+
+void Terminal::clear_damage()
+{
+    Grid& g = screen().grid;
+    g.clear_damage();
+    uint64_t top = viewport_top();
+    if (top < g.active_top()) {
+        for (int y = 0; y < rows_; y++) {
+            uint64_t a = top + (uint64_t)y;
+            if (a >= g.active_top())
+                break;
+            g.abs_row(a).clean();
+        }
+    }
+    full_damage_ = false;
+    View v = view();
+    last_valid_ = true;
+    last_alt_ = alt_;
+    last_top_ = v.top_;
+    last_at_bottom_ = v.at_bottom_;
+    last_cx_ = v.cursor_.x;
+    last_cy_ = v.cursor_.y;
+    last_cwide_ = v.cursor_.wide;
+}
+
+void Terminal::text(uint64_t r0, int c0, uint64_t r1, int c1, Buffer& out) const
+{
+    const Grid& g = screen().grid;
+    uint64_t lo = g.base(), hi = g.base() + g.total_rows() - 1;
+    if (r0 > r1 || (r0 == r1 && c0 > c1)) {
+        uint64_t tr = r0; r0 = r1; r1 = tr;
+        int tc = c0; c0 = c1; c1 = tc;
+    }
+    if (r1 < lo || r0 > hi)
+        return;
+    if (r0 < lo) { r0 = lo; c0 = 0; }
+    if (r1 > hi) { r1 = hi; c1 = cols_ - 1; }
+    for (uint64_t r = r0; r <= r1; r++) {
+        const Row& row = g.abs_row(r);
+        int from = r == r0 ? c0 : 0;
+        int to = r == r1 ? c1 : row.cols - 1;
+        bool joined = (row.flags & ROW_WRAPPED) && r < r1;
+        if (joined) {
+            /* Keep interior blanks of a soft-wrapped row. */
+            int last = to;
+            if (last >= 0 && row.cells[last].wide() == CELL_SPACER_HEAD)
+                last--;
+            for (int x = from; x <= last; x++) {
+                const Cell& c = row.cells[x];
+                if (c.wide() == CELL_SPACER_TAIL)
+                    continue;
+                if (c.is_empty()) {
+                    out.append_byte(' ');
+                    continue;
+                }
+                uint32_t cps[TL_GRAPHEME_MAX];
+                int n = cell_text(c, cps, TL_GRAPHEME_MAX);
+                for (int i = 0; i < n; i++)
+                    out.append_utf8(cps[i]);
+            }
+        } else {
+            append_cells(row, from, to, out, true);
+            if (r < r1)
+                out.append_byte('\n');
+        }
+    }
+}
+
 /* ---- styles ------------------------------------------------------------ */
 
 void Terminal::collect_styles()
@@ -238,7 +476,8 @@ void Terminal::collect_styles()
             s.styles.mark(r.cells[x].style);
     }
     s.styles.mark(cur_.style_id);
-    s.styles.mark(s.saved.style_id);
+    if (s.has_saved)
+        s.styles.mark(s.saved.style_id);
     s.styles.sweep();
 }
 
@@ -274,10 +513,10 @@ Cell Terminal::blank()
 
 /* ---- cursor ------------------------------------------------------------ */
 
+/* The View repaints the cells under the old and the new cursor itself,
+ * so moving the cursor damages nothing. */
 void Terminal::damage_cursor()
 {
-    if (cur_.y >= 0 && cur_.y < rows_ && cur_.x >= 0 && cur_.x < cols_)
-        row(cur_.y).damage(cur_.x, cur_.x);
 }
 
 void Terminal::set_cursor(int x, int y)
@@ -999,9 +1238,7 @@ void Terminal::switch_screen(bool alt, bool clear)
         for (int y = 0; y < rows_; y++)
             alt_screen_.grid.clear_row(alt_screen_.grid.row(y), b);
     }
-    screen().grid.full_damage = true;
-    for (int y = 0; y < rows_; y++)
-        row(y).damage_all();
+    full_damage_ = true;
     update_style_id();
     prev_valid_ = false;
 }
@@ -1030,7 +1267,7 @@ void Terminal::set_mode(int m, bool priv, bool on)
         break;
     case 5:
         modes_.reverse = on;
-        screen().grid.full_damage = true;
+        full_damage_ = true;
         break;
     case 6:
         modes_.origin = on;
@@ -1043,7 +1280,7 @@ void Terminal::set_mode(int m, bool priv, bool on)
         break;
     case 8: modes_.autorepeat = on; break;
     case 12: modes_.cursor_blink = on; break;
-    case 25: modes_.cursor_visible = on; damage_cursor(); break;
+    case 25: modes_.cursor_visible = on; break;
     case 40: modes_.allow_132 = on; break;
     case 45: modes_.reverse_wrap = on; break;
     case 66: modes_.app_keypad = on; break;

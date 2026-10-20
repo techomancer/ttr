@@ -41,6 +41,7 @@ int main(int argc, char** argv)
     tl_test_parser();
     tl_test_unicode();
     tl_test_terminal();
+    tl_test_view();
     tl_test_vterm();
 
     printf("tl tests: %d checks, %d failures\n", tl_test_checks, tl_test_failures);

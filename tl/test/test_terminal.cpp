@@ -403,6 +403,14 @@ void resizing()
     TL_CHECK_STR(b.screen(), "x");
     CHECK_CURSOR(b, 1, 0);
     TL_CHECK(b.term.grid().history() == 0);
+    /* Shrinking leaves spare ring slots; once the history is full, new
+     * rows must still come up blank (regression: stale rows reappeared). */
+    T sp(5, 6, 2);
+    sp.feed("a\r\nb\r\nc\r\nd\r\ne\r\nf");
+    sp.term.resize(5, 3);
+    sp.feed("\r\ng\r\nh\r\ni\r\n\r\n");
+    TL_CHECK_STR(sp.screen(), "i");
+    TL_CHECK(sp.term.grid().history() == 2);
     /* Alternate screen keeps no history while shrinking. */
     T a(5, 4, 100);
     a.feed("\x1b[?1049h1\r\n2\r\n3\r\n4");

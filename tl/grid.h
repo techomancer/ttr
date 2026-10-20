@@ -113,6 +113,27 @@ private:
     GraphemePool& operator=(const GraphemePool&);
 };
 
+/* A rectangle of rows that moved: rows top..bottom (inclusive, active
+ * coordinates) shifted up by count (down when count < 0). Rows that
+ * entered the region are marked dirty; rows that moved are not, so a host
+ * can copy their pixels instead of repainting them. */
+struct ScrollRecord {
+    int top;
+    int bottom;
+    int count;
+};
+
+enum { TL_MAX_SCROLL_RECORDS = 16 };
+
+/* A tracked position. Rows that move (region scrolls, reflow) carry their
+ * anchors with them; an anchor whose row is deleted or pruned from the
+ * scrollback becomes lost. */
+struct Anchor {
+    uint64_t row;           /* absolute row number */
+    int col;
+    bool lost;
+};
+
 /* The rows of one screen: a ring holding scrollback (oldest first) and
  * then the active area, which is always the last rows() entries. Every
  * row has an absolute number; base() is the oldest row still kept. */
@@ -164,6 +185,18 @@ public:
      * active area, so a narrower screen pushes rows into the scrollback
      * and a wider one pulls them back. */
     bool reflow(int cols, int rows, int* cursor_x, int* cursor_y, bool* pending);
+
+    /* Anchors. Ids are > 0; 0 is never a valid id. */
+    int anchor_new(uint64_t row, int col);
+    void anchor_free(int id);
+    const Anchor* anchor(int id) const;
+    void anchor_set(int id, uint64_t row, int col);
+
+    /* Scroll records since the last clear_damage(). */
+    int scroll_record_count() const { return n_scroll_; }
+    const ScrollRecord& scroll_record(int i) const { return scroll_[i]; }
+    /* Forget all damage of the active rows and the scroll records. */
+    void clear_damage();
     /* Rebuild the grapheme pool from the cells that use it. */
     void compact_graphemes();
 
@@ -177,6 +210,21 @@ private:
     bool row_blank(const Row& r) const;
     bool alloc_row(Row& r, int cols);
     void push_history_row(const Cell& fill);
+    void add_scroll(int top, int bot, int count);
+    void anchors_pruned();                  /* rows below base_ are gone */
+    void anchors_region(int top, int bot, int n);   /* region moved up by n */
+
+    struct AnchorSlot {
+        Anchor a;
+        bool used;
+    };
+    AnchorSlot* anchors_;
+    int n_anchors_;
+    int anchors_cap_;
+    int anchors_live_;
+    ScrollRecord scroll_[TL_MAX_SCROLL_RECORDS];
+    int n_scroll_;
+    int sat_top_, sat_bot_;     /* region whose rows were all replaced, or -1 */
 
     Row* ring_;
     size_t cap_;            /* slots in ring_ */

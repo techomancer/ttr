@@ -63,7 +63,8 @@ void GraphemePool::swap(GraphemePool& o)
 /* ---- Grid -------------------------------------------------------------- */
 
 Grid::Grid()
-    : full_damage(true), ring_(0), cap_(0), start_(0), len_(0), cols_(0), rows_(0),
+    : full_damage(true), anchors_(0), n_anchors_(0), anchors_cap_(0), anchors_live_(0),
+      n_scroll_(0), sat_top_(-1), sat_bot_(-1), ring_(0), cap_(0), start_(0), len_(0), cols_(0), rows_(0),
       max_history_(0), base_(0)
 {
 }
@@ -71,6 +72,136 @@ Grid::Grid()
 Grid::~Grid()
 {
     destroy();
+    free(anchors_);
+}
+
+/* ---- anchors ----------------------------------------------------------- */
+
+int Grid::anchor_new(uint64_t row, int col)
+{
+    int i;
+    for (i = 0; i < n_anchors_; i++)
+        if (!anchors_[i].used)
+            break;
+    if (i == n_anchors_) {
+        if (n_anchors_ == anchors_cap_) {
+            int ncap = anchors_cap_ ? anchors_cap_ * 2 : 8;
+            AnchorSlot* p = (AnchorSlot*)realloc(anchors_, (size_t)ncap * sizeof(AnchorSlot));
+            if (!p)
+                return 0;
+            anchors_ = p;
+            anchors_cap_ = ncap;
+        }
+        n_anchors_++;
+    }
+    anchors_[i].used = true;
+    anchors_live_++;
+    anchor_set(i + 1, row, col);
+    return i + 1;
+}
+
+void Grid::anchor_free(int id)
+{
+    if (id <= 0 || id > n_anchors_ || !anchors_[id - 1].used)
+        return;
+    anchors_[id - 1].used = false;
+    anchors_live_--;
+}
+
+const Anchor* Grid::anchor(int id) const
+{
+    if (id <= 0 || id > n_anchors_ || !anchors_[id - 1].used)
+        return 0;
+    return &anchors_[id - 1].a;
+}
+
+void Grid::anchor_set(int id, uint64_t row, int col)
+{
+    if (id <= 0 || id > n_anchors_ || !anchors_[id - 1].used)
+        return;
+    Anchor& a = anchors_[id - 1].a;
+    a.row = row;
+    a.col = col < 0 ? 0 : col;
+    a.lost = row < base_ || row >= base_ + len_;
+}
+
+void Grid::anchors_pruned()
+{
+    if (!anchors_live_)
+        return;
+    for (int i = 0; i < n_anchors_; i++) {
+        Anchor& a = anchors_[i].a;
+        if (anchors_[i].used && !a.lost && a.row < base_)
+            a.lost = true;
+    }
+}
+
+void Grid::anchors_region(int top, int bot, int n)
+{
+    if (!anchors_live_ || n == 0)
+        return;
+    uint64_t t = active_top() + (uint64_t)top;
+    uint64_t b = active_top() + (uint64_t)bot;
+    for (int i = 0; i < n_anchors_; i++) {
+        Anchor& a = anchors_[i].a;
+        if (!anchors_[i].used || a.lost || a.row < t || a.row > b)
+            continue;
+        if (n > 0) {
+            if (a.row < t + (uint64_t)n)
+                a.lost = true;
+            else
+                a.row -= (uint64_t)n;
+        } else {
+            if (a.row > b - (uint64_t)(-n))
+                a.lost = true;
+            else
+                a.row += (uint64_t)(-n);
+        }
+    }
+}
+
+/* ---- damage ------------------------------------------------------------ */
+
+void Grid::add_scroll(int top, int bot, int count)
+{
+    if (full_damage)
+        return;
+    /* Every row of this region is already damaged: nothing to copy. */
+    if (top == sat_top_ && bot == sat_bot_)
+        return;
+    if (n_scroll_ > 0) {
+        ScrollRecord& l = scroll_[n_scroll_ - 1];
+        if (l.top == top && l.bottom == bot && (l.count > 0) == (count > 0)) {
+            l.count += count;
+            if (l.count > bot - top || -l.count > bot - top) {
+                /* Everything in the region was replaced: plain damage. */
+                n_scroll_--;
+                for (int y = top; y <= bot; y++)
+                    row(y).damage_all();
+                sat_top_ = top;
+                sat_bot_ = bot;
+            }
+            return;
+        }
+    }
+    if (n_scroll_ == TL_MAX_SCROLL_RECORDS) {
+        full_damage = true;
+        n_scroll_ = 0;
+        return;
+    }
+    ScrollRecord& r = scroll_[n_scroll_++];
+    r.top = top;
+    r.bottom = bot;
+    r.count = count;
+}
+
+void Grid::clear_damage()
+{
+    full_damage = false;
+    n_scroll_ = 0;
+    sat_top_ = sat_bot_ = -1;
+    for (int y = 0; y < rows_; y++)
+        row(y).clean();
 }
 
 void Grid::destroy()
@@ -186,11 +317,14 @@ void Grid::push_history_row(const Cell& f)
             return;
         }
     }
-    /* Ring full (or no history): the oldest row is dropped and reused. */
-    Row& r = ring_[start_];
+    /* History full (or none): the oldest row is dropped. The new bottom
+     * row is the slot just past the current rows, which is the dropped
+     * row itself only when the ring has no spare slots. */
+    Row& r = ring_[(start_ + len_) % cap_];
     start_ = (start_ + 1) % cap_;
     base_++;
-    if (r.cols != cols_)
+    anchors_pruned();
+    if (!r.cells || r.cols != cols_)
         alloc_row(r, cols_);
     fill_row(r, f);
 }
@@ -206,9 +340,10 @@ void Grid::scroll_up(int top, int bot, int n, const Cell& f, bool to_history)
          * history, or are recycled once the history is full. */
         for (int i = 0; i < n; i++)
             push_history_row(f);
-        full_damage = true;
+        add_scroll(top, bot, n);
         return;
     }
+    anchors_region(top, bot, n);
     /* Rotate the row headers inside the region. */
     Row tmp[64];
     Row* saved = n <= 64 ? tmp : (Row*)malloc((size_t)n * sizeof(Row));
@@ -224,8 +359,7 @@ void Grid::scroll_up(int top, int bot, int n, const Cell& f, bool to_history)
     }
     if (saved != tmp)
         free(saved);
-    for (int y = top; y <= bot; y++)
-        row(y).damage_all();
+    add_scroll(top, bot, n);
 }
 
 void Grid::scroll_down(int top, int bot, int n, const Cell& f)
@@ -234,6 +368,7 @@ void Grid::scroll_down(int top, int bot, int n, const Cell& f)
         return;
     if (n > bot - top + 1)
         n = bot - top + 1;
+    anchors_region(top, bot, -n);
     Row tmp[64];
     Row* saved = n <= 64 ? tmp : (Row*)malloc((size_t)n * sizeof(Row));
     if (!saved)
@@ -248,8 +383,7 @@ void Grid::scroll_down(int top, int bot, int n, const Cell& f)
     }
     if (saved != tmp)
         free(saved);
-    for (int y = top; y <= bot; y++)
-        row(y).damage_all();
+    add_scroll(top, bot, -n);
 }
 
 void Grid::clear_history()
@@ -274,6 +408,7 @@ void Grid::clear_history()
     start_ = 0;
     len_ = (size_t)rows_;
     base_ += h;
+    anchors_pruned();
 }
 
 bool Grid::row_blank(const Row& r) const
@@ -291,6 +426,7 @@ void Grid::trim_history()
         len_--;
         base_++;
     }
+    anchors_pruned();
 }
 
 bool Grid::resize(int cols, int rows, int* cursor_y)
@@ -369,8 +505,18 @@ bool Grid::resize(int cols, int rows, int* cursor_y)
     if (cursor_y)
         *cursor_y = cy;
     full_damage = true;
+    n_scroll_ = 0;
     for (int y = 0; y < rows_; y++)
         row(y).damage_all();
+    for (int i = 0; i < n_anchors_; i++) {
+        Anchor& a = anchors_[i].a;
+        if (!anchors_[i].used || a.lost)
+            continue;
+        if (a.row < base_ || a.row >= base_ + len_)
+            a.lost = true;
+        if (a.col >= cols_)
+            a.col = cols_ - 1;
+    }
     return true;
 }
 
@@ -423,11 +569,48 @@ void note_cell(Row& r, const Cell& c)
 
 } /* namespace */
 
+/* A position carried through reflow: the cursor or an anchor. */
+struct ReflowPoint {
+    uint64_t row;
+    int col;            /* column, plus one for a pending wrap */
+    bool pending;
+    int anchor;         /* anchor id, or 0 for the cursor */
+    long off;           /* offset in its logical line, -1 if not found */
+    long new_row;       /* index in the new row list, -1 = lost */
+    int new_col;
+    bool new_pending;
+    bool done;
+};
+
 bool Grid::reflow(int ncols, int nrows, int* cursor_x, int* cursor_y, bool* pending)
 {
     uint64_t end = base_ + len_;
     uint64_t cabs = active_top() + (uint64_t)*cursor_y;
-    int cur_off_in_row = *cursor_x + (*pending ? 1 : 0);
+
+    /* The points to carry: the cursor first, then the live anchors. */
+    int npts = 1;
+    for (int i = 0; i < n_anchors_; i++)
+        if (anchors_[i].used && !anchors_[i].a.lost)
+            npts++;
+    ReflowPoint* pts = (ReflowPoint*)calloc((size_t)npts, sizeof(ReflowPoint));
+    if (!pts)
+        return false;
+    pts[0].row = cabs;
+    pts[0].col = *cursor_x + (*pending ? 1 : 0);
+    pts[0].pending = *pending;
+    int k = 1;
+    for (int i = 0; i < n_anchors_; i++) {
+        if (!anchors_[i].used || anchors_[i].a.lost)
+            continue;
+        pts[k].row = anchors_[i].a.row;
+        pts[k].col = anchors_[i].a.col;
+        pts[k].anchor = i + 1;
+        k++;
+    }
+    for (int i = 0; i < npts; i++) {
+        pts[i].off = -1;
+        pts[i].new_row = -1;
+    }
 
     /* Blank rows after the cursor row carry nothing worth keeping. */
     uint64_t last = end - 1;
@@ -435,15 +618,12 @@ bool Grid::reflow(int ncols, int nrows, int* cursor_x, int* cursor_y, bool* pend
         last--;
 
     RowList out;
-    long cur_row = -1;
-    int cur_col = 0;
-    bool cur_pending = false;
-
     Cell* line = 0;
     size_t line_cap = 0;
+    bool ok = true;
 
     uint64_t a = base_;
-    while (a <= last) {
+    while (ok && a <= last) {
         uint64_t b = a;
         while (b < last && (abs_row(b).flags & ROW_WRAPPED) && abs_row(b).line_attr == LINE_SINGLE)
             b++;
@@ -453,18 +633,18 @@ bool Grid::reflow(int ncols, int nrows, int* cursor_x, int* cursor_y, bool* pend
         if (need > line_cap) {
             Cell* p = (Cell*)realloc(line, need * sizeof(Cell));
             if (!p) {
-                free(line);
-                return false;
+                ok = false;
+                break;
             }
             line = p;
             line_cap = need;
         }
         size_t len = 0;
-        long cur_off = -1;
         for (uint64_t r = a; r <= b; r++) {
             const Row& row = abs_row(r);
-            if (r == cabs)
-                cur_off = (long)len + cur_off_in_row;
+            for (int i = 0; i < npts; i++)
+                if (pts[i].row == r)
+                    pts[i].off = (long)len + pts[i].col;
             int n = row.cols;
             if (r < b && n > 0 && row.cells[n - 1].wide() == CELL_SPACER_HEAD)
                 n--;
@@ -475,17 +655,21 @@ bool Grid::reflow(int ncols, int nrows, int* cursor_x, int* cursor_y, bool* pend
         while (len > 0 && line[len - 1].is_empty() && !line[len - 1].style &&
                line[len - 1].wide() != CELL_SPACER_TAIL)
             len--;
+        /* Points in this line, to map while cutting. */
+        int first_pt = -1;
+        for (int i = 0; i < npts; i++)
+            if (pts[i].off >= 0 && !pts[i].done && pts[i].row >= a && pts[i].row <= b)
+                first_pt = first_pt < 0 ? i : first_pt;
 
         /* Cut it at the new width. */
         Row* row = out.add(ncols);
         if (!row) {
-            free(line);
-            return false;
+            ok = false;
+            break;
         }
         row->semantic = abs_row(a).semantic;
         row->line_attr = abs_row(a).line_attr;
         int col = 0;
-        bool cursor_done = false;
         for (size_t i = 0; i < len; i++) {
             Cell c = line[i];
             if (c.wide() == CELL_SPACER_TAIL)
@@ -504,16 +688,24 @@ bool Grid::reflow(int ncols, int nrows, int* cursor_x, int* cursor_y, bool* pend
                 row->flags |= ROW_WRAPPED;
                 row = out.add(ncols);
                 if (!row) {
-                    free(line);
-                    return false;
+                    ok = false;
+                    break;
                 }
                 row->semantic = abs_row(a).semantic;
                 col = 0;
             }
-            if (!cursor_done && cur_off >= 0 && (long)i == cur_off) {
-                cur_row = (long)out.n - 1;
-                cur_col = col;
-                cursor_done = true;
+            if (first_pt >= 0) {
+                for (int p = first_pt; p < npts; p++) {
+                    ReflowPoint& q = pts[p];
+                    if (q.done || q.row < a || q.row > b)
+                        continue;
+                    /* A point on a wide character's tail maps to its head. */
+                    if (q.off == (long)i || (w == 2 && q.off == (long)i + 1)) {
+                        q.new_row = (long)out.n - 1;
+                        q.new_col = col;
+                        q.done = true;
+                    }
+                }
             }
             row->cells[col] = c;
             note_cell(*row, c);
@@ -524,35 +716,44 @@ bool Grid::reflow(int ncols, int nrows, int* cursor_x, int* cursor_y, bool* pend
             }
             col += w;
         }
-        if (cur_off >= 0 && !cursor_done) {
-            /* The cursor is past the end of the content. */
-            long extra = cur_off - (long)len;
-            cur_row = (long)out.n - 1;
+        if (!ok)
+            break;
+        /* Points past the end of the content. */
+        for (int p = 0; p < npts; p++) {
+            ReflowPoint& q = pts[p];
+            if (q.done || q.off < 0 || q.row < a || q.row > b)
+                continue;
+            long extra = q.off - (long)len;
+            q.new_row = (long)out.n - 1;
+            q.done = true;
             if (col + extra >= ncols) {
-                if (col + extra == ncols && extra == 0 && *pending) {
-                    cur_col = ncols - 1;
-                    cur_pending = true;
-                } else {
-                    cur_col = ncols - 1;
-                }
+                q.new_col = ncols - 1;
+                q.new_pending = col + extra == ncols && extra == 0 && q.pending;
             } else {
-                cur_col = col + (int)extra;
+                q.new_col = col + (int)extra;
             }
         }
         a = b + 1;
     }
     free(line);
+    if (!ok) {
+        free(pts);
+        return false;
+    }
 
+    long cur_row = pts[0].new_row;
     if (cur_row < 0) {
         cur_row = out.n ? (long)out.n - 1 : 0;
-        cur_col = 0;
+        pts[0].new_col = 0;
     }
 
     /* The active area is the last nrows rows, padded below if short, and
      * it must contain the cursor. */
     while (out.n < (size_t)nrows) {
-        if (!out.add(ncols))
+        if (!out.add(ncols)) {
+            free(pts);
             return false;
+        }
     }
     size_t top = out.n - (size_t)nrows;
     if ((size_t)cur_row < top) {
@@ -577,9 +778,11 @@ bool Grid::reflow(int ncols, int nrows, int* cursor_x, int* cursor_y, bool* pend
     ring_ = (Row*)malloc((n ? n : 1) * sizeof(Row));
     if (!ring_) {
         cap_ = start_ = len_ = 0;
+        free(pts);
         return false;
     }
     memcpy(ring_, out.rows + dropped, n * sizeof(Row));
+    size_t total = out.n;
     out.n = 0;                           /* ownership moved */
     cap_ = n;
     start_ = 0;
@@ -588,10 +791,24 @@ bool Grid::reflow(int ncols, int nrows, int* cursor_x, int* cursor_y, bool* pend
     cols_ = ncols;
     rows_ = nrows;
     full_damage = true;
+    n_scroll_ = 0;
 
-    *cursor_x = cur_col;
+    /* Anchors land on the new rows; ones that fell off are lost. */
+    for (int p = 1; p < npts; p++) {
+        Anchor& an = anchors_[pts[p].anchor - 1].a;
+        if (pts[p].new_row < 0 || (size_t)pts[p].new_row < dropped ||
+            (size_t)pts[p].new_row >= total) {
+            an.lost = true;
+            continue;
+        }
+        an.row = base_ + (uint64_t)((size_t)pts[p].new_row - dropped);
+        an.col = pts[p].new_col;
+    }
+
+    *cursor_x = pts[0].new_col;
     *cursor_y = (int)((size_t)cur_row - top);
-    *pending = cur_pending;
+    *pending = pts[0].new_pending;
+    free(pts);
     return true;
 }
 

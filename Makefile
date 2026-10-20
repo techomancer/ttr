@@ -108,14 +108,16 @@ TL_OBJS = $(B)/tl_charset.o \
 	$(B)/tl_style.o \
 	$(B)/tl_terminal.o \
 	$(B)/tl_unicode.o \
-	$(B)/tl_unicode_data.o
+	$(B)/tl_unicode_data.o \
+	$(B)/tl_view.o
 TL_TEST_OBJS = $(B)/tl_test_main.o \
 	$(B)/tl_test_parser.o \
 	$(B)/tl_test_terminal.o \
 	$(B)/tl_test_unicode.o \
+	$(B)/tl_test_view.o \
 	$(B)/tl_test_vterm.o
 TL_TERMINAL_H = tl/terminal.h tl/buffer.h tl/charset.h tl/grid.h tl/host.h \
-	tl/parser.h tl/style.h tl/unicode.h tl/port.h
+	tl/parser.h tl/style.h tl/unicode.h tl/view.h tl/port.h
 AR = ar
 
 $(B)/libtl.a: $(TL_OBJS)
@@ -138,6 +140,10 @@ $(B)/tl_terminal.o: $(B)/.dir tl/terminal.cpp $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/terminal.cpp -o $@
 $(B)/tl_test_terminal.o: $(B)/.dir tl/test/test_terminal.cpp tl/test/tltest.h $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/test/test_terminal.cpp -o $@
+$(B)/tl_view.o: $(B)/.dir tl/view.cpp $(TL_TERMINAL_H)
+	$(COMPILE) -c tl/view.cpp -o $@
+$(B)/tl_test_view.o: $(B)/.dir tl/test/test_view.cpp tl/test/tltest.h $(TL_TERMINAL_H)
+	$(COMPILE) -c tl/test/test_view.cpp -o $@
 $(B)/tl_test_vterm.o: $(B)/.dir tl/test/test_vterm.cpp tl/test/tltest.h $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/test/test_vterm.cpp -o $@
 $(B)/tl_parser.o: $(B)/.dir tl/parser.cpp tl/parser.h tl/port.h

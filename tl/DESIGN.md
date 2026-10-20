@@ -5,9 +5,13 @@ tables, test harness) is done. Milestone 2 is mostly done: the VT102
 screen, styles, charsets, alternate screen, DA/DSR/DECRQM, and a runner
 for libvterm's fixtures (`tl/test/test_vterm.cpp`, known differences in
 `tl/test/data/vterm-known.txt`). Missing from it: the pty-driven
-vttest/esctest runs. Of milestone 3, reflow is done (section 5.10);
-damage records, anchors and the View are next. All of it passes on g++,
-clang++ and MIPSpro.
+vttest/esctest runs. Milestone 3 is done: reflow (section 5.10), scroll
+records and row damage, anchors, the scrollback viewport, colour
+resolution, text extraction and the View (`tl/view.h` is the reference
+for the presenter API; section 6 below is the original sketch). A
+randomized test drives a simulated host that updates its picture only as
+the View reports and checks it against a full repaint every frame. All
+of it passes on g++, clang++ (ASan, UBSan, MSan) and MIPSpro.
 
 `tl` is a terminal emulation engine with no dependency on an operating
 system, a pty, a toolkit or a display. It turns a byte stream into a
@@ -353,8 +357,8 @@ delete line and reflow do move rows, and they adjust the anchors below.
 struct Anchor { uint64_t row; uint16_t col; uint8_t lost; };
 ```
 
-A `Screen` keeps a registry of anchors that the host or the engine has
-asked it to track: the viewport top when scrolled back, the two ends of
+Each screen's `Grid` keeps a registry of anchors that the host or the
+engine has asked it to track: the viewport top when scrolled back, the two ends of
 a selection, every image placement, search hits, the saved cursor. The
 registry is a small array; every operation that moves rows (region
 scroll, IL/DL, reflow, pruning, clear screen with history erase) walks it

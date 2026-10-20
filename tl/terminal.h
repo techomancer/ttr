@@ -12,14 +12,9 @@
 #include "parser.h"
 #include "style.h"
 #include "unicode.h"
+#include "view.h"
 
 namespace tl {
-
-enum CursorShape {
-    CURSOR_BLOCK = 0,
-    CURSOR_UNDERLINE,
-    CURSOR_BAR
-};
 
 /* Mode flags. DEC private modes and ANSI modes that tl implements. */
 struct Modes {
@@ -101,8 +96,41 @@ public:
     /* UTF-8 (default) or 8-bit input; ESC % G and ESC % @ also switch. */
     void set_utf8(bool on) { parser_.set_utf8(on); }
 
+    /* ---- presenting ---- */
+
+    /* What to draw; see view.h. */
+    View view() const;
+    /* The host has drawn everything the last View reported. */
+    void clear_damage();
+
+    /* Scrollback viewport (primary screen only; the alternate screen has
+     * no scrollback). Negative scrolls back into history. While scrolled
+     * back the viewport stays on its text as output arrives; at the
+     * bottom it follows the output. */
+    void scroll_viewport(long rows);
+    void scroll_to_bottom();
+    void scroll_to_top();
+    uint64_t viewport_top() const;
+    bool viewport_at_bottom() const { return viewport_top() == grid().active_top(); }
+
+    /* Colours. The palette starts as xterm's; hosts set the defaults. */
+    void set_default_colors(Rgb fg, Rgb bg);
+    void set_palette(int index, Rgb c);
+    Rgb palette(int index) const { return palette_[index & 255]; }
+    Rgb default_fg() const { return fg_; }
+    Rgb default_bg() const { return bg_; }
+    /* Bold text in palette colours 0-7 uses 8-15 (xterm's boldColors). */
+    void set_bold_is_bright(bool on) { bold_bright_ = on; full_damage_ = true; }
+    bool bold_is_bright() const { return bold_bright_; }
+
+    /* Text between two positions of the active screen (absolute rows,
+     * columns inclusive), soft wraps joined and trailing blanks of each
+     * line dropped. For selections and copying. */
+    void text(uint64_t row0, int col0, uint64_t row1, int col1, Buffer& out) const;
+
     /* Row y of the active area as UTF-8, trailing blanks dropped. */
     void row_text(int y, Buffer& out) const;
+    void append_cells(const Row& r, int lo, int hi, Buffer& out, bool trim_spaces) const;
     /* The whole active area, rows separated by '\n', trailing blank rows
      * dropped. For tests and debugging. */
     void screen_text(Buffer& out) const;
@@ -190,6 +218,21 @@ private:
     Buffer title_;
     bool ambiguous_wide_;
     bool reflow_;
+
+    /* Presentation state. */
+    Rgb palette_[256];
+    Rgb fg_, bg_;
+    bool bold_bright_;
+    bool full_damage_;          /* palette, reverse video, screen switch, viewport jump */
+    int vp_anchor_;             /* viewport top in the primary grid, when not following */
+    bool follow_;
+    /* What the last cleared frame showed. */
+    bool last_valid_;
+    bool last_at_bottom_;
+    bool last_alt_;
+    uint64_t last_top_;
+    int last_cx_, last_cy_;
+    bool last_cwide_;
 
     /* Last printed cell, for combining characters and REP. */
     bool prev_valid_;
