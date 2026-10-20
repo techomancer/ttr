@@ -23,7 +23,9 @@ disk image, own control socket, so both can run at once.
 | tl and tp tests on IRIX | `tools/irix-test.sh` builds `build-irix/tl_test` and `build-irix/tp_test` (with `TP_SYS=build-irix/tp_sys_irix.o`), copies them to `/tmp` and runs both |
 | Disassembly | `spimdisasm elfObjDisasm BIN OUT --abi N32 --arch-level MIPS3 --compiler IDO --split-functions OUT/funcs --dyn-syms`, then m2c's `irixn32` branch (`python3 m2c.py -t mips-ido-c++ FUNC.s`) on single functions; export the branch with `git -C ~/gits/m2c archive github/irixn32` rather than switching the checkout. xwsh's output is in `ignore/xwsh/` |
 | Monitor | `tools/mon.py "status" "cpu regs"` (iris monitor on 127.0.0.1:8889; `help` lists commands) |
-| Screenshot | `tools/irix-shot.sh [out.png]` (monitor `rex fbdump`, cropped to 1280x1024; view with the Read tool) |
+| Screenshot | `xwd -root -display localhost:100 -silent \| magick xwd:- shot.png` (through X: correct colours in every visual). `tools/irix-shot.sh` (monitor `rex fbdump`) composes 8-bit colormap mode wrongly (everything dark blue); use its `ci.png` for structure only |
+| Guest X server from the host | `ignore/iris.toml` forwards host port 6100 to the guest's 6000, so `DISPLAY=localhost:100` on the host is the Indy's Xsgi. After each boot run `tools/irix-sh.py run '/usr/bin/X11/xhost +'` once the desktop is up. Linux builds (ttrt) can then be tested on the real 8-bit Xsgi without touching the host desktop |
+| Typing, clicking, resizing | `build/xtype -d localhost:100 @x,y 'text' +Return +shift+Prior %900x560` (`tools/xtype.c`, XTest: click at root x,y, type text, press keys, resize the focused top-level window). Build: `cc -o build/xtype tools/xtype.c -lXtst -lXext -lX11`. 4Dwm is click-to-type: click into a window before typing |
 
 `ignore/` is outside version control; the tools and this skill are in the
 repository.
@@ -100,14 +102,12 @@ tools/irix-shot.sh ignore/shots/ttr.png
 
 (`awk "{print \$2}"` needs the escaped dollar inside the double quotes
 of the irix-sh argument; `$2` unescaped is expanded by the guest shell.)
-A process started with `( cmd & )` survives the end of the telnet session.
+Start long-running X clients with `nohup cmd &`: a plain background job
+of the telnet session gets SIGHUP when the session ends (ttrt did).
 
-Known on IRIX: Xsgi runs an 8-bit PseudoColor default visual
-(`-pseudomap 4sight`). After 4Dwm exits the hardware colormap is no longer
-the one the clients drew with, and under ttr the screen stays dark blue:
-ttr does not yet install colormaps (ICCCM colormap management), which the
-WM owns on such servers. The window tree (`xwininfo -root -tree`) shows the
-frames regardless.
+Xsgi runs an 8-bit PseudoColor default visual (`-pseudomap 4sight`).
+The "dark blue screen" seen in early ttr screenshots was the fbdump
+screenshot path, not ttr: take screenshots with `xwd` (above).
 
 The X session may have a screen saver; `/usr/bin/X11/xset s off` once
 after login if probes read black.

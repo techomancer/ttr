@@ -9,6 +9,7 @@
 #include "charset.h"
 #include "grid.h"
 #include "host.h"
+#include "input.h"
 #include "parser.h"
 #include "style.h"
 #include "unicode.h"
@@ -87,7 +88,7 @@ public:
     bool alt_screen() const { return alt_; }
     const Cursor& cursor() const { return cur_; }
     const Modes& modes() const { return modes_; }
-    CursorShape cursor_shape() const { return cursor_shape_; }
+    CursorStyle cursor_shape() const { return cursor_shape_; }
     const char* title() const { return title_.c_str(); }
     int scroll_top() const { return top_; }
     int scroll_bottom() const { return bot_; }
@@ -95,6 +96,22 @@ public:
     void set_ambiguous_wide(bool on) { ambiguous_wide_ = on; }
     /* UTF-8 (default) or 8-bit input; ESC % G and ESC % @ also switch. */
     void set_utf8(bool on) { parser_.set_utf8(on); }
+
+    /* ---- input from the user ---- */
+
+    /* A non-text key (tl::Key) with modifiers (tl::Mod). Returns false if
+     * the key has no encoding. Bytes go to Host::write_pty. */
+    bool key(int key, unsigned mods);
+    /* Text a key produced (UTF-8, already including control characters
+     * from Ctrl). Alt or Meta prefix ESC unless the host says otherwise. */
+    void text_input(const char* utf8, size_t n, unsigned mods);
+    /* Pasted text: newlines become CR, and with bracketed paste (mode
+     * 2004) it is wrapped and stripped of ESC so it cannot end early. */
+    void paste(const char* utf8, size_t n);
+    /* Focus change, reported in mode 1004. */
+    void focus(bool in);
+    /* Backspace sends DEL (default) or BS. */
+    void set_backspace_is_del(bool on) { backspace_del_ = on; }
 
     /* ---- presenting ---- */
 
@@ -212,12 +229,13 @@ private:
     size_t scrollback_;
     Cursor cur_;
     Modes modes_;
-    CursorShape cursor_shape_;
+    CursorStyle cursor_shape_;
     int top_, bot_;                       /* scroll region, inclusive */
     bool* tabs_;
     Buffer title_;
     bool ambiguous_wide_;
     bool reflow_;
+    bool backspace_del_;
 
     /* Presentation state. */
     Rgb palette_[256];

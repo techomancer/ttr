@@ -492,6 +492,73 @@ void reflowing()
     CHECK_CURSOR(a, 3, 2);
 }
 
+void input()
+{
+    T t(10, 2);
+    t.term.key(KEY_UP, 0);
+    TL_CHECK_STR(t.reply(), "\x1b[A");
+    t.feed("\x1b[?1h");                       /* DECCKM */
+    t.term.key(KEY_UP, 0);
+    TL_CHECK_STR(t.reply(), "\x1bOA");
+    t.term.key(KEY_LEFT, MOD_CTRL);
+    TL_CHECK_STR(t.reply(), "\x1b[1;5D");
+    t.term.key(KEY_HOME, MOD_SHIFT);
+    TL_CHECK_STR(t.reply(), "\x1b[1;2H");
+    t.term.key(KEY_F1, 0);
+    TL_CHECK_STR(t.reply(), "\x1bOP");
+    t.term.key(KEY_F1 + 4, 0);
+    TL_CHECK_STR(t.reply(), "\x1b[15~");
+    t.term.key(KEY_F1 + 11, MOD_SHIFT | MOD_CTRL);
+    TL_CHECK_STR(t.reply(), "\x1b[24;6~");
+    t.term.key(KEY_DELETE, 0);
+    TL_CHECK_STR(t.reply(), "\x1b[3~");
+    t.term.key(KEY_PAGE_UP, MOD_ALT);
+    TL_CHECK_STR(t.reply(), "\x1b[5;3~");
+    t.term.key(KEY_BACKSPACE, 0);
+    TL_CHECK_STR(t.reply(), "\x7f");
+    t.term.key(KEY_BACKSPACE, MOD_ALT);
+    TL_CHECK_STR(t.reply(), "\x1b\x7f");
+    t.term.set_backspace_is_del(false);
+    t.term.key(KEY_BACKSPACE, 0);
+    TL_CHECK_STR(t.reply(), "\b");
+    t.term.key(KEY_TAB, MOD_SHIFT);
+    TL_CHECK_STR(t.reply(), "\x1b[Z");
+    t.term.key(KEY_ENTER, 0);
+    TL_CHECK_STR(t.reply(), "\r");
+    t.feed("\x1b[20h");
+    t.term.key(KEY_ENTER, 0);
+    TL_CHECK_STR(t.reply(), "\r\n");
+    t.term.key(KEY_KP_0 + 5, 0);
+    TL_CHECK_STR(t.reply(), "5");
+    t.feed("\x1b=");                           /* DECKPAM */
+    t.term.key(KEY_KP_0 + 5, 0);
+    TL_CHECK_STR(t.reply(), "\x1bOu");
+    t.term.key(KEY_KP_ENTER, 0);
+    TL_CHECK_STR(t.reply(), "\x1bOM");
+    TL_CHECK(!t.term.key(KEY_NONE, 0));
+    t.term.text_input("x", 1, MOD_ALT);
+    TL_CHECK_STR(t.reply(), "\x1bx");
+    t.term.text_input("\xc3\xa9", 2, 0);
+    TL_CHECK_STR(t.reply(), "\xc3\xa9");
+
+    /* Paste. */
+    T p(10, 2);
+    static const char p1[] = "a\nb\r\nc\x1b[31m\x03";
+    p.term.paste(p1, sizeof(p1) - 1);
+    TL_CHECK_STR(p.reply(), "a\rb\rc[31m");
+    p.feed("\x1b[?2004h");
+    static const char p2[] = "ls\x1b[201~\n";
+    p.term.paste(p2, sizeof(p2) - 1);
+    TL_CHECK_STR(p.reply(), "\x1b[200~ls[201~\r\x1b[201~");
+
+    /* Focus reports only when asked for. */
+    p.term.focus(true);
+    TL_CHECK_STR(p.reply(), "");
+    p.feed("\x1b[?1004h");
+    p.term.focus(false);
+    TL_CHECK_STR(p.reply(), "\x1b[O");
+}
+
 } /* namespace */
 
 void tl_test_terminal()
@@ -505,4 +572,5 @@ void tl_test_terminal()
     reports_and_modes();
     resizing();
     reflowing();
+    input();
 }

@@ -36,7 +36,7 @@ static void cursor_reset(Cursor& c)
 Terminal::Terminal()
     : host_(&null_host_), alt_(false), cols_(0), rows_(0), scrollback_(0),
       cursor_shape_(CURSOR_BLOCK), top_(0), bot_(0), tabs_(0),
-      ambiguous_wide_(false), reflow_(true), bold_bright_(true), full_damage_(true),
+      ambiguous_wide_(false), reflow_(true), backspace_del_(true), bold_bright_(true), full_damage_(true),
       vp_anchor_(0), follow_(true), last_valid_(false), last_at_bottom_(true), last_alt_(false),
       last_top_(0), last_cx_(0), last_cy_(0), last_cwide_(false), prev_valid_(false), prev_x_(0), prev_y_(0), last_cp_(0)
 {

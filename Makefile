@@ -9,7 +9,8 @@
 #   make B=build-irix CXX=CC WARNFLAGS= DBUS_CFLAGS= \
 #        CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF -no_prelink -ptused -woff 3970" \
 #        CPPFLAGS="-Isrc -I/usr/Motif-2.1/include -DTTR_HAVE_XPM -DTTR_HAVE_SVG" \
-#        LDFLAGS=-L/usr/Motif-2.1/lib32 LIBS="-lXm -lXt -lXpm -lX11 -lm"
+#        LDFLAGS=-L/usr/Motif-2.1/lib32 LIBS="-lXm -lXt -lXpm -lX11 -lm" \
+#        TP_SYS=build-irix/tp_sys_irix.o
 #                                     (IRIX 6.5, MIPSpro; see README "Building on IRIX")
 #
 # TTR_HAVE_PNG, TTR_HAVE_XPM and TTR_HAVE_SVG enable icon files in those
@@ -90,7 +91,7 @@ OBJS = $(B)/main.o \
 	$(B)/x11_wm.o \
 	$(B)/x11_xpainter.o
 
-all: $(B)/ttr
+all: $(B)/ttr $(B)/ttrt
 
 $(B)/ttr: $(OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
@@ -104,6 +105,7 @@ $(B)/.dir:
 # builds them (on IRIX the binary must be copied off the NFS share to run).
 TL_OBJS = $(B)/tl_charset.o \
 	$(B)/tl_grid.o \
+	$(B)/tl_input.o \
 	$(B)/tl_parser.o \
 	$(B)/tl_style.o \
 	$(B)/tl_terminal.o \
@@ -117,7 +119,7 @@ TL_TEST_OBJS = $(B)/tl_test_main.o \
 	$(B)/tl_test_view.o \
 	$(B)/tl_test_vterm.o
 TL_TERMINAL_H = tl/terminal.h tl/buffer.h tl/charset.h tl/grid.h tl/host.h \
-	tl/parser.h tl/style.h tl/unicode.h tl/view.h tl/port.h
+	tl/input.h tl/parser.h tl/style.h tl/unicode.h tl/view.h tl/port.h
 AR = ar
 
 $(B)/libtl.a: $(TL_OBJS)
@@ -160,6 +162,45 @@ $(B)/tp_sys_irix.o: $(B)/.dir tp/sys_irix.cpp tp/sys.h
 $(B)/tp_test_tp.o: $(B)/.dir tp/test/test_tp.cpp tp/tp.h
 	$(COMPILE) -c tp/test/test_tp.cpp -o $@
 
+# tw, the text window drawing engine and its TwGrid widget (tw/DESIGN.md).
+TW_OBJS = $(B)/tw_core_render.o \
+	$(B)/tw_fonts.o \
+	$(B)/tw_grid_widget.o \
+	$(B)/tw_palette.o \
+	$(B)/tw_surface.o
+TW_H = tw/tw.h tw/fonts.h tw/renderer.h tw/palette.h tw/surface.h
+
+$(B)/libtw.a: $(TW_OBJS)
+	rm -f $@
+	$(AR) rc $@ $(TW_OBJS)
+
+$(B)/tw_core_render.o: $(B)/.dir tw/core_render.cpp $(TW_H)
+	$(COMPILE) -c tw/core_render.cpp -o $@
+$(B)/tw_fonts.o: $(B)/.dir tw/fonts.cpp tw/fonts.h tw/tw.h
+	$(COMPILE) -c tw/fonts.cpp -o $@
+$(B)/tw_grid_widget.o: $(B)/.dir tw/grid_widget.cpp tw/grid_widget.h $(TW_H)
+	$(COMPILE) -c tw/grid_widget.cpp -o $@
+$(B)/tw_palette.o: $(B)/.dir tw/palette.cpp tw/palette.h tw/tw.h
+	$(COMPILE) -c tw/palette.cpp -o $@
+$(B)/tw_surface.o: $(B)/.dir tw/surface.cpp $(TW_H)
+	$(COMPILE) -c tw/surface.cpp -o $@
+
+# ttrt, the terminal (ttrt/DESIGN.md): tl + tp + tw and a Motif window.
+TTRT_OBJS = $(B)/ttrt_main.o \
+	$(B)/ttrt_source.o
+
+ttrt: $(B)/ttrt
+
+$(B)/ttrt: $(TTRT_OBJS) $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRT_OBJS) $(B)/libtw.a $(B)/libtl.a \
+		$(B)/libtp.a $(LIBS)
+
+$(B)/ttrt_main.o: $(B)/.dir src/ttrt/main.cpp src/ttrt/source.h tw/grid_widget.h $(TW_H) \
+		$(TL_TERMINAL_H) tp/tp.h
+	$(COMPILE) -c src/ttrt/main.cpp -o $@
+$(B)/ttrt_source.o: $(B)/.dir src/ttrt/source.cpp src/ttrt/source.h tw/tw.h $(TL_TERMINAL_H)
+	$(COMPILE) -c src/ttrt/source.cpp -o $@
+
 $(B)/tl_charset.o: $(B)/.dir tl/charset.cpp tl/charset.h tl/port.h
 	$(COMPILE) -c tl/charset.cpp -o $@
 $(B)/tl_grid.o: $(B)/.dir tl/grid.cpp tl/grid.h tl/port.h
@@ -170,6 +211,8 @@ $(B)/tl_terminal.o: $(B)/.dir tl/terminal.cpp $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/terminal.cpp -o $@
 $(B)/tl_test_terminal.o: $(B)/.dir tl/test/test_terminal.cpp tl/test/tltest.h $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/test/test_terminal.cpp -o $@
+$(B)/tl_input.o: $(B)/.dir tl/input.cpp $(TL_TERMINAL_H)
+	$(COMPILE) -c tl/input.cpp -o $@
 $(B)/tl_view.o: $(B)/.dir tl/view.cpp $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/view.cpp -o $@
 $(B)/tl_test_view.o: $(B)/.dir tl/test/test_view.cpp tl/test/tltest.h $(TL_TERMINAL_H)
@@ -364,12 +407,15 @@ asan:
 # A running ttr cannot be overwritten ("Text file busy"), but it can be
 # renamed: the old one becomes ttr.old and keeps running, and Restart ttr
 # starts the new one.
-install: $(B)/ttr
+install: $(B)/ttr $(B)/ttrt
 	mkdir -p $(DESTDIR)$(BINDIR) $(DESTDIR)$(XSESSIONDIR)
 	if [ -f $(DESTDIR)$(BINDIR)/ttr ]; then \
 		mv -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old; fi
 	cp $(B)/ttr $(DESTDIR)$(BINDIR)/ttr
 	chmod 755 $(DESTDIR)$(BINDIR)/ttr
+	rm -f $(DESTDIR)$(BINDIR)/ttrt
+	cp $(B)/ttrt $(DESTDIR)$(BINDIR)/ttrt
+	chmod 755 $(DESTDIR)$(BINDIR)/ttrt
 	cp dist/ttr-session $(DESTDIR)$(BINDIR)/ttr-session
 	chmod 755 $(DESTDIR)$(BINDIR)/ttr-session
 	cp dist/ttr.desktop $(DESTDIR)$(XSESSIONDIR)/ttr.desktop
@@ -384,7 +430,7 @@ install: $(B)/ttr
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old \
-		$(DESTDIR)$(BINDIR)/ttr-session \
+		$(DESTDIR)$(BINDIR)/ttrt $(DESTDIR)$(BINDIR)/ttr-session \
 		$(DESTDIR)$(XSESSIONDIR)/ttr.desktop
 	rm -rf $(DESTDIR)$(DATADIR)
 

@@ -30,7 +30,7 @@ struct Rgb {
     uint8_t r, g, b;
 };
 
-enum CursorShape {
+enum CursorStyle {
     CURSOR_BLOCK = 0,
     CURSOR_UNDERLINE,
     CURSOR_BAR
@@ -41,7 +41,7 @@ struct ViewCursor {
     bool visible;           /* shown and inside the viewport */
     bool blink;
     bool wide;              /* on a two-column character */
-    CursorShape shape;
+    CursorStyle shape;
 };
 
 struct ResolvedColors {

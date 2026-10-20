@@ -47,6 +47,8 @@ run as a window manager there yet. A Wayland mode is planned for later
   color resources.
 - **Settings dialog** (Start > Settings...) for all of the above, stored in
   a plain text file you can also edit by hand.
+- **ttrt**, a terminal emulator in the same style (early; see "The
+  terminal" below).
 
 ## Building
 
@@ -78,7 +80,8 @@ make
 ```
 
 In a checkout made without `--recursive`, run
-`git submodule update --init` first. The program is `build/ttr`.
+`git submodule update --init` first. The programs are `build/ttr` and
+`build/ttrt`, the terminal.
 
 Other build options:
 
@@ -105,8 +108,11 @@ libXpm and libpng, in the source directory:
 make B=build-irix CXX=CC WARNFLAGS= DBUS_CFLAGS= \
      CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF -no_prelink -ptused -woff 3970" \
      CPPFLAGS="-Isrc -I/usr/Motif-2.1/include -DTTR_HAVE_XPM -DTTR_HAVE_SVG" \
-     LDFLAGS=-L/usr/Motif-2.1/lib32 LIBS="-lXm -lXt -lXpm -lX11 -lm"
+     LDFLAGS=-L/usr/Motif-2.1/lib32 LIBS="-lXm -lXt -lXpm -lX11 -lm" \
+     TP_SYS=build-irix/tp_sys_irix.o
 ```
+
+`TP_SYS` selects the IRIX pseudo-terminal code that ttrt needs.
 
 IRIX 6.5 installs Motif 1.2 as the default `Xm` headers and library; ttr
 needs Motif 2.1 (the `motif21_dev` product), which lives in
@@ -137,6 +143,7 @@ This installs:
 | File | What it is |
 |---|---|
 | `/usr/bin/ttr` | the window manager and desktop |
+| `/usr/bin/ttrt` | the terminal |
 | `/usr/bin/ttr-session` | starts a ttr session (see below) |
 | `/usr/share/xsessions/ttr.desktop` | makes display managers offer "To The Roots" |
 | `/usr/share/ttr/schemes/` | the color themes |
@@ -331,6 +338,44 @@ When ttr starts, it starts these, in order:
 
 None of these run again when ttr restarts in place.
 
+### The terminal (ttrt)
+
+`ttrt` is ttr's terminal emulator: xterm-compatible, with scrollback that
+re-wraps when the window is resized, and fast on an 8-bit Indy display.
+It is early work: there is no selection or copy and paste yet, and on
+IRIX characters outside Latin-1 show as boxes (box drawing and block
+characters always work; ttrt draws them itself). To make it the terminal
+ttr starts, set Settings > Start Menu > Terminal command to `ttrt`.
+
+```sh
+ttrt                        # your shell, 80x24
+ttrt -geometry 120x40 -fn 9x15 -fg wheat -bg '#202020'
+ttrt -ls                    # as a login shell
+ttrt -e top                 # run a program instead of the shell
+```
+
+| Option | Meaning |
+|---|---|
+| `-geometry COLSxROWS+X+Y` | size in characters and position |
+| `-fn FONT` | font (an X font name); default: the best fixed-width font the server has |
+| `-fg COLOR`, `-bg COLOR`, `-cr COLOR` | text, background and cursor colours |
+| `-sl LINES` | lines of scrollback (default 2000) |
+| `-ls`, `+ls` | start the shell as a login shell, or not |
+| `-nomenu` | no menu bar |
+| `-title TEXT` | window title (programs can change it) |
+| `-e PROGRAM ARGS...` | run a program instead of the shell; must come last |
+
+The same settings work as X resources of class `TTRt` (`TTRt*font`,
+`TTRt*foreground`, `TTRt*background`, `TTRt*cursorColor`,
+`TTRt*saveLines`, `TTRt*loginShell`, `TTRt*menuBar`).
+
+Keys: Shift+PageUp and Shift+PageDown scroll back and forth, and so does
+the mouse wheel (in full-screen programs the wheel sends arrow keys
+instead). Typing scrolls back to the bottom. Backspace sends DEL.
+
+ttrt sets `TERM` to the best entry the system's terminfo has:
+`xterm-256color` on Linux, `xterm` on IRIX 6.5.
+
 ### High-resolution screens
 
 Settings > Appearance > UI scale makes everything ttr draws larger: window
@@ -461,8 +506,8 @@ The notification area uses common tools when they are installed:
   never edited in place.
 - `tl/` is the terminal emulation library for the coming `ttrt` terminal
   emulator ([tl/DESIGN.md](tl/DESIGN.md)), `tp/` its pty and process
-  layer and `tw/` its drawing engine (design only so far); the
-  application is planned in [ttrt/DESIGN.md](ttrt/DESIGN.md). `make
+  layer and `tw/` its drawing engine ([tw/DESIGN.md](tw/DESIGN.md)); the
+  application, `src/ttrt/`, is described in [ttrt/DESIGN.md](ttrt/DESIGN.md). `make
   tl-test tp-test` builds and runs their tests; `tools/irix-test.sh` does
   the same on the IRIX guest. tp has one implementation file per system:
   Linux and BSD use the default, IRIX builds with

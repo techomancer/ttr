@@ -1,8 +1,8 @@
 # ttrt: the ttr terminal
 
-Status: design, 2026-10-20. `tl/` (emulation) is implemented through its
-milestone 3; `tp/` (pty and process) is implemented; `tw/` (drawing) and
-ttrt itself are not.
+Status: 2026-10-20. ttrt 0.1 runs (milestone 2 below): `tl/` through its
+milestone 3 plus key, paste and focus encoding, `tp/`, and `tw/`
+milestone 1.
 
 ttrt is a Motif terminal emulator for IRIX and Linux. It is assembled
 from three reusable modules plus a thin application:
@@ -277,7 +277,7 @@ line options follow xterm and xwsh where they overlap: `-e`, `-fn`,
    MIPSpro.)
 2. **tw milestone 1** (core renderer, TwGrid) and **ttrt 0.1**: a window
    that runs a shell on Linux and on the Indy, keys, resize, scrollbar,
-   title.
+   title. (Done.)
 3. Selection, clipboard, paste, mouse modes; tl's input encoders.
 4. Unicode on IRIX (tw milestone 2), settings page, terminfo, install.
 5. Soft and GL renderers (tw milestones 3-4), console mode, `-hold`.

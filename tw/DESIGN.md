@@ -1,6 +1,10 @@
 # tw: the text window drawing engine
 
-Status: design, 2026-10-20. Nothing in `tw/` is implemented yet.
+Status: milestone 1 implemented 2026-10-20: `tw.h`, the Surface with
+frame scheduling, CoreRender with core fonts and builtin box drawing and
+block glyphs, the Palette for PseudoColor and TrueColor, and the TwGrid
+widget. Verified on the emulated Indy's 8-bit Xsgi (native IRIX build and
+the Linux build over the network) and on Linux.
 
 `tw` draws a grid of character cells into an X window, fast on an Indy
 and good-looking on a current Linux desktop. It knows nothing about
