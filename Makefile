@@ -130,6 +130,36 @@ $(B)/tl_test: $(B)/libtl.a $(TL_TEST_OBJS)
 tl-test: $(B)/tl_test
 	$(B)/tl_test -d tl/test/data -v third_party/libvterm/t
 
+# tp, ptys and child processes (ttrt/DESIGN.md section 4). TP_SYS is the
+# per-system implementation: tp_sys_posix.o (Linux, BSD) or tp_sys_irix.o
+# (IRIX: make TP_SYS=$(B)/tp_sys_irix.o). "make tp-test" builds and runs
+# the tests.
+TP_SYS = $(B)/tp_sys_posix.o
+TP_OBJS = $(B)/tp_pty.o \
+	$(B)/tp_process.o \
+	$(TP_SYS)
+
+$(B)/libtp.a: $(TP_OBJS)
+	rm -f $@
+	$(AR) rc $@ $(TP_OBJS)
+
+$(B)/tp_test: $(B)/libtp.a $(B)/tp_test_tp.o
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/tp_test_tp.o $(B)/libtp.a
+
+tp-test: $(B)/tp_test
+	$(B)/tp_test
+
+$(B)/tp_pty.o: $(B)/.dir tp/pty.cpp tp/tp.h tp/sys.h
+	$(COMPILE) -c tp/pty.cpp -o $@
+$(B)/tp_process.o: $(B)/.dir tp/process.cpp tp/tp.h tp/sys.h
+	$(COMPILE) -c tp/process.cpp -o $@
+$(B)/tp_sys_posix.o: $(B)/.dir tp/sys_posix.cpp tp/sys.h
+	$(COMPILE) -c tp/sys_posix.cpp -o $@
+$(B)/tp_sys_irix.o: $(B)/.dir tp/sys_irix.cpp tp/sys.h
+	$(COMPILE) -c tp/sys_irix.cpp -o $@
+$(B)/tp_test_tp.o: $(B)/.dir tp/test/test_tp.cpp tp/tp.h
+	$(COMPILE) -c tp/test/test_tp.cpp -o $@
+
 $(B)/tl_charset.o: $(B)/.dir tl/charset.cpp tl/charset.h tl/port.h
 	$(COMPILE) -c tl/charset.cpp -o $@
 $(B)/tl_grid.o: $(B)/.dir tl/grid.cpp tl/grid.h tl/port.h
