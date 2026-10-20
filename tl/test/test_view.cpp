@@ -274,6 +274,124 @@ void text_extraction()
     TL_CHECK_STR(b.c_str(), "a\xe4\xb8\xad" "b");
 }
 
+void selection()
+{
+    T t(20, 4, 100);
+    t.feed("hello world foo\r\nsecond line here");
+    Grid& g = t.term.grid();
+    uint64_t top = g.active_top();
+    Buffer b;
+    TL_CHECK(!t.term.has_selection());
+    t.term.select_start(top, 2, SELECT_CHAR);
+    t.term.select_extend(top, 8);
+    TL_CHECK(t.term.selection_text(b));
+    TL_CHECK_STR(b.c_str(), "llo wor");
+    View v = t.term.view();
+    TL_CHECK(v.selected(2, 0) && v.selected(8, 0) && !v.selected(9, 0) && !v.selected(1, 0));
+    /* Backwards and across lines. */
+    t.term.select_start(top + 1, 3, SELECT_CHAR);
+    t.term.select_extend(top, 12);
+    b.clear();
+    t.term.selection_text(b);
+    TL_CHECK_STR(b.c_str(), "foo\nseco");
+    /* Words: double click on "world", drag to "line". */
+    t.term.select_start(top, 7, SELECT_WORD);
+    b.clear();
+    t.term.selection_text(b);
+    TL_CHECK_STR(b.c_str(), "world");
+    t.term.select_extend(top + 1, 8);
+    b.clear();
+    t.term.selection_text(b);
+    TL_CHECK_STR(b.c_str(), "world foo\nsecond line");
+    /* A run of spaces is a word of its own class; punctuation too. */
+    T p(30, 2);
+    p.feed("a   b /usr/local/bin:x !!! z");
+    uint64_t pt = p.term.grid().active_top();
+    p.term.select_start(pt, 2, SELECT_WORD);
+    b.clear();
+    p.term.selection_text(b);
+    TL_CHECK_STR(b.c_str(), "");                           /* blanks trim to nothing */
+    p.term.select_start(pt, 10, SELECT_WORD);
+    b.clear();
+    p.term.selection_text(b);
+    TL_CHECK_STR(b.c_str(), "/usr/local/bin:x");
+    p.term.select_start(pt, 24, SELECT_WORD);
+    b.clear();
+    p.term.selection_text(b);
+    TL_CHECK_STR(b.c_str(), "!!!");
+    /* Lines, across soft wraps. */
+    T l(10, 4, 100);
+    l.feed("0123456789abcdef\r\nnext");
+    uint64_t lt = l.term.grid().active_top();
+    l.term.select_start(lt + 1, 2, SELECT_LINE);
+    b.clear();
+    l.term.selection_text(b);
+    TL_CHECK_STR(b.c_str(), "0123456789abcdef");
+    /* A word across the soft wrap. */
+    l.term.select_start(lt, 8, SELECT_WORD);
+    b.clear();
+    l.term.selection_text(b);
+    TL_CHECK_STR(b.c_str(), "0123456789abcdef");
+    /* The selection stays on its text while output scrolls... */
+    t.term.select_start(top, 6, SELECT_WORD);
+    for (int i = 0; i < 6; i++)
+        t.feed("\r\nmore");
+    b.clear();
+    TL_CHECK(t.term.selection_text(b));
+    TL_CHECK_STR(b.c_str(), "world");
+    /* ...and through a reflow. */
+    t.term.resize(8, 4);
+    b.clear();
+    TL_CHECK(t.term.selection_text(b));
+    TL_CHECK_STR(b.c_str(), "world");
+    /* Gone with its text, and when the screen switches. */
+    T s(10, 2, 0);
+    s.feed("abc");
+    s.term.select_start(s.term.grid().active_top(), 0, SELECT_WORD);
+    s.feed("\r\n1\r\n2\r\n3");
+    TL_CHECK(!s.term.has_selection());
+    T a(10, 2, 10);
+    a.feed("abc");
+    a.term.select_start(a.term.grid().active_top(), 0, SELECT_WORD);
+    a.feed("\x1b[?1049h");
+    TL_CHECK(!a.term.has_selection());
+    /* Writing into the selected text drops the selection; writing
+     * elsewhere does not. */
+    T o(20, 4);
+    o.feed("one two\r\nthree");
+    uint64_t ot = o.term.grid().active_top();
+    o.term.select_start(ot, 4, SELECT_WORD);
+    o.feed("\x1b[3;1Hx");
+    TL_CHECK(o.term.has_selection());
+    o.feed("\x1b[1;10Hy");
+    TL_CHECK(!o.term.has_selection());
+    o.term.select_start(ot, 4, SELECT_WORD);
+    o.feed("\x1b[2J");
+    TL_CHECK(!o.term.has_selection());
+    /* Select all. */
+    T al(10, 3, 10);
+    al.feed("x\r\ny");
+    al.term.select_all();
+    b.clear();
+    al.term.selection_text(b);
+    TL_CHECK_STR(b.c_str(), "x\ny\n");
+    /* Changing the selection damages its rows. */
+    T d(10, 4);
+    d.feed("aa\r\nbb\r\ncc");
+    d.term.clear_damage();
+    d.term.select_start(d.term.grid().active_top() + 1, 0, SELECT_CHAR);
+    d.term.select_extend(d.term.grid().active_top() + 2, 1);
+    View dv = d.term.view();
+    int lo, hi;
+    TL_CHECK(!dv.row_dirty(0, &lo, &hi) || (lo == hi));   /* only a cursor cell, if any */
+    TL_CHECK(dv.row_dirty(1, &lo, &hi) && lo == 0 && hi == 9);
+    TL_CHECK(dv.row_dirty(2, &lo, &hi) && lo == 0 && hi == 9);
+    d.term.clear_damage();
+    d.term.select_clear();
+    dv = d.term.view();
+    TL_CHECK(dv.row_dirty(1, &lo, &hi) && lo == 0 && hi == 9);
+}
+
 void colors()
 {
     T t(10, 2);
@@ -327,6 +445,7 @@ struct ShadowCell {
     uint32_t cp;
     Style style;
     bool cursor;
+    bool sel;
 };
 
 struct Shadow {
@@ -354,12 +473,13 @@ static ShadowCell render(const View& v, int x, int y)
     s.style = v.style(c);
     ViewCursor vc = v.cursor();
     s.cursor = vc.visible && vc.y == y && (vc.x == x || (vc.wide && vc.x + 1 == x));
+    s.sel = v.selected(x, y);
     return s;
 }
 
 static bool same(const ShadowCell& a, const ShadowCell& b)
 {
-    return a.cp == b.cp && a.style == b.style && a.cursor == b.cursor;
+    return a.cp == b.cp && a.style == b.style && a.cursor == b.cursor && a.sel == b.sel;
 }
 
 struct Rng {
@@ -420,8 +540,12 @@ void damage_model()
             Buffer b;
             for (int i = 0; i < chunks; i++)
                 random_chunk(r, b, cols, rows);
+            term.has_selection();
+            if (getenv("TL_STEPS")) fprintf(stderr, "seed %u frame %d feed %s\n", (unsigned)seed, frame, b.c_str());
             term.feed(b.data(), b.size());
+            term.has_selection();
             int act = r.below(40);
+            if (getenv("TL_STEPS")) fprintf(stderr, "  act %d\n", act);
             bool trace = getenv("TL_DAMAGE_TRACE") && (uint32_t)atoi(getenv("TL_DAMAGE_TRACE")) == seed;
             if (trace) {
                 fprintf(stderr, "frame %d: feed \"", frame);
@@ -442,8 +566,22 @@ void damage_model()
                 term.scroll_viewport(-(long)r.below(4));
             } else if (act == 2) {
                 term.scroll_to_bottom();
+            } else if (act >= 3 && act <= 6) {
+                /* Selections in the viewport. */
+                int sy = r.below(rows);
+                int sx = r.below(cols);
+                uint64_t row = term.viewport_top() + (uint64_t)sy;
+                if (row < term.grid().base() + term.grid().total_rows()) {
+                    if (act == 3)
+                        term.select_start(row, sx, (SelectMode)r.below(3));
+                    else if (act == 6)
+                        term.select_clear();
+                    else
+                        term.select_extend(row, sx);
+                }
             }
 
+            term.has_selection();
             View v = term.view();
             if (v.held())
                 continue;
@@ -452,6 +590,11 @@ void damage_model()
                 sh.size(v.cols(), v.rows());
             }
             if (trace) {
+                uint64_t q0, q1;
+                int k0, k1;
+                if (term.selection_range(&q0, &k0, &q1, &k1))
+                    fprintf(stderr, "  selection %lu,%d - %lu,%d (active top %lu)\n", (unsigned long)q0, k0,
+                            (unsigned long)q1, k1, (unsigned long)term.grid().active_top());
                 fprintf(stderr, "  full %d records %d top %lu bottom %d cursor %d,%d vis %d\n",
                         v.full_damage(), v.scroll_record_count(), (unsigned long)v.top_row(),
                         v.at_bottom(), v.cursor().x, v.cursor().y, v.cursor().visible);
@@ -520,6 +663,7 @@ void tl_test_view()
     viewport();
     anchors();
     text_extraction();
+    selection();
     colors();
     cursor_info();
     damage_model();

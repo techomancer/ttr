@@ -342,9 +342,8 @@ None of these run again when ttr restarts in place.
 
 `ttrt` is ttr's terminal emulator: xterm-compatible, with scrollback that
 re-wraps when the window is resized, and fast on an 8-bit Indy display.
-It is early work: there is no selection or copy and paste yet, and on
-IRIX characters outside Latin-1 show as boxes (box drawing and block
-characters always work; ttrt draws them itself). To make it the terminal
+It is early work: on IRIX, characters outside Latin-1 show as boxes (box
+drawing and block characters always work; ttrt draws them itself). To make it the terminal
 ttr starts, set Settings > Start Menu > Terminal command to `ttrt`.
 
 ```sh
@@ -372,6 +371,23 @@ The same settings work as X resources of class `TTRt` (`TTRt*font`,
 Keys: Shift+PageUp and Shift+PageDown scroll back and forth, and so does
 the mouse wheel (in full-screen programs the wheel sends arrow keys
 instead). Typing scrolls back to the bottom. Backspace sends DEL.
+
+Selecting and pasting works as in xterm:
+
+| Do this | To |
+|---|---|
+| Drag with button 1 | select text (dragging past the top or bottom scrolls) |
+| Double-click, triple-click | select a word, a whole line |
+| Click button 3 | extend the selection to there |
+| Click button 2, or Shift+Insert | paste the selection (PRIMARY) |
+| Ctrl+Shift+C, Edit > Copy | copy the selection to the clipboard |
+| Ctrl+Shift+V, Edit > Paste | paste the clipboard |
+
+Selections offer UTF-8 and Latin-1 text, so they paste into IRIX's own
+programs (winterm, Motif text fields) and back. When a program in the
+terminal uses the mouse itself (vim with `mouse=a`, mc, htop), hold
+Shift to select instead. The Edit menu also has Select All, Clear
+Scrollback and Reset Terminal.
 
 ttrt sets `TERM` to the best entry the system's terminfo has:
 `xterm-256color` on Linux, `xterm` on IRIX 6.5.

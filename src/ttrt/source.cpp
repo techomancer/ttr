@@ -50,6 +50,13 @@ void TermSource::cells(int y, int lo, int hi, tw::CellData* out) const
         default: f |= tw::S_UNDERLINE; break;
         }
         if (rc.bg_default) f |= tw::S_DEFAULT_BG;
+        if (v_.selected(x, y)) {
+            /* Selected text is drawn inverted. */
+            uint32_t t = d.style.fg;
+            d.style.fg = d.style.bg;
+            d.style.bg = t;
+            f &= (uint16_t)~(tw::S_DEFAULT_BG | tw::S_INVISIBLE);
+        }
         d.style.flags = f;
     }
 }

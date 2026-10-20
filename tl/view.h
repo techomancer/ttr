@@ -73,6 +73,21 @@ public:
     ResolvedColors colors(const Cell& c) const;
     ViewCursor cursor() const { return cursor_; }
 
+    /* The cell is part of the selection. */
+    bool selected(int x, int y) const
+    {
+        if (!sel_)
+            return false;
+        uint64_t r = top_ + (uint64_t)y;
+        if (r < sel_r0_ || r > sel_r1_)
+            return false;
+        if (r == sel_r0_ && x < sel_c0_)
+            return false;
+        if (r == sel_r1_ && x > sel_c1_)
+            return false;
+        return true;
+    }
+
     /* Scrollback position. */
     uint64_t top_row() const { return top_; }     /* absolute row of viewport row 0 */
     bool at_bottom() const { return at_bottom_; }
@@ -94,6 +109,9 @@ private:
     ViewCursor cursor_;
     int prev_cursor_x_, prev_cursor_y_;   /* old cursor cell to repaint, y -1: none */
     bool prev_cursor_wide_;
+    bool sel_;
+    uint64_t sel_r0_, sel_r1_;
+    int sel_c0_, sel_c1_;
 };
 
 } /* namespace tl */

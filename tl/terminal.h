@@ -78,6 +78,8 @@ public:
     void set_reflow(bool on) { reflow_ = on; }
     /* RIS: full reset. */
     void reset();
+    /* Drop the scrollback of the primary screen. */
+    void clear_scrollback();
 
     int cols() const { return cols_; }
     int rows() const { return rows_; }
@@ -112,6 +114,31 @@ public:
     void focus(bool in);
     /* Backspace sends DEL (default) or BS. */
     void set_backspace_is_del(bool on) { backspace_del_ = on; }
+
+    /* The application asked for mouse events (modes 9, 1000-1003). */
+    bool mouse_reporting() const { return modes_.mouse != 0; }
+    /* Report a mouse event at viewport cell (col, row), pixel (px, py)
+     * for mode 1016. Returns true if it was reported; false means the
+     * application does not want it and the host may use it (selection). */
+    bool mouse(MouseAction action, int button, int col, int row, unsigned mods,
+               int px, int py);
+
+    /* ---- selection ---- */
+
+    /* Start a selection at an absolute row and column of the active
+     * screen; select_extend moves its other end. The selection follows
+     * its text through scrolling and reflow (it is held by anchors) and
+     * is dropped when that text goes away or the screen switches. */
+    void select_start(uint64_t row, int col, SelectMode mode);
+    void select_extend(uint64_t row, int col);
+    void select_all();
+    void select_clear();
+    bool has_selection() const;
+    /* The selected text, soft wraps joined, lines separated by '\n'. */
+    bool selection_text(Buffer& out) const;
+    /* The selection as absolute rows and columns, words and lines already
+     * expanded. False if there is none. */
+    bool selection_range(uint64_t* r0, int* c0, uint64_t* r1, int* c1) const;
 
     /* ---- presenting ---- */
 
@@ -236,6 +263,33 @@ private:
     bool ambiguous_wide_;
     bool reflow_;
     bool backspace_del_;
+
+    /* Mouse reporting state. */
+    int mouse_buttons_;         /* bit per held button 1-3 */
+    int mouse_last_col_, mouse_last_row_;
+
+    /* Selection: two anchors in the active screen's grid. */
+    int sel_anchor_, sel_point_;
+    bool sel_alt_;
+    SelectMode sel_mode_;
+    void select_damage(uint64_t r0, uint64_t r1);
+    /* Text in active row y changes: a selection over it goes away. */
+    void sel_touch(int y) { if (sel_anchor_) sel_touch_slow(y); }
+    void sel_touch_slow(int y);
+    /* Rows top..bottom (active) are about to move: text under a selection
+     * that overlaps them changes, so the selection goes away. */
+    void sel_rows_moving(int top, int bottom) { if (sel_anchor_) sel_rows_moving_slow(top, bottom); }
+    void sel_rows_moving_slow(int top, int bottom);
+    /* The range last shown; when the current one differs (anchors lost or
+     * moved by the interpreter), both are damaged. */
+    bool sel_shown_;
+    uint64_t sel_shown_r0_, sel_shown_r1_;
+    int sel_shown_c0_, sel_shown_c1_;
+    void sel_refresh();
+    void select_damage_current();
+    bool is_word_char(uint32_t cp) const;
+    void word_bounds(uint64_t row, int col, uint64_t* r0, int* c0, uint64_t* r1, int* c1) const;
+    void line_bounds(uint64_t row, uint64_t* r0, uint64_t* r1) const;
 
     /* Presentation state. */
     Rgb palette_[256];

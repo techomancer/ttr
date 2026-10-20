@@ -232,8 +232,10 @@ in the style of libutempter can be added later if wanted.
 
 - PRIMARY: owned on selection end with Xt's selection functions; the
   text comes from `tl::Terminal::text` with soft wraps joined.
-- CLIPBOARD: Edit > Copy and Ctrl+Shift+C through `XmClipboard`, so Motif
-  applications on IRIX interoperate; Ctrl+Shift+V pastes.
+- CLIPBOARD: Edit > Copy and Ctrl+Shift+C; Ctrl+Shift+V pastes. Both
+  selections are plain ICCCM selections through Xt (not `XmClipboard`),
+  offering UTF8_STRING, STRING (Latin-1) and TEXT; pasting asks for
+  UTF8_STRING and falls back to STRING, which is all xwsh offers.
 - Paste is bracketed (mode 2004) when the application asks and is fed
   through the write queue (section 3).
 - OSC 52 set is allowed, get is denied by default (setting).
@@ -278,6 +280,9 @@ line options follow xterm and xwsh where they overlap: `-e`, `-fn`,
 2. **tw milestone 1** (core renderer, TwGrid) and **ttrt 0.1**: a window
    that runs a shell on Linux and on the Indy, keys, resize, scrollbar,
    title. (Done.)
-3. Selection, clipboard, paste, mouse modes; tl's input encoders.
+3. Selection, clipboard, paste, mouse modes; tl's input encoders. (Done:
+   PRIMARY and CLIPBOARD go through Xt selections with UTF8_STRING,
+   STRING and TEXT targets, which IRIX's xwsh and Motif clients read; a
+   selection is dropped when text under it changes, as in xterm.)
 4. Unicode on IRIX (tw milestone 2), settings page, terminfo, install.
 5. Soft and GL renderers (tw milestones 3-4), console mode, `-hold`.

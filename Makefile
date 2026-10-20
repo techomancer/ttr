@@ -107,6 +107,7 @@ TL_OBJS = $(B)/tl_charset.o \
 	$(B)/tl_grid.o \
 	$(B)/tl_input.o \
 	$(B)/tl_parser.o \
+	$(B)/tl_selection.o \
 	$(B)/tl_style.o \
 	$(B)/tl_terminal.o \
 	$(B)/tl_unicode.o \
@@ -211,6 +212,8 @@ $(B)/tl_terminal.o: $(B)/.dir tl/terminal.cpp $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/terminal.cpp -o $@
 $(B)/tl_test_terminal.o: $(B)/.dir tl/test/test_terminal.cpp tl/test/tltest.h $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/test/test_terminal.cpp -o $@
+$(B)/tl_selection.o: $(B)/.dir tl/selection.cpp $(TL_TERMINAL_H)
+	$(COMPILE) -c tl/selection.cpp -o $@
 $(B)/tl_input.o: $(B)/.dir tl/input.cpp $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/input.cpp -o $@
 $(B)/tl_view.o: $(B)/.dir tl/view.cpp $(TL_TERMINAL_H)

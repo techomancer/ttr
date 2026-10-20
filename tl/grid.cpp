@@ -152,7 +152,8 @@ void Grid::anchors_region(int top, int bot, int n)
             else
                 a.row -= (uint64_t)n;
         } else {
-            if (a.row > b - (uint64_t)(-n))
+            /* Written without b - n: b may be smaller than n. */
+            if (a.row + (uint64_t)(-n) > b)
                 a.lost = true;
             else
                 a.row += (uint64_t)(-n);

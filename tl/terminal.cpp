@@ -36,7 +36,10 @@ static void cursor_reset(Cursor& c)
 Terminal::Terminal()
     : host_(&null_host_), alt_(false), cols_(0), rows_(0), scrollback_(0),
       cursor_shape_(CURSOR_BLOCK), top_(0), bot_(0), tabs_(0),
-      ambiguous_wide_(false), reflow_(true), backspace_del_(true), bold_bright_(true), full_damage_(true),
+      ambiguous_wide_(false), reflow_(true), backspace_del_(true), mouse_buttons_(0),
+      mouse_last_col_(-1), mouse_last_row_(-1), sel_anchor_(0), sel_point_(0), sel_alt_(false),
+      sel_mode_(SELECT_CHAR), sel_shown_(false), sel_shown_r0_(0), sel_shown_r1_(0),
+      sel_shown_c0_(0), sel_shown_c1_(0), bold_bright_(true), full_damage_(true),
       vp_anchor_(0), follow_(true), last_valid_(false), last_at_bottom_(true), last_alt_(false),
       last_top_(0), last_cx_(0), last_cy_(0), last_cwide_(false), prev_valid_(false), prev_x_(0), prev_y_(0), last_cp_(0)
 {
@@ -123,6 +126,8 @@ void Terminal::reset()
     primary_.grid.clear_history();
     primary_.grid.full_damage = true;
     title_.clear();
+    select_clear();
+    mouse_buttons_ = 0;
     follow_ = true;
     full_damage_ = true;
     prev_valid_ = false;
@@ -130,9 +135,18 @@ void Terminal::reset()
     gstate_.reset();
 }
 
+void Terminal::clear_scrollback()
+{
+    primary_.grid.clear_history();
+    follow_ = true;
+    full_damage_ = true;
+}
+
 void Terminal::feed(const uint8_t* data, size_t n)
 {
     parser_.feed(data, n);
+    if (sel_anchor_ || sel_shown_)
+        sel_refresh();
 }
 
 void Terminal::feed(const char* s)
@@ -199,6 +213,8 @@ bool Terminal::resize(int cols, int rows)
         if (s.y >= rows) s.y = rows - 1;
     }
     prev_valid_ = false;
+    if (sel_anchor_ || sel_shown_)
+        sel_refresh();
     return true;
 }
 
@@ -356,6 +372,7 @@ View Terminal::view() const
         }
     }
     v.full_ = full;
+    v.sel_ = selection_range(&v.sel_r0_, &v.sel_c0_, &v.sel_r1_, &v.sel_c1_);
 
     ViewCursor& c = v.cursor_;
     uint64_t abs = g.active_top() + (uint64_t)cur_.y;
@@ -607,6 +624,7 @@ void Terminal::fix_wide_right(Row& r, int x)
 
 void Terminal::put_cell(int x, int y, uint32_t cp, WideKind w)
 {
+    sel_touch(y);
     Row& r = row(y);
     Cell& c = r.cells[x];
     c.set(cp, w, cur_.style_id, 0, cur_.protect);
@@ -731,12 +749,16 @@ void Terminal::scroll_up(int n)
     Cell b = blank();
     /* Lines scrolled off the full-screen region of the primary screen go
      * to the scrollback; a partial region just loses them. */
+    /* Only a region scroll moves text under fixed row numbers. */
+    if (alt_ || top_ != 0 || bot_ != rows_ - 1)
+        sel_rows_moving(top_, bot_);
     g.scroll_up(top_, bot_, n, b, !alt_);
     prev_valid_ = false;
 }
 
 void Terminal::scroll_down(int n)
 {
+    sel_rows_moving(top_, bot_);
     screen().grid.scroll_down(top_, bot_, n, blank());
     prev_valid_ = false;
 }
@@ -765,6 +787,7 @@ void Terminal::reverse_index()
 
 void Terminal::erase_cells(int y, int lo, int hi, bool selective)
 {
+    sel_touch(y);
     if (lo < 0) lo = 0;
     if (hi >= cols_) hi = cols_ - 1;
     if (lo > hi)
@@ -829,6 +852,7 @@ void Terminal::erase_line(int mode, bool selective)
 
 void Terminal::insert_chars(int n)
 {
+    sel_touch(cur_.y);
     Row& r = row(cur_.y);
     int x = cur_.x;
     if (n > cols_ - x)
@@ -846,6 +870,7 @@ void Terminal::insert_chars(int n)
 
 void Terminal::delete_chars(int n)
 {
+    sel_touch(cur_.y);
     Row& r = row(cur_.y);
     int x = cur_.x;
     if (n > cols_ - x)
@@ -864,6 +889,7 @@ void Terminal::insert_lines(int n)
 {
     if (cur_.y < top_ || cur_.y > bot_)
         return;
+    sel_rows_moving(cur_.y, bot_);
     screen().grid.scroll_down(cur_.y, bot_, n, blank());
     /* The cursor stays put: the VT102 guide does not move it and neither
      * does xterm (ECMA-48 would move it to the line home). */
@@ -874,6 +900,7 @@ void Terminal::delete_lines(int n)
 {
     if (cur_.y < top_ || cur_.y > bot_)
         return;
+    sel_rows_moving(cur_.y, bot_);
     screen().grid.scroll_up(cur_.y, bot_, n, blank(), false);
     cur_.pending_wrap = false;
 }
@@ -909,6 +936,7 @@ void Terminal::tab_backward(int n)
 
 void Terminal::decaln()
 {
+    select_clear();
     top_ = 0;
     bot_ = rows_ - 1;
     modes_.origin = false;
@@ -1232,6 +1260,7 @@ void Terminal::switch_screen(bool alt, bool clear)
 {
     if (alt == alt_)
         return;
+    select_clear();
     alt_ = alt;
     if (alt && clear) {
         Cell b = Cell();

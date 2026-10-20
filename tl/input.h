@@ -42,6 +42,21 @@ enum Key {
     KEY_KP_SEPARATOR
 };
 
+enum MouseAction {
+    MOUSE_PRESS,
+    MOUSE_RELEASE,
+    MOUSE_MOTION
+};
+
+/* Buttons for Terminal::mouse: 1-3 left, middle, right; 4-7 wheel up,
+ * down, left, right; 8-11 extra buttons; 0 none (motion only). */
+
+enum SelectMode {
+    SELECT_CHAR,                /* from character to character */
+    SELECT_WORD,                /* whole words (double click) */
+    SELECT_LINE                 /* whole logical lines (triple click) */
+};
+
 enum Mod {
     MOD_SHIFT = 1,
     MOD_ALT = 2,

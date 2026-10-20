@@ -15,6 +15,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <X11/Xatom.h>
+#include <X11/cursorfont.h>
 #include <X11/keysym.h>
 #include <X11/Xutil.h>
 #include <Xm/CascadeB.h>
@@ -107,12 +109,33 @@ public:
     XtInputId in_id, out_id;
 
     App() : ctx(0), top(0), main_w(0), grid(0), scroll(0), src(term), cmd(0), started(false),
-            in_scroll_update(false), outq_off(0), in_id(0), out_id(0)
+            in_scroll_update(false), outq_off(0), in_id(0), out_id(0), selecting(false),
+            sel_moved(false), click_count(0), last_click(0), last_click_col(-1),
+            last_click_row(-1), drag_col(0), drag_row(0), autoscroll(0), autoscroll_id(0),
+            a_clipboard(None), a_utf8(None), a_targets(None), a_text(None)
     {
         host.app = this;
     }
 
+    /* Selection with the mouse. */
+    bool selecting;             /* button 1 is down for a selection */
+    bool sel_moved;
+    int click_count;
+    Time last_click;
+    int last_click_col, last_click_row;
+    int drag_col, drag_row;
+    int autoscroll;             /* -1 up, 1 down, 0 off */
+    XtIntervalId autoscroll_id;
+    /* What we offer as PRIMARY and CLIPBOARD. */
+    tl::Buffer primary_text, clipboard_text;
+    Atom a_clipboard, a_utf8, a_targets, a_text;
+
     void start_session(int cols, int rows);
+    void own(Atom sel, Time t);
+    void request_paste(Atom sel, Time t);
+    void copy_selection(Atom sel, Time t);
+    void select_at(TwGridCallbackStruct* cb);
+    void autoscroll_step();
     void flush_output();
     void read_pty();
     void update_scrollbar();
@@ -369,6 +392,19 @@ void App::handle_key(TwGridCallbackStruct* cb)
         ks == XK_Alt_L || ks == XK_Alt_R || ks == XK_Meta_L || ks == XK_Meta_R ||
         ks == XK_Caps_Lock || ks == XK_Num_Lock || ks == XK_Super_L || ks == XK_Super_R)
         return;
+    Time t = cb->event ? cb->event->xkey.time : CurrentTime;
+    if (mods == (tl::MOD_CTRL | tl::MOD_SHIFT) && (ks == XK_C || ks == XK_c)) {
+        copy_selection(a_clipboard, t);
+        return;
+    }
+    if (mods == (tl::MOD_CTRL | tl::MOD_SHIFT) && (ks == XK_V || ks == XK_v)) {
+        request_paste(a_clipboard, t);
+        return;
+    }
+    if (mods == tl::MOD_SHIFT && (ks == XK_Insert || ks == XK_KP_Insert)) {
+        request_paste(XA_PRIMARY, t);
+        return;
+    }
     int k = key_of(ks);
     bool sent = false;
     if (k != tl::KEY_NONE)
@@ -385,20 +421,271 @@ void App::handle_key(TwGridCallbackStruct* cb)
     }
 }
 
-void App::handle_pointer(TwGridCallbackStruct* cb)
+/* ---- selections and the clipboard ------------------------------------------ */
+
+App* g_sel_app;                 /* Xt selection procedures get only the widget */
+
+/* UTF-8 to Latin-1 for the STRING target; other characters become '?'. */
+void to_latin1(const char* in, size_t n, tl::Buffer& out)
 {
-    if (cb->reason != TW_CR_BUTTON_PRESS || (cb->button != 4 && cb->button != 5))
-        return;
-    int dir = cb->button == 4 ? -1 : 1;
-    if (term.alt_screen()) {
-        /* Wheel on full-screen programs: arrow keys, like alternate scroll. */
-        for (int i = 0; i < 3; i++)
-            term.key(dir < 0 ? tl::KEY_UP : tl::KEY_DOWN, 0);
-        return;
+    for (size_t i = 0; i < n;) {
+        unsigned char c = (unsigned char)in[i];
+        uint32_t cp;
+        int len;
+        if (c < 0x80) { cp = c; len = 1; }
+        else if ((c & 0xe0) == 0xc0 && i + 1 < n) { cp = ((c & 0x1fu) << 6) | (in[i + 1] & 0x3f); len = 2; }
+        else if ((c & 0xf0) == 0xe0) { cp = 0x10000; len = 3; }
+        else if ((c & 0xf8) == 0xf0) { cp = 0x10000; len = 4; }
+        else { cp = '?'; len = 1; }
+        out.append_byte((uint8_t)(cp < 256 ? cp : '?'));
+        i += (size_t)len;
     }
-    term.scroll_viewport(dir * 3);
+}
+
+Boolean convert_sel(Widget, Atom* sel, Atom* target, Atom* type, XtPointer* value,
+                    unsigned long* length, int* format)
+{
+    App* a = g_sel_app;
+    tl::Buffer& src = *sel == XA_PRIMARY ? a->primary_text : a->clipboard_text;
+    if (*target == a->a_targets) {
+        Atom* t = (Atom*)XtMalloc(4 * sizeof(Atom));
+        t[0] = a->a_targets;
+        t[1] = a->a_utf8;
+        t[2] = XA_STRING;
+        t[3] = a->a_text;
+        *value = (XtPointer)t;
+        *length = 4;
+        *type = XA_ATOM;
+        *format = 32;
+        return True;
+    }
+    tl::Buffer conv;
+    const tl::Buffer* data = &src;
+    if (*target == a->a_utf8) {
+        *type = a->a_utf8;
+    } else if (*target == XA_STRING || *target == a->a_text) {
+        to_latin1(src.c_str(), src.size(), conv);
+        data = &conv;
+        *type = XA_STRING;
+    } else {
+        return False;
+    }
+    char* v = XtMalloc((Cardinal)(data->size() + 1));
+    memcpy(v, data->data(), data->size());
+    v[data->size()] = 0;
+    *value = (XtPointer)v;
+    *length = data->size();
+    *format = 8;
+    return True;
+}
+
+void lose_sel(Widget, Atom* sel)
+{
+    App* a = g_sel_app;
+    if (*sel == XA_PRIMARY) {
+        /* Someone else selected something: drop our highlight, as xterm does. */
+        a->primary_text.clear();
+        a->term.select_clear();
+        TwGridDamage(a->grid);
+    } else {
+        a->clipboard_text.clear();
+    }
+}
+
+void App::own(Atom sel, Time t)
+{
+    if (!XtOwnSelection(grid, sel, t, convert_sel, lose_sel, 0)) {
+        if (sel == XA_PRIMARY)
+            primary_text.clear();
+        else
+            clipboard_text.clear();
+    }
+}
+
+void App::copy_selection(Atom sel, Time t)
+{
+    tl::Buffer& dst = sel == XA_PRIMARY ? primary_text : clipboard_text;
+    dst.clear();
+    if (!term.selection_text(dst) || dst.size() == 0)
+        return;
+    own(sel, t);
+}
+
+void after_paste(App* a)
+{
+    if (!a->term.viewport_at_bottom()) {
+        a->term.scroll_to_bottom();
+        TwGridDamage(a->grid);
+        a->update_scrollbar();
+    }
+}
+
+/* The second try: STRING, Latin-1 by definition. */
+void got_paste_string(Widget, XtPointer data, Atom*, Atom* type, XtPointer value,
+                      unsigned long* length, int* format)
+{
+    App* a = (App*)data;
+    if (value && *format == 8 && (*type == XA_STRING || *type == a->a_text)) {
+        tl::Buffer u;
+        const unsigned char* p = (const unsigned char*)value;
+        for (unsigned long i = 0; i < *length; i++)
+            u.append_utf8(p[i]);
+        a->term.paste(u.c_str(), u.size());
+        after_paste(a);
+    }
+    if (value)
+        XtFree((char*)value);
+}
+
+/* The first try: UTF8_STRING. Owners that do not know it (IRIX's own
+ * clients) refuse, and then STRING is asked for. */
+void got_paste(Widget w, XtPointer data, Atom* sel, Atom* type, XtPointer value,
+               unsigned long* length, int* format)
+{
+    App* a = (App*)data;
+    if (value && *format == 8 && *type == a->a_utf8) {
+        a->term.paste((const char*)value, (size_t)*length);
+        after_paste(a);
+    } else if (value && *format == 8 && *type == XA_STRING) {
+        got_paste_string(w, data, sel, type, value, length, format);   /* frees value */
+        return;
+    } else {
+        XtGetSelectionValue(w, *sel, XA_STRING, got_paste_string, data,
+                            XtLastTimestampProcessed(XtDisplay(w)));
+    }
+    if (value)
+        XtFree((char*)value);
+}
+
+void App::request_paste(Atom sel, Time t)
+{
+    XtGetSelectionValue(grid, sel, a_utf8, got_paste, (XtPointer)this, t);
+}
+
+/* ---- mouse --------------------------------------------------------------------- */
+
+void autoscroll_timeout(XtPointer data, XtIntervalId*)
+{
+    App* a = (App*)data;
+    a->autoscroll_id = 0;
+    a->autoscroll_step();
+}
+
+void App::autoscroll_step()
+{
+    if (!selecting || !autoscroll)
+        return;
+    term.scroll_viewport(autoscroll);
+    int row = autoscroll < 0 ? 0 : term.rows() - 1;
+    term.select_extend(term.viewport_top() + (uint64_t)row, autoscroll < 0 ? 0 : term.cols() - 1);
     TwGridDamage(grid);
     update_scrollbar();
+    autoscroll_id = XtAppAddTimeOut(ctx, 60, autoscroll_timeout, (XtPointer)this);
+}
+
+void App::select_at(TwGridCallbackStruct* cb)
+{
+    uint64_t row = term.viewport_top() + (uint64_t)cb->row;
+    term.select_extend(row, cb->col);
+    TwGridDamage(grid);
+}
+
+unsigned pointer_mods(unsigned state)
+{
+    return mods_of(state);
+}
+
+void App::handle_pointer(TwGridCallbackStruct* cb)
+{
+    unsigned state = cb->state;
+    Time t = cb->event ? cb->event->xbutton.time : CurrentTime;
+    int cw, ch;
+    TwGridGetCellSize(grid, &cw, &ch);
+
+    /* The application wants the mouse, unless Shift is held. */
+    if (term.mouse_reporting() && !(state & ShiftMask) && !selecting) {
+        tl::MouseAction act = cb->reason == TW_CR_BUTTON_PRESS ? tl::MOUSE_PRESS
+                            : cb->reason == TW_CR_BUTTON_RELEASE ? tl::MOUSE_RELEASE
+                            : tl::MOUSE_MOTION;
+        term.mouse(act, cb->button, cb->col, cb->row, pointer_mods(state),
+                   cb->x > 2 ? cb->x - 2 : 0, cb->y > 2 ? cb->y - 2 : 0);
+        return;
+    }
+
+    if (cb->reason == TW_CR_BUTTON_PRESS) {
+        switch (cb->button) {
+        case 1: {
+            bool same = cb->col == last_click_col && cb->row == last_click_row;
+            Time multi = (Time)XtGetMultiClickTime(XtDisplay(grid));
+            click_count = same && t - last_click < multi ? click_count % 3 + 1 : 1;
+            last_click = t;
+            last_click_col = cb->col;
+            last_click_row = cb->row;
+            tl::SelectMode mode = click_count == 3 ? tl::SELECT_LINE
+                                : click_count == 2 ? tl::SELECT_WORD : tl::SELECT_CHAR;
+            term.select_start(term.viewport_top() + (uint64_t)cb->row, cb->col, mode);
+            selecting = true;
+            sel_moved = click_count > 1;
+            drag_col = cb->col;
+            drag_row = cb->row;
+            TwGridDamage(grid);
+            break;
+        }
+        case 2:
+            request_paste(XA_PRIMARY, t);
+            break;
+        case 3:
+            if (term.has_selection()) {
+                select_at(cb);
+                copy_selection(XA_PRIMARY, t);
+            }
+            break;
+        case 4: case 5:
+            if (term.alt_screen()) {
+                /* Wheel in full-screen programs: arrow keys (alternate scroll). */
+                for (int i = 0; i < 3; i++)
+                    term.key(cb->button == 4 ? tl::KEY_UP : tl::KEY_DOWN, 0);
+            } else {
+                term.scroll_viewport(cb->button == 4 ? -3 : 3);
+                TwGridDamage(grid);
+                update_scrollbar();
+            }
+            break;
+        default:
+            break;
+        }
+        return;
+    }
+    if (cb->reason == TW_CR_MOTION) {
+        if (!selecting || !(state & Button1Mask))
+            return;
+        int grid_h = term.rows() * ch + 4;
+        autoscroll = cb->y < 0 ? -1 : cb->y >= grid_h ? 1 : 0;
+        if (autoscroll && !autoscroll_id)
+            autoscroll_step();
+        if (cb->col != drag_col || cb->row != drag_row) {
+            sel_moved = true;
+            drag_col = cb->col;
+            drag_row = cb->row;
+            select_at(cb);
+        }
+        return;
+    }
+    if (cb->reason == TW_CR_BUTTON_RELEASE && cb->button == 1 && selecting) {
+        selecting = false;
+        autoscroll = 0;
+        if (autoscroll_id) {
+            XtRemoveTimeOut(autoscroll_id);
+            autoscroll_id = 0;
+        }
+        if (!sel_moved) {
+            /* A plain click clears the selection. */
+            term.select_clear();
+            TwGridDamage(grid);
+            return;
+        }
+        copy_selection(XA_PRIMARY, t);
+    }
 }
 
 void input_cb(Widget, XtPointer data, XtPointer call)
@@ -459,6 +746,58 @@ void close_cb(Widget, XtPointer data, XtPointer)
     exit(0);
 }
 
+void menu_item(Widget menu, const char* label, char mnemonic, const char* accel,
+               XtCallbackProc cb, App* a)
+{
+    Widget w;
+    if (accel) {
+        XmString acc = XmStringCreateLocalized((char*)accel);
+        w = XtVaCreateManagedWidget(label, xmPushButtonWidgetClass, menu, XmNmnemonic, mnemonic,
+                                    XmNacceleratorText, acc, (char*)0);
+        XmStringFree(acc);
+    } else {
+        w = XtVaCreateManagedWidget(label, xmPushButtonWidgetClass, menu, XmNmnemonic, mnemonic,
+                                    (char*)0);
+    }
+    XtAddCallback(w, XmNactivateCallback, cb, (XtPointer)a);
+}
+
+void copy_cb(Widget, XtPointer data, XtPointer)
+{
+    App* a = (App*)data;
+    a->copy_selection(a->a_clipboard, XtLastTimestampProcessed(XtDisplay(a->top)));
+}
+
+void paste_cb(Widget, XtPointer data, XtPointer)
+{
+    App* a = (App*)data;
+    a->request_paste(a->a_clipboard, XtLastTimestampProcessed(XtDisplay(a->top)));
+}
+
+void select_all_cb(Widget, XtPointer data, XtPointer)
+{
+    App* a = (App*)data;
+    a->term.select_all();
+    a->copy_selection(XA_PRIMARY, XtLastTimestampProcessed(XtDisplay(a->top)));
+    TwGridDamage(a->grid);
+}
+
+void clear_sb_cb(Widget, XtPointer data, XtPointer)
+{
+    App* a = (App*)data;
+    a->term.clear_scrollback();
+    TwGridDamage(a->grid);
+    a->update_scrollbar();
+}
+
+void reset_cb(Widget, XtPointer data, XtPointer)
+{
+    App* a = (App*)data;
+    a->term.reset();
+    TwGridDamage(a->grid);
+    a->update_scrollbar();
+}
+
 Widget make_menu_bar(App* a, Widget parent)
 {
     Widget bar = XmCreateMenuBar(parent, (char*)"menuBar", 0, 0);
@@ -472,6 +811,16 @@ Widget make_menu_bar(App* a, Widget parent)
     Widget cl = XtVaCreateManagedWidget("Close", xmPushButtonWidgetClass, file,
                                         XmNmnemonic, 'C', (char*)0);
     XtAddCallback(cl, XmNactivateCallback, close_cb, a);
+
+    Widget edit = XmCreatePulldownMenu(bar, (char*)"editMenu", 0, 0);
+    XtVaCreateManagedWidget("Edit", xmCascadeButtonWidgetClass, bar, XmNsubMenuId, edit,
+                            XmNmnemonic, 'E', (char*)0);
+    menu_item(edit, "Copy", 'C', "Ctrl+Shift+C", copy_cb, a);
+    menu_item(edit, "Paste", 'P', "Ctrl+Shift+V", paste_cb, a);
+    menu_item(edit, "Select All", 'A', 0, select_all_cb, a);
+    XtVaCreateManagedWidget("sep", xmSeparatorWidgetClass, edit, (char*)0);
+    menu_item(edit, "Clear Scrollback", 'S', 0, clear_sb_cb, a);
+    menu_item(edit, "Reset Terminal", 'R', 0, reset_cb, a);
     XtManageChild(bar);
     return bar;
 }
@@ -625,7 +974,14 @@ int main(int argc, char** argv)
                   XmNbaseWidth, extra_w, XmNbaseHeight, extra_h,
                   XmNminWidth, extra_w + 10 * cw, XmNminHeight, extra_h + 2 * ch, (char*)0);
 
+    g_sel_app = a;
+    a->a_clipboard = XInternAtom(dpy, "CLIPBOARD", False);
+    a->a_utf8 = XInternAtom(dpy, "UTF8_STRING", False);
+    a->a_targets = XInternAtom(dpy, "TARGETS", False);
+    a->a_text = XInternAtom(dpy, "TEXT", False);
+
     XtRealizeWidget(a->top);
+    XDefineCursor(dpy, XtWindow(a->grid), XCreateFontCursor(dpy, XC_xterm));
     XmProcessTraversal(a->grid, XmTRAVERSE_CURRENT);
 
     /* The first resize callback may have come before realization ended. */

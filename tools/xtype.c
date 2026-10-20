@@ -6,7 +6,8 @@
  *
  * Each ARG is text to type, a key spec starting with '+' (+Return,
  * +ctrl+c, +shift+Prior, +alt+x; keysym names as in <X11/keysymdef.h>),
- * a click at root coordinates "@x,y" (button 1; "@x,y,b" for button b), or
+ * a click at root coordinates "@x,y" (button 1; "@x,y,b" for button b;
+ * "@@x,y" double and "@@@x,y" triple click), a button 1 drag "~x1,y1,x2,y2", or
  * "%WxH" to resize the focused top-level window to W x H pixels.
  * Example: xtype @400,300 'ls -l' +Return
  *
@@ -199,11 +200,32 @@ int main(int argc, char** argv)
     }
     for (; i < argc; i++) {
         int x, y, b = 1;
-        if (argv[i][0] == '@' && sscanf(argv[i] + 1, "%d,%d,%d", &x, &y, &b) >= 2) {
+        int x2, y2;
+        if (argv[i][0] == '@') {
+            int clicks = 0, k;
+            while (argv[i][clicks] == '@')
+                clicks++;
+            if (sscanf(argv[i] + clicks, "%d,%d,%d", &x, &y, &b) >= 2) {
+                XTestFakeMotionEvent(dpy, -1, x, y, 0);
+                for (k = 0; k < clicks; k++) {
+                    XTestFakeButtonEvent(dpy, (unsigned)b, True, 0);
+                    XTestFakeButtonEvent(dpy, (unsigned)b, False, 0);
+                    pause_ms(30);
+                }
+                pause_ms(250);
+            }
+        } else if (argv[i][0] == '~' &&
+                   sscanf(argv[i] + 1, "%d,%d,%d,%d", &x, &y, &x2, &y2) == 4) {
+            int steps = 8, k;
             XTestFakeMotionEvent(dpy, -1, x, y, 0);
-            XTestFakeButtonEvent(dpy, (unsigned)b, True, 0);
-            XTestFakeButtonEvent(dpy, (unsigned)b, False, 0);
-            pause_ms(200);
+            XTestFakeButtonEvent(dpy, 1, True, 0);
+            pause_ms(30);
+            for (k = 1; k <= steps; k++) {
+                XTestFakeMotionEvent(dpy, -1, x + (x2 - x) * k / steps, y + (y2 - y) * k / steps, 0);
+                pause_ms(30);
+            }
+            XTestFakeButtonEvent(dpy, 1, False, 0);
+            pause_ms(250);
         } else if (argv[i][0] == '%' && sscanf(argv[i] + 1, "%dx%d", &x, &y) == 2) {
             Window t = focused_toplevel();
             if (t)

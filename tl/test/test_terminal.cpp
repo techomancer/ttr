@@ -551,6 +551,65 @@ void input()
     p.term.paste(p2, sizeof(p2) - 1);
     TL_CHECK_STR(p.reply(), "\x1b[200~ls[201~\r\x1b[201~");
 
+    /* Mouse. Nothing is reported until the application asks. */
+    T m(100, 30);
+    TL_CHECK(!m.term.mouse(MOUSE_PRESS, 1, 2, 3, 0, 0, 0));
+    TL_CHECK_STR(m.reply(), "");
+    m.feed("\x1b[?1000h");
+    TL_CHECK(m.term.mouse(MOUSE_PRESS, 1, 2, 3, 0, 0, 0));
+    TL_CHECK_STR(m.reply(), "\x1b[M #$");             /* 32+0, 32+3, 32+4 */
+    m.term.mouse(MOUSE_RELEASE, 1, 2, 3, 0, 0, 0);
+    TL_CHECK_STR(m.reply(), "\x1b[M##$");             /* release is button 3 */
+    m.term.mouse(MOUSE_MOTION, 0, 5, 5, 0, 0, 0);      /* 1000: no motion */
+    TL_CHECK_STR(m.reply(), "");
+    m.term.mouse(MOUSE_PRESS, 3, 0, 0, MOD_CTRL | MOD_SHIFT, 0, 0);
+    TL_CHECK_STR(m.reply(), "\x1b[M6!!");             /* 2 + 4 + 16 = 22 */
+    m.term.mouse(MOUSE_RELEASE, 3, 0, 0, 0, 0, 0);
+    m.reply();
+    m.term.mouse(MOUSE_PRESS, 4, 0, 0, 0, 0, 0);
+    TL_CHECK_STR(m.reply(), "\x1b[M`!!");             /* wheel up: 64 */
+    m.feed("\x1b[?1006h");
+    m.term.mouse(MOUSE_PRESS, 1, 99, 29, 0, 0, 0);
+    TL_CHECK_STR(m.reply(), "\x1b[<0;100;30M");
+    m.term.mouse(MOUSE_RELEASE, 1, 99, 29, 0, 0, 0);
+    TL_CHECK_STR(m.reply(), "\x1b[<0;100;30m");
+    m.feed("\x1b[?1002h");
+    m.term.mouse(MOUSE_MOTION, 0, 10, 10, 0, 0, 0);     /* no button held */
+    TL_CHECK_STR(m.reply(), "");
+    m.term.mouse(MOUSE_PRESS, 1, 10, 10, 0, 0, 0);
+    m.reply();
+    m.term.mouse(MOUSE_MOTION, 0, 11, 10, 0, 0, 0);
+    TL_CHECK_STR(m.reply(), "\x1b[<32;12;11M");
+    m.term.mouse(MOUSE_MOTION, 0, 11, 10, 0, 0, 0);     /* same cell */
+    TL_CHECK_STR(m.reply(), "");
+    m.term.mouse(MOUSE_RELEASE, 1, 11, 10, 0, 0, 0);
+    m.reply();
+    m.feed("\x1b[?1003h");
+    m.term.mouse(MOUSE_MOTION, 0, 1, 1, 0, 0, 0);
+    TL_CHECK_STR(m.reply(), "\x1b[<35;2;2M");
+    m.feed("\x1b[?1006l\x1b[?1015h");
+    m.term.mouse(MOUSE_PRESS, 2, 1, 1, 0, 0, 0);
+    TL_CHECK_STR(m.reply(), "\x1b[33;2;2M");
+    m.feed("\x1b[?1015l\x1b[?1016h");
+    m.term.mouse(MOUSE_PRESS, 1, 1, 1, 0, 37, 52);
+    TL_CHECK_STR(m.reply(), "\x1b[<0;38;53M");
+    /* Default encoding cannot express columns past 223. */
+    m.feed("\x1b[?1016l\x1b[?1003l");
+    T w(300, 5);
+    w.feed("\x1b[?1000h");
+    TL_CHECK(w.term.mouse(MOUSE_PRESS, 1, 250, 1, 0, 0, 0));
+    TL_CHECK_STR(w.reply(), "");
+    w.feed("\x1b[?1005h");
+    w.term.mouse(MOUSE_PRESS, 1, 250, 1, 0, 0, 0);
+    TL_CHECK_STR(w.reply(), "\x1b[M \xc4\x9b\"");    /* 32+251 = U+011B */
+    /* X10 mode: presses only, no modifiers. */
+    T x(10, 5);
+    x.feed("\x1b[?9h");
+    x.term.mouse(MOUSE_PRESS, 1, 0, 0, MOD_CTRL, 0, 0);
+    TL_CHECK_STR(x.reply(), "\x1b[M !!");
+    x.term.mouse(MOUSE_RELEASE, 1, 0, 0, 0, 0, 0);
+    TL_CHECK_STR(x.reply(), "");
+
     /* Focus reports only when asked for. */
     p.term.focus(true);
     TL_CHECK_STR(p.reply(), "");

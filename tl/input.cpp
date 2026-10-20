@@ -166,3 +166,97 @@ void Terminal::focus(bool in)
 }
 
 } /* namespace tl */
+
+namespace tl {
+
+/* xterm mouse reporting: modes 9 (X10), 1000 (press and release), 1002
+ * (plus motion with a button held), 1003 (all motion); encodings
+ * default, 1005 (UTF-8), 1006 (SGR), 1015 (urxvt), 1016 (SGR pixels). */
+bool Terminal::mouse(MouseAction action, int button, int col, int row, unsigned mods,
+                     int px, int py)
+{
+    int mode = modes_.mouse;
+    if (!mode)
+        return false;
+    bool wheel = button >= 4 && button <= 7;
+    if (action == MOUSE_PRESS && button >= 1 && button <= 3)
+        mouse_buttons_ |= 1 << (button - 1);
+    if (action == MOUSE_RELEASE && button >= 1 && button <= 3)
+        mouse_buttons_ &= ~(1 << (button - 1));
+
+    /* Which events each mode reports. */
+    if (mode == 9 && (action != MOUSE_PRESS || wheel))
+        return true;                            /* consumed, not reported */
+    if (action == MOUSE_RELEASE && wheel)
+        return true;
+    if (action == MOUSE_MOTION) {
+        if (mode < 1002)
+            return true;
+        int held = mouse_buttons_;
+        if (mode == 1002 && !held)
+            return true;
+        if (col == mouse_last_col_ && row == mouse_last_row_ && modes_.mouse_encoding != 1016)
+            return true;                        /* same cell: nothing new */
+        button = held & 1 ? 1 : held & 2 ? 2 : held & 4 ? 3 : 0;
+    }
+    mouse_last_col_ = col;
+    mouse_last_row_ = row;
+
+    int cb;
+    if (button == 0)
+        cb = 3;                                 /* motion with no button */
+    else if (wheel)
+        cb = 64 + (button - 4);
+    else if (button >= 8)
+        cb = 128 + (button - 8);
+    else
+        cb = button - 1;
+    bool sgr = modes_.mouse_encoding == 1006 || modes_.mouse_encoding == 1016;
+    if (action == MOUSE_RELEASE && !sgr)
+        cb = 3;                                 /* legacy: release does not say which */
+    if (action == MOUSE_MOTION)
+        cb += 32;
+    if (mode != 9) {
+        if (mods & MOD_SHIFT) cb += 4;
+        if (mods & (MOD_ALT | MOD_META)) cb += 8;
+        if (mods & MOD_CTRL) cb += 16;
+    }
+    int x = col + 1, y = row + 1;
+    char b[64];
+    switch (modes_.mouse_encoding) {
+    case 1006:
+        sprintf(b, "\x1b[<%d;%d;%d%c", cb, x, y, action == MOUSE_RELEASE ? 'm' : 'M');
+        break;
+    case 1016:
+        sprintf(b, "\x1b[<%d;%d;%d%c", cb, px + 1, py + 1, action == MOUSE_RELEASE ? 'm' : 'M');
+        break;
+    case 1015:
+        sprintf(b, "\x1b[%d;%d;%dM", cb + 32, x, y);
+        break;
+    case 1005: {
+        Buffer u;
+        u.append("\x1b[M");
+        u.append_utf8((uint32_t)(cb + 32));
+        u.append_utf8((uint32_t)(x + 32));
+        u.append_utf8((uint32_t)(y + 32));
+        reply(u.c_str());
+        return true;
+    }
+    default:
+        /* One byte per value: positions past 223 cannot be sent. */
+        if (x > 223 || y > 223)
+            return true;
+        b[0] = 0x1b;
+        b[1] = '[';
+        b[2] = 'M';
+        b[3] = (char)(cb + 32);
+        b[4] = (char)(x + 32);
+        b[5] = (char)(y + 32);
+        host_->write_pty((const uint8_t*)b, 6);
+        return true;
+    }
+    reply(b);
+    return true;
+}
+
+} /* namespace tl */
