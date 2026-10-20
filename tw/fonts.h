@@ -6,6 +6,7 @@
 #ifndef TW_FONTS_H
 #define TW_FONTS_H
 
+#include "bdf.h"
 #include "tw.h"
 
 #include <X11/Xlib.h>
@@ -59,9 +60,32 @@ public:
     const CoreFont& face(int f) const { return faces_[f]; }
     bool has_face(int f) const { return faces_[f].loaded(); }
 
+    /* Load the bundled BDF fonts that suit the cell size from dir: the
+     * misc-fixed WxH.bdf and WxHB.bdf of the cell, or the largest that
+     * fits inside it. Call after load(). */
+    bool add_fallback_dir(const char* dir);
+    /* Use a cell size without any core X font (tests, client-side
+     * renderers that draw only bundled fonts). */
+    void set_cell(int cell_w, int cell_h, int ascent)
+    {
+        cw_ = cell_w;
+        ch_ = cell_h;
+        ascent_ = ascent;
+        serial_++;
+    }
+    bool has_fallback() const { return bdf_[FACE_REGULAR].loaded(); }
+    const BdfFont& fallback(int f) const { return bdf_[f]; }
+    /* The fallback font that draws cp in this face; *synth_bold is set
+     * when bold has to be made from the regular face. */
+    const BdfFont* bdf_for(int face, uint32_t cp, bool* synth_bold) const;
+    /* Changes whenever the faces change, so renderers can drop glyphs. */
+    int serial() const { return serial_; }
+
 private:
     CoreFont faces_[FACE_COUNT];
+    BdfFont bdf_[FACE_COUNT];
     int cw_, ch_, ascent_;
+    int serial_;
 };
 
 /* Builtin glyphs: box drawing, block elements, DEC scan lines. Rectangles

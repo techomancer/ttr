@@ -164,20 +164,26 @@ $(B)/tp_test_tp.o: $(B)/.dir tp/test/test_tp.cpp tp/tp.h
 	$(COMPILE) -c tp/test/test_tp.cpp -o $@
 
 # tw, the text window drawing engine and its TwGrid widget (tw/DESIGN.md).
-TW_OBJS = $(B)/tw_core_render.o \
+TW_OBJS = $(B)/tw_bdf.o \
+	$(B)/tw_core_render.o \
 	$(B)/tw_fonts.o \
+	$(B)/tw_glyphs.o \
 	$(B)/tw_grid_widget.o \
 	$(B)/tw_palette.o \
 	$(B)/tw_surface.o
-TW_H = tw/tw.h tw/fonts.h tw/renderer.h tw/palette.h tw/surface.h
+TW_H = tw/tw.h tw/bdf.h tw/fonts.h tw/glyphs.h tw/renderer.h tw/palette.h tw/surface.h
 
 $(B)/libtw.a: $(TW_OBJS)
 	rm -f $@
 	$(AR) rc $@ $(TW_OBJS)
 
+$(B)/tw_bdf.o: $(B)/.dir tw/bdf.cpp tw/bdf.h tw/tw.h
+	$(COMPILE) -c tw/bdf.cpp -o $@
+$(B)/tw_glyphs.o: $(B)/.dir tw/glyphs.cpp $(TW_H)
+	$(COMPILE) -c tw/glyphs.cpp -o $@
 $(B)/tw_core_render.o: $(B)/.dir tw/core_render.cpp $(TW_H)
 	$(COMPILE) -c tw/core_render.cpp -o $@
-$(B)/tw_fonts.o: $(B)/.dir tw/fonts.cpp tw/fonts.h tw/tw.h
+$(B)/tw_fonts.o: $(B)/.dir tw/fonts.cpp tw/fonts.h tw/bdf.h tw/tw.h
 	$(COMPILE) -c tw/fonts.cpp -o $@
 $(B)/tw_grid_widget.o: $(B)/.dir tw/grid_widget.cpp tw/grid_widget.h $(TW_H)
 	$(COMPILE) -c tw/grid_widget.cpp -o $@
@@ -185,6 +191,30 @@ $(B)/tw_palette.o: $(B)/.dir tw/palette.cpp tw/palette.h tw/tw.h
 	$(COMPILE) -c tw/palette.cpp -o $@
 $(B)/tw_surface.o: $(B)/.dir tw/surface.cpp $(TW_H)
 	$(COMPILE) -c tw/surface.cpp -o $@
+
+# The Unicode fonts ttrt draws with where the X server has none (IRIX): the
+# public domain X.org misc-fixed fonts in their ISO 10646 BDF form.
+TW_FONTS = third_party/misc-misc/6x13.bdf third_party/misc-misc/6x13B.bdf \
+	third_party/misc-misc/7x13.bdf third_party/misc-misc/7x13B.bdf \
+	third_party/misc-misc/7x14.bdf third_party/misc-misc/7x14B.bdf \
+	third_party/misc-misc/8x13.bdf third_party/misc-misc/8x13B.bdf \
+	third_party/misc-misc/9x15.bdf third_party/misc-misc/9x15B.bdf \
+	third_party/misc-misc/9x18.bdf third_party/misc-misc/9x18B.bdf \
+	third_party/misc-misc/10x20.bdf third_party/misc-misc/6x12.bdf \
+	third_party/misc-misc/6x10.bdf third_party/misc-misc/6x9.bdf \
+	third_party/misc-misc/5x8.bdf third_party/misc-misc/5x7.bdf
+
+# tw tests that need no display: "make tw-test".
+TW_TEST_OBJS = $(B)/tw_bdf.o $(B)/tw_fonts.o $(B)/tw_glyphs.o $(B)/tw_test_tw.o
+
+$(B)/tw_test: $(TW_TEST_OBJS)
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TW_TEST_OBJS) -lX11
+
+tw-test: $(B)/tw_test
+	$(B)/tw_test third_party/misc-misc
+
+$(B)/tw_test_tw.o: $(B)/.dir tw/test/test_tw.cpp $(TW_H)
+	$(COMPILE) -c tw/test/test_tw.cpp -o $@
 
 # ttrt, the terminal (ttrt/DESIGN.md): tl + tp + tw and a Motif window.
 TTRT_OBJS = $(B)/ttrt_main.o \
@@ -198,7 +228,7 @@ $(B)/ttrt: $(TTRT_OBJS) $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a
 
 $(B)/ttrt_main.o: $(B)/.dir src/ttrt/main.cpp src/ttrt/source.h tw/grid_widget.h $(TW_H) \
 		$(TL_TERMINAL_H) tp/tp.h
-	$(COMPILE) -c src/ttrt/main.cpp -o $@
+	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrt/main.cpp -o $@
 $(B)/ttrt_source.o: $(B)/.dir src/ttrt/source.cpp src/ttrt/source.h tw/tw.h $(TL_TERMINAL_H)
 	$(COMPILE) -c src/ttrt/source.cpp -o $@
 
@@ -419,6 +449,9 @@ install: $(B)/ttr $(B)/ttrt
 	rm -f $(DESTDIR)$(BINDIR)/ttrt
 	cp $(B)/ttrt $(DESTDIR)$(BINDIR)/ttrt
 	chmod 755 $(DESTDIR)$(BINDIR)/ttrt
+	mkdir -p $(DESTDIR)$(DATADIR)/fonts
+	cp $(TW_FONTS) third_party/misc-misc/COPYING $(DESTDIR)$(DATADIR)/fonts
+	chmod 644 $(DESTDIR)$(DATADIR)/fonts/*
 	cp dist/ttr-session $(DESTDIR)$(BINDIR)/ttr-session
 	chmod 755 $(DESTDIR)$(BINDIR)/ttr-session
 	cp dist/ttr.desktop $(DESTDIR)$(XSESSIONDIR)/ttr.desktop

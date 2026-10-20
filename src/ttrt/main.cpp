@@ -28,6 +28,10 @@
 #include <Xm/ScrollBar.h>
 #include <Xm/Separator.h>
 
+#if !defined(TTR_DATADIR)
+#define TTR_DATADIR "/usr/share/ttr"
+#endif
+
 namespace {
 
 /* Read at most this much per wakeup before letting X events through. */
@@ -860,6 +864,46 @@ const char* pick_term()
     return "xterm";
 }
 
+/* Where the bundled Unicode fonts are: next to the program in a source
+ * tree (build/ttrt -> third_party/misc-misc), else the installed copy. */
+void font_dirs(const char* argv0, char* out, size_t len)
+{
+    char prog_dir[600];
+    prog_dir[0] = 0;
+    if (strchr(argv0, '/')) {
+        strncpy(prog_dir, argv0, sizeof(prog_dir) - 1);
+        prog_dir[sizeof(prog_dir) - 1] = 0;
+        char* slash = strrchr(prog_dir, '/');
+        *slash = 0;
+    } else {
+        const char* path = getenv("PATH");
+        while (path && *path) {
+            const char* colon = strchr(path, ':');
+            size_t l = colon ? (size_t)(colon - path) : strlen(path);
+            char cand[700];
+            if (l < 600) {
+                memcpy(cand, path, l);
+                sprintf(cand + l, "/%.60s", argv0);
+                if (access(cand, X_OK) == 0) {
+                    memcpy(prog_dir, path, l);
+                    prog_dir[l] = 0;
+                    break;
+                }
+            }
+            if (!colon)
+                break;
+            path = colon + 1;
+        }
+    }
+    const char* env = getenv("TTRT_FONTS");
+    if (strlen(prog_dir) > 400)
+        prog_dir[0] = 0;
+    sprintf(out, "%.200s%s%.400s/../third_party/misc-misc:%.400s/../share/ttr/fonts:%.200s/fonts",
+            env ? env : "", env ? ":" : "", prog_dir[0] ? prog_dir : ".",
+            prog_dir[0] ? prog_dir : ".", TTR_DATADIR);
+    (void)len;
+}
+
 const char* pick_font(Display* dpy)
 {
     for (int i = 0; k_fonts[i]; i++) {
@@ -939,7 +983,10 @@ int main(int argc, char** argv)
 
     Arg args[16];
     Cardinal n = 0;
+    static char fdirs[2048];
+    font_dirs(argv[0], fdirs, sizeof(fdirs));
     XtSetArg(args[n], TwNfont, font); n++;
+    XtSetArg(args[n], TwNfallbackFonts, fdirs); n++;
     XtSetArg(args[n], TwNsource, (tw::Source*)&a->src); n++;
     XtSetArg(args[n], XmNtopAttachment, bar ? XmATTACH_WIDGET : XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNtopWidget, bar); n++;

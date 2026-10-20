@@ -30,8 +30,12 @@ public:
     Surface();
     ~Surface();
 
+    /* Where the bundled BDF fonts are: directories separated by ':', tried
+     * in order. Set before set_fonts. */
+    void set_fallback_dirs(const char* dirs);
     /* Fonts first: their cell size decides how many cells fit. */
     bool set_fonts(Display* dpy, const char* regular, const char* bold);
+    bool has_fallback_font() const { return fonts_.has_fallback(); }
     int cell_width() const { return fonts_.cell_width(); }
     int cell_height() const { return fonts_.cell_height(); }
 
@@ -98,6 +102,7 @@ private:
     CellData* row_buf_;
     int row_cap_;
     int stat_cells_;
+    char fallback_dirs_[1024];
 
     Surface(const Surface&);
     Surface& operator=(const Surface&);

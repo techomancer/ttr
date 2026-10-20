@@ -22,6 +22,7 @@ struct TwGridPart {
     tw::Source* source;
     String font;
     String bold_font;
+    String fallback_fonts;
     int columns;
     int rows;
     int frame_delay;
@@ -115,6 +116,8 @@ XtResource k_resources[] = {
       OFF(font), (String)XtRString, (XtPointer)"fixed" },
     { (String)TwNboldFont, (String)TwCFont, (String)XtRString, sizeof(String),
       OFF(bold_font), (String)XtRImmediate, (XtPointer)0 },
+    { (String)TwNfallbackFonts, (String)TwCFallbackFonts, (String)XtRString, sizeof(String),
+      OFF(fallback_fonts), (String)XtRImmediate, (XtPointer)0 },
     { (String)TwNcolumns, (String)TwCColumns, (String)XtRInt, sizeof(int),
       OFF(columns), (String)XtRImmediate, (XtPointer)80 },
     { (String)TwNrows, (String)TwCRows, (String)XtRInt, sizeof(int),
@@ -156,6 +159,7 @@ void preferred(TwGridWidget g, Dimension* w, Dimension* h)
 void load_fonts(TwGridWidget g)
 {
     Display* dpy = XtDisplay((Widget)g);
+    g->grid.surface->set_fallback_dirs(g->grid.fallback_fonts);
     if (!g->grid.surface->set_fonts(dpy, g->grid.font, g->grid.bold_font)) {
         fprintf(stderr, "TwGrid: cannot load font \"%s\", using fixed\n",
                 g->grid.font ? g->grid.font : "");
@@ -271,7 +275,8 @@ Boolean set_values(Widget old, Widget req, Widget nw, ArgList, Cardinal*)
     TwGridWidget o = (TwGridWidget)old;
     TwGridWidget g = (TwGridWidget)nw;
     Boolean redisplay = False;
-    if (o->grid.font != g->grid.font || o->grid.bold_font != g->grid.bold_font) {
+    if (o->grid.font != g->grid.font || o->grid.bold_font != g->grid.bold_font ||
+        o->grid.fallback_fonts != g->grid.fallback_fonts) {
         load_fonts(g);
         do_resize(nw);
         redisplay = True;

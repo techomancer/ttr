@@ -4,7 +4,13 @@ Status: milestone 1 implemented 2026-10-20: `tw.h`, the Surface with
 frame scheduling, CoreRender with core fonts and builtin box drawing and
 block glyphs, the Palette for PseudoColor and TrueColor, and the TwGrid
 widget. Verified on the emulated Indy's 8-bit Xsgi (native IRIX build and
-the Linux build over the network) and on Linux.
+the Linux build over the network) and on Linux. Milestone 2 implemented
+the same day: the BDF reader, the glyph cache (combining marks composed
+into their base cell, synthetic bold), the bundled misc-fixed fonts
+(`third_party/misc-misc`, matched to the cell size), and depth-1 pixmap
+pages with XCopyPlane in CoreRender. Not yet: a CJK fallback, and a
+pre-indexed font format (parsing a 1 MB BDF takes about 0.25 s on an
+emulated R4400 at startup).
 
 `tw` draws a grid of character cells into an X window, fast on an Indy
 and good-looking on a current Linux desktop. It knows nothing about

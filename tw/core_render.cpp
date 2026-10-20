@@ -7,10 +7,13 @@
  * rectangles; scrolls are XCopyArea. One GC; its font, foreground and
  * background are changed only when they differ.
  */
+#include "glyphs.h"
 #include "palette.h"
 #include "renderer.h"
 
+#include <stdlib.h>
 #include <string.h>
+#include <X11/Xutil.h>
 
 namespace tw {
 
@@ -29,9 +32,17 @@ uint32_t mix(uint32_t fg, uint32_t bg, int quarter)
 
 class CoreRender : public Renderer {
 public:
-    CoreRender() : dpy_(0), win_(0), gc_(0), fonts_(0), fid_(0), fg_(~0UL), bg_(~0UL) {}
+    CoreRender()
+        : dpy_(0), win_(0), gc_(0), gc1_(0), fonts_(0), fid_(0), fg_(~0UL), bg_(~0UL),
+          n_pages_(0), cache_gen_(-1), font_serial_(-1)
+    {
+        memset(&g_, 0, sizeof(g_));
+    }
     ~CoreRender()
     {
+        drop_pages();
+        if (gc1_)
+            XFreeGC(dpy_, gc1_);
         if (gc_)
             XFreeGC(dpy_, gc_);
     }
@@ -46,10 +57,20 @@ public:
         XGCValues v;
         v.graphics_exposures = True;    /* copies from obscured parts expose */
         gc_ = XCreateGC(dpy, win, GCGraphicsExposures, &v);
+        cache_.configure(fonts, fonts->cell_width(), fonts->cell_height(), fonts->ascent());
+        font_serial_ = fonts->serial();
         return gc_ != 0;
     }
 
-    void set_geometry(const Geometry& g) { g_ = g; }
+    void set_geometry(const Geometry& g)
+    {
+        bool cell_changed = g.cell_w != g_.cell_w || g.cell_h != g_.cell_h || g.ascent != g_.ascent;
+        g_ = g;
+        if (cell_changed || font_serial_ != fonts_->serial()) {
+            cache_.configure(fonts_, g.cell_w, g.cell_h, g.ascent);
+            font_serial_ = fonts_->serial();
+        }
+    }
 
     void fill_px(int x, int y, int w, int h, uint32_t rgb)
     {
@@ -101,8 +122,23 @@ public:
                 i = j;
                 continue;
             }
-            if (builtin_has(cp)) {
+            if (builtin_has(cp) && !c.cluster) {
                 draw_builtin(cp, cx, py, cw * g_.cell_w, st);
+                i++;
+                continue;
+            }
+            if (c.cluster) {
+                /* Combining marks: compose base and marks from the bundled
+                 * fonts, or at least draw the base. */
+                uint32_t cps[TW_CLUSTER_MAX];
+                int ncp = clusters ? clusters->cluster(y, x + i, cps, TW_CLUSTER_MAX) : 0;
+                if (ncp <= 0) {
+                    cps[0] = cp;
+                    ncp = 1;
+                }
+                int face = (st.flags & S_BOLD) ? FACE_BOLD : FACE_REGULAR;
+                if (!cached_glyph(face, cps, ncp, cw == 2, cx, py, st))
+                    missing(cx, py, cw, st);
                 i++;
                 continue;
             }
@@ -111,7 +147,7 @@ public:
             if (cw == 1 && f.has(cp)) {
                 /* A stretch of narrow glyphs in this font: one image string. */
                 int j = i;
-                while (j < n && cells[j].width == 1 && cells[j].cp > ' ' &&
+                while (j < n && cells[j].width == 1 && cells[j].cp > ' ' && !cells[j].cluster &&
                        !builtin_has(cells[j].cp) && f.has(cells[j].cp))
                     j++;
                 image_text(f, cells + i, j - i, cx, py, st, face == FACE_REGULAR && (st.flags & S_BOLD));
@@ -124,11 +160,10 @@ public:
                 i++;
                 continue;
             }
-            /* Not in the font: a hollow box, like a missing glyph. */
-            fill_px(cx, py, cw * g_.cell_w, g_.cell_h, st.bg);
-            set_fg(st.fg);
-            XDrawRectangle(dpy_, win_, gc_, cx + 1, py + 1, (unsigned)(cw * g_.cell_w - 3),
-                           (unsigned)(g_.cell_h - 3));
+            /* Not in the server font: the bundled fonts, else a box. */
+            int bface = (st.flags & S_BOLD) ? FACE_BOLD : FACE_REGULAR;
+            if (!cached_glyph(bface, &cp, 1, cw == 2, cx, py, st))
+                missing(cx, py, cw, st);
             i++;
         }
         decorate(px, py, n, st);
@@ -176,6 +211,97 @@ public:
     void flush() { XFlush(dpy_); }
 
 private:
+    /* Glyph masks live on the server in depth-1 pixmap pages of fixed
+     * slots (two cells wide, for wide glyphs); a glyph is drawn with one
+     * XCopyPlane, which paints foreground and background like image text. */
+    enum { PAGE_COLS = 32, MAX_PAGES = 24 };
+    struct Page {
+        Pixmap pm;
+        int used;
+    };
+
+    int slot_w() const { return 2 * g_.cell_w; }
+    int page_rows() const { int r = 512 / (g_.cell_h > 0 ? g_.cell_h : 16); return r < 1 ? 1 : r; }
+
+    void drop_pages()
+    {
+        for (int i = 0; i < n_pages_; i++)
+            XFreePixmap(dpy_, pages_[i].pm);
+        n_pages_ = 0;
+    }
+
+    /* Put a mask on the server; false if there is no room left. */
+    bool upload(CachedGlyph* gl)
+    {
+        if (cache_gen_ != cache_.generation()) {
+            drop_pages();
+            cache_gen_ = cache_.generation();
+        }
+        int per_page = PAGE_COLS * page_rows();
+        if (n_pages_ == 0 || pages_[n_pages_ - 1].used >= per_page) {
+            if (n_pages_ == MAX_PAGES) {
+                cache_.clear();                 /* start over; this glyph is gone too */
+                return false;
+            }
+            Page& p = pages_[n_pages_];
+            p.pm = XCreatePixmap(dpy_, win_, (unsigned)(PAGE_COLS * slot_w()),
+                                 (unsigned)(page_rows() * g_.cell_h), 1);
+            p.used = 0;
+            if (!gc1_) {
+                XGCValues v;
+                v.foreground = 1;
+                v.background = 0;
+                v.graphics_exposures = False;
+                gc1_ = XCreateGC(dpy_, p.pm, GCForeground | GCBackground | GCGraphicsExposures, &v);
+            }
+            n_pages_++;
+        }
+        Page& p = pages_[n_pages_ - 1];
+        int slot = p.used++;
+        int sx = (slot % PAGE_COLS) * slot_w(), sy = (slot / PAGE_COLS) * g_.cell_h;
+        XImage* im = XCreateImage(dpy_, 0, 1, XYBitmap, 0, (char*)cache_.bits(gl),
+                                  (unsigned)gl->w, (unsigned)gl->h, 8, gl->stride);
+        if (!im)
+            return false;
+        im->byte_order = MSBFirst;
+        im->bitmap_bit_order = MSBFirst;
+        XPutImage(dpy_, p.pm, gc1_, im, 0, 0, sx, sy, (unsigned)gl->w, (unsigned)gl->h);
+        im->data = 0;                           /* the cache owns the bits */
+        XDestroyImage(im);
+        gl->handle_a = n_pages_ - 1;
+        gl->handle_b = slot;
+        return true;
+    }
+
+    bool cached_glyph(int face, const uint32_t* cps, int n, bool wide, int x, int y,
+                      const CellStyle& st)
+    {
+        CachedGlyph* gl = cache_.get(face, cps, n, wide);
+        if (!gl || !gl->found)
+            return false;
+        if (cache_gen_ != cache_.generation() || gl->handle_a < 0) {
+            if (!upload(gl)) {
+                gl = cache_.get(face, cps, n, wide);
+                if (!gl || !gl->found || !upload(gl))
+                    return false;
+            }
+        }
+        set_fg(st.fg);
+        set_bg(st.bg);
+        const Page& p = pages_[gl->handle_a];
+        int sx = (gl->handle_b % PAGE_COLS) * slot_w(), sy = (gl->handle_b / PAGE_COLS) * g_.cell_h;
+        XCopyPlane(dpy_, p.pm, win_, gc_, sx, sy, (unsigned)gl->w, (unsigned)gl->h, x, y, 1);
+        return true;
+    }
+
+    void missing(int x, int y, int cw, const CellStyle& st)
+    {
+        fill_px(x, y, cw * g_.cell_w, g_.cell_h, st.bg);
+        set_fg(st.fg);
+        XDrawRectangle(dpy_, win_, gc_, x + 1, y + 1, (unsigned)(cw * g_.cell_w - 3),
+                       (unsigned)(g_.cell_h - 3));
+    }
+
     void set_fg(uint32_t rgb)
     {
         unsigned long p = palette_.pixel(rgb);
@@ -312,11 +438,17 @@ private:
     Display* dpy_;
     Window win_;
     GC gc_;
+    GC gc1_;                    /* for the depth-1 pages */
     const Fonts* fonts_;
     Palette palette_;
     Geometry g_;
     Font fid_;
     unsigned long fg_, bg_;
+    GlyphCache cache_;
+    Page pages_[MAX_PAGES];
+    int n_pages_;
+    int cache_gen_;
+    int font_serial_;
 };
 
 } /* namespace */

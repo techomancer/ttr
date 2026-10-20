@@ -80,7 +80,8 @@ make
 ```
 
 In a checkout made without `--recursive`, run
-`git submodule update --init` first. The programs are `build/ttr` and
+`git submodule update --init` first (the submodules bring nanosvg and
+ttrt's Unicode fonts). The programs are `build/ttr` and
 `build/ttrt`, the terminal.
 
 Other build options:
@@ -144,6 +145,7 @@ This installs:
 |---|---|
 | `/usr/bin/ttr` | the window manager and desktop |
 | `/usr/bin/ttrt` | the terminal |
+| `/usr/share/ttr/fonts/` | ttrt's Unicode fonts (public domain misc-fixed BDF) |
 | `/usr/bin/ttr-session` | starts a ttr session (see below) |
 | `/usr/share/xsessions/ttr.desktop` | makes display managers offer "To The Roots" |
 | `/usr/share/ttr/schemes/` | the color themes |
@@ -342,8 +344,12 @@ None of these run again when ttr restarts in place.
 
 `ttrt` is ttr's terminal emulator: xterm-compatible, with scrollback that
 re-wraps when the window is resized, and fast on an 8-bit Indy display.
-It is early work: on IRIX, characters outside Latin-1 show as boxes (box
-drawing and block characters always work; ttrt draws them itself). To make it the terminal
+It is early work. Unicode text works everywhere: where the X server's
+fonts lack a character (IRIX servers have only Latin-1 fonts), ttrt draws
+it from the bundled misc-fixed fonts, which cover Latin, Greek, Cyrillic,
+Hebrew, Thai, many symbols, and combining accents. Chinese, Japanese and
+Korean characters are not in them and show as boxes. Box drawing and
+block characters always work; ttrt draws them itself. To make it the terminal
 ttr starts, set Settings > Start Menu > Terminal command to `ttrt`.
 
 ```sh
@@ -356,7 +362,7 @@ ttrt -e top                 # run a program instead of the shell
 | Option | Meaning |
 |---|---|
 | `-geometry COLSxROWS+X+Y` | size in characters and position |
-| `-fn FONT` | font (an X font name); default: the best fixed-width font the server has |
+| `-fn FONT` | font (an X font name); default: the best fixed-width font the server has. The bundled Unicode fonts are matched to its character size |
 | `-fg COLOR`, `-bg COLOR`, `-cr COLOR` | text, background and cursor colours |
 | `-sl LINES` | lines of scrollback (default 2000) |
 | `-ls`, `+ls` | start the shell as a login shell, or not |

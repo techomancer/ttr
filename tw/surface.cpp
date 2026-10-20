@@ -18,6 +18,13 @@ Surface::Surface()
       row_cap_(0), stat_cells_(0)
 {
     memset(&g_, 0, sizeof(g_));
+    fallback_dirs_[0] = 0;
+}
+
+void Surface::set_fallback_dirs(const char* dirs)
+{
+    strncpy(fallback_dirs_, dirs ? dirs : "", sizeof(fallback_dirs_) - 1);
+    fallback_dirs_[sizeof(fallback_dirs_) - 1] = 0;
 }
 
 Surface::~Surface()
@@ -31,6 +38,22 @@ bool Surface::set_fonts(Display* dpy, const char* regular, const char* bold)
 {
     if (!fonts_.load(dpy, regular, bold))
         return false;
+    /* The bundled fonts: the first directory that has a suitable size. */
+    const char* p = fallback_dirs_;
+    while (*p) {
+        const char* colon = strchr(p, ':');
+        size_t len = colon ? (size_t)(colon - p) : strlen(p);
+        char dir[700];
+        if (len > 0 && len < sizeof(dir)) {
+            memcpy(dir, p, len);
+            dir[len] = 0;
+            if (fonts_.add_fallback_dir(dir))
+                break;
+        }
+        if (!colon)
+            break;
+        p = colon + 1;
+    }
     g_.cell_w = fonts_.cell_width();
     g_.cell_h = fonts_.cell_height();
     g_.ascent = fonts_.ascent();

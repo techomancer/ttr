@@ -88,12 +88,51 @@ bool CoreFont::has(uint32_t cp) const
 
 /* ---- Fonts --------------------------------------------------------------- */
 
-Fonts::Fonts() : cw_(0), ch_(0), ascent_(0) {}
+Fonts::Fonts() : cw_(0), ch_(0), ascent_(0), serial_(0) {}
 
 void Fonts::unload()
 {
-    for (int i = 0; i < FACE_COUNT; i++)
+    for (int i = 0; i < FACE_COUNT; i++) {
         faces_[i].unload();
+        bdf_[i].unload();
+    }
+}
+
+bool Fonts::add_fallback_dir(const char* dir)
+{
+    if (!dir || !*dir || cw_ <= 0)
+        return false;
+    serial_++;
+    /* The misc-fixed sizes, largest first. */
+    static const int sizes[][2] = {
+        { 10, 20 }, { 9, 18 }, { 9, 15 }, { 8, 13 }, { 7, 14 }, { 7, 13 }, { 6, 13 },
+        { 6, 12 }, { 6, 10 }, { 6, 9 }, { 5, 8 }, { 5, 7 }, { 4, 6 }
+    };
+    char path[700];
+    for (unsigned i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++) {
+        int w = sizes[i][0], h = sizes[i][1];
+        if (w > cw_ || h > ch_)
+            continue;
+        sprintf(path, "%.600s/%dx%d.bdf", dir, w, h);
+        if (!bdf_[FACE_REGULAR].load(path))
+            continue;
+        sprintf(path, "%.600s/%dx%dB.bdf", dir, w, h);
+        bdf_[FACE_BOLD].load(path);
+        return true;
+    }
+    return false;
+}
+
+const BdfFont* Fonts::bdf_for(int face, uint32_t cp, bool* synth_bold) const
+{
+    *synth_bold = false;
+    if (face == FACE_BOLD && bdf_[FACE_BOLD].loaded() && bdf_[FACE_BOLD].has(cp))
+        return &bdf_[FACE_BOLD];
+    if (bdf_[FACE_REGULAR].loaded() && bdf_[FACE_REGULAR].has(cp)) {
+        *synth_bold = face == FACE_BOLD;
+        return &bdf_[FACE_REGULAR];
+    }
+    return 0;
 }
 
 /* "-misc-fixed-medium-r-..." with the weight field replaced. */
@@ -128,6 +167,7 @@ static bool xlfd_with_weight(const char* xlfd, const char* weight, char* out, si
 bool Fonts::load(Display* dpy, const char* regular, const char* bold)
 {
     unload();
+    serial_++;
     if (!faces_[FACE_REGULAR].load(dpy, regular))
         return false;
     const CoreFont& r = faces_[FACE_REGULAR];
