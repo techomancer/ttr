@@ -7,8 +7,10 @@
 
 /* nanosvg uses the C99 float math functions. IRIX 6.5 predates C99, so
  * map them to the double versions there. <math.h> is already included, so
- * its own declarations are not affected. Unverified on real IRIX. */
+ * its own declarations are not affected. It also calls strtoll, which
+ * IRIX's libc has but <stdlib.h> declares only in C99 mode. */
 #if defined(__sgi)
+extern "C" long long strtoll(const char*, char**, int);
 #undef sqrtf
 #undef fabsf
 #undef sinf

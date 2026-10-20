@@ -69,7 +69,9 @@ stop)
         exit 0
     fi
     echo "shutting IRIX down..."
-    $SH --timeout 60 run 'sync; sync; shutdown -p -g0 -y' >/dev/null 2>&1
+    # /etc/autologin.on is one-shot (clogin deletes it when it logs root in
+    # on the desktop); re-create it so the next boot lands on a desktop too.
+    $SH --timeout 60 run 'touch /etc/autologin.on; sync; sync; shutdown -p -g0 -y' >/dev/null 2>&1
     i=0
     while kill -0 "$PID" 2>/dev/null; do
         i=`expr $i + 1`

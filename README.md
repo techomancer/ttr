@@ -10,9 +10,10 @@ menus look like menus, and things stay where you put them. It is one small
 program, written in plain C++98, so that it also builds with old compilers
 such as MIPSpro 7.4 on IRIX.
 
-**Status:** usable day to day on Linux under X11. IRIX is a goal: the code
-follows its compiler and Motif limits, but it has not been built on IRIX
-yet. A Wayland mode is planned for later (Linux only).
+**Status:** usable day to day on Linux under X11. On IRIX 6.5 it builds
+and links with MIPSpro 7.4 (see "Building on IRIX"), but it has not been
+run as a window manager there yet. A Wayland mode is planned for later
+(Linux only).
 
 ## Features
 
@@ -102,11 +103,17 @@ libXpm and libpng, in the source directory:
 
 ```sh
 make B=build-irix CXX=CC WARNFLAGS= DBUS_CFLAGS= \
-     CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF -no_prelink -ptused" \
-     CPPFLAGS="-Isrc -DTTR_HAVE_XPM -DTTR_HAVE_SVG -DTTR_HAVE_PNG" \
-     LIBS="-lXm -lXt -lXpm -lpng -lX11 -lm"
+     CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF -no_prelink -ptused -woff 3970" \
+     CPPFLAGS="-Isrc -I/usr/Motif-2.1/include -DTTR_HAVE_XPM -DTTR_HAVE_SVG" \
+     LDFLAGS=-L/usr/Motif-2.1/lib32 LIBS="-lXm -lXt -lXpm -lX11 -lm"
 ```
 
+IRIX 6.5 installs Motif 1.2 as the default `Xm` headers and library; ttr
+needs Motif 2.1 (the `motif21_dev` product), which lives in
+`/usr/Motif-2.1`, hence the include and library paths. PNG icons are left
+out because the libpng in IRIX 6.5 (1.2.5) lacks the simplified API that
+ttr's PNG loader uses; XPM and SVG icons work. `-woff 3970` silences
+MIPSpro's warning about the pointer cast inside every `XtSetArg`.
 `B=build-irix` keeps the IRIX objects apart from a Linux build of the same
 tree, which matters when the tree is shared over NFS. `-no_prelink
 -ptused` makes MIPSpro instantiate templates in each object instead of

@@ -21,6 +21,7 @@ disk image, own control socket, so both can run at once.
 | File exchange | the ttr tree is the NFS export: guest `/shared` == this directory, read-write, mounted from the guest's `/etc/fstab` at boot. **noexec**: copy binaries to `/tmp` before running them |
 | IRIX build | `tools/irix-build.sh [target...]` builds with MIPSpro into `build-irix/` (gitignored, separate from the Linux `build/`) |
 | Monitor | `tools/mon.py "status" "cpu regs"` (iris monitor on 127.0.0.1:8889; `help` lists commands) |
+| Screenshot | `tools/irix-shot.sh [out.png]` (monitor `rex fbdump`, cropped to 1280x1024; view with the Read tool) |
 
 `ignore/` is outside version control; the tools and this skill are in the
 repository.
@@ -33,9 +34,18 @@ tools/iris.sh wait         # login prompt answers after ~1 minute
 tools/iris.sh status       # pid, listening ports, uname/uptime from the guest
 ```
 
-The CPU starts by itself and xdm brings up the X desktop (Xsgi on :0) a
-little after telnet. `/shared` is mounted by fstab; if it is missing,
-`tools/irix-sh.py mount-shared`.
+The CPU starts by itself and xdm brings up X (Xsgi on :0) a little after
+telnet. The login greeter (clogin) grabs the server, so X clients started
+from telnet hang until someone is logged in. Root autologin is set up:
+`/etc/autologin` holds `root` and the one-shot flag `/etc/autologin.on`
+makes clogin log root in at the next boot; clogin deletes the flag, and
+`tools/iris.sh stop` re-creates it before shutdown. The desktop (4Dwm,
+toolchest) is up about a minute after telnet; check with
+`ps -ef | grep 4Dwm`. If the greeter is showing instead, `touch
+/etc/autologin.on` and kill clogin; xdm restarts it and it logs in.
+
+`/shared` is mounted by fstab; if it is missing, `tools/irix-sh.py
+mount-shared`.
 
 ## Build
 
@@ -46,9 +56,15 @@ tools/irix-build.sh clean
 ```
 
 It runs, in the guest, `cd /shared && make B=build-irix CXX=CC ...` with
-`-n32 -O2 -LANG:exceptions=OFF -no_prelink -ptused`, `-DTTR_HAVE_XPM
--DTTR_HAVE_SVG -DTTR_HAVE_PNG` and `-lXm -lXt -lXpm -lpng -lX11 -lm`
-(override with `IRIX_CXXFLAGS`, `IRIX_CPPFLAGS`, `IRIX_LIBS`). The
+`-n32 -O2 -LANG:exceptions=OFF -no_prelink -ptused -woff 3970`,
+`-I/usr/Motif-2.1/include -DTTR_HAVE_XPM -DTTR_HAVE_SVG`,
+`-L/usr/Motif-2.1/lib32` and `-lXm -lXt -lXpm -lX11 -lm` (override with
+`IRIX_CXXFLAGS`, `IRIX_CPPFLAGS`, `IRIX_LDFLAGS`, `IRIX_LIBS`).
+`/usr/include/Xm` is Motif 1.2 on IRIX 6.5; Motif 2.1 (`motif21_dev`,
+libXm.so.2) is under `/usr/Motif-2.1` and is what ttr needs. libpng is
+1.2.5 there, too old for the simplified API in `src/x11/iconload.cpp`, so
+PNG stays off until that loader has a classic-API path. `-woff 3970`
+silences the one warning every `XtSetArg` of a pointer raises. The
 `-no_prelink -ptused` pair is required on the NFS share: MIPSpro's template
 prelinker cannot create its `ii_files/` lock files there. A single object
 takes a few seconds; the whole of ttr takes several minutes.
@@ -61,20 +77,35 @@ from Linux right away (`file build-irix/ttr` says MIPS N32 ELF).
 Binaries cannot be executed from `/shared`: copy to `/tmp` first.
 
 ```
-tools/iris.sh sh 'cp /shared/build-irix/ttr /tmp/ttr && /tmp/ttr; echo rc=$?'
+tools/iris.sh sh 'cp /shared/build-irix/ttr /tmp/ttr && chmod a+x /tmp/ttr && /tmp/ttr; echo rc=$?'
 ```
+
+The NFS copy loses the execute bit, hence the `chmod`.
 
 ttr has no `-help`; with 4Dwm still running it must report that another
 window manager owns the display and exit with status 1, which is a cheap
 smoke test of Xt, Motif and the settings code on IRIX.
 
 For X programs, the desktop on `:0.0` is reachable from any telnet session
-(`DISPLAY` is preset). The stock session runs `4Dwm`; to try ttr as the
-window manager, kill 4Dwm first (`ps -ef | grep 4Dwm`) and start
-`/tmp/ttr &` from the telnet session, or run it with `--replace` once that
-works on IRIX. Screenshots: iris monitor `shot FILE.png` if the build has
-it, else `xwd -root -display :0.0 > /shared/ignore/root.xwd` in the guest
-and convert on the host.
+(`DISPLAY` is preset). The stock session runs `4Dwm`. To run ttr as the
+window manager (verified 2026-10-19: frames, title bars and the taskbar
+appear around the toolchest and winterm):
+
+```
+tools/iris.sh sh 'p=`ps -ef | grep "[4]Dwm" | awk "{print \$2}"`; kill $p; sleep 3; (/tmp/ttr > /tmp/ttr.log 2>&1 &); sleep 15; ps -ef | grep "[t]tr"; cat /tmp/ttr.log'
+tools/irix-shot.sh ignore/shots/ttr.png
+```
+
+(`awk "{print \$2}"` needs the escaped dollar inside the double quotes
+of the irix-sh argument; `$2` unescaped is expanded by the guest shell.)
+A process started with `( cmd & )` survives the end of the telnet session.
+
+Known on IRIX: Xsgi runs an 8-bit PseudoColor default visual
+(`-pseudomap 4sight`). After 4Dwm exits the hardware colormap is no longer
+the one the clients drew with, and under ttr the screen stays dark blue:
+ttr does not yet install colormaps (ICCCM colormap management), which the
+WM owns on such servers. The window tree (`xwininfo -root -tree`) shows the
+frames regardless.
 
 The X session may have a screen saver; `/usr/bin/X11/xset s off` once
 after login if probes read black.
@@ -107,3 +138,8 @@ monitor confirms the guest is halted, kill it by pid.
   host (the NFS server maps root), so `make clean` on either side works.
 - `/tmp` in the guest is emptied at boot; `/var/tmp` persists.
 - The emulator's `prom.bin` warning at startup is harmless (embedded PROM).
+- `ignore/iris.toml` is read at start: a change (ports, `jitv2` threads,
+  RAM) needs `tools/iris.sh stop` and `start`.
+- A full ttr build takes about 6 minutes of guest time; one object a few
+  seconds. The Linux host shell helper's per-command timeout is 300 s by
+  default (`--timeout`), `tools/irix-build.sh` uses 7200.

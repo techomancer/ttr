@@ -6,10 +6,11 @@
 # Defaults are for Linux with gcc. Override on the command line, e.g.
 #
 #   make CXX=clang++
-#   make CXX=CC CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF" WARNFLAGS= \
-#        CPPFLAGS="-Isrc -DTTR_HAVE_XPM -DTTR_HAVE_SVG" DBUS_CFLAGS= \
-#        LIBS="-lXm -lXt -lXpm -lX11 -lm"
-#                                                             (IRIX, MIPSpro)
+#   make B=build-irix CXX=CC WARNFLAGS= DBUS_CFLAGS= \
+#        CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF -no_prelink -ptused -woff 3970" \
+#        CPPFLAGS="-Isrc -I/usr/Motif-2.1/include -DTTR_HAVE_XPM -DTTR_HAVE_SVG" \
+#        LDFLAGS=-L/usr/Motif-2.1/lib32 LIBS="-lXm -lXt -lXpm -lX11 -lm"
+#                                     (IRIX 6.5, MIPSpro; see README "Building on IRIX")
 #
 # TTR_HAVE_PNG, TTR_HAVE_XPM and TTR_HAVE_SVG enable icon files in those
 # formats; drop the define (and library) to build without one. SVG uses the
