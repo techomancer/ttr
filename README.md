@@ -416,7 +416,9 @@ The same names work as X resources of class `TTRt` (`TTRt*saveLines:
 5000`). The settings file wins over X resources, and the command line wins
 over both. The Settings dialog saves only what you change in it, and
 removes a line when you set it back to the default, so your X resources
-and command line options stay in charge of the rest.
+and command line options stay in charge of the rest. ttrt's menus and dialogs default
+to Helvetica and 17-pixel scroll bars, like ttr's; X resources such as
+`TTRt*XmScrollBar.width` change them.
 
 Keys: Shift+PageUp and Shift+PageDown scroll back and forth, and so does
 the mouse wheel (in full-screen programs the wheel sends arrow keys

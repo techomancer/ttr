@@ -1197,6 +1197,10 @@ int main(int argc, char** argv)
         (String)"*popupMenu*fontList: -*-helvetica-bold-r-normal--12-*",
         (String)"*settingsDialog*frame.title.fontList: -*-helvetica-bold-r-normal--12-*",
         (String)"*XmToggleButton.selectColor: #3c5a8c",
+        /* Motif's 11 pixels are hard to grab: ttr's 17 (Windows 2000's 16
+         * plus the bevel). ~/.Xresources still wins. */
+        (String)"*XmScrollBar.width: 17",
+        (String)"*XmScrollBar.height: 17",
         0
     };
     /* The command line as given, for merge_settings: Xt removes what it
