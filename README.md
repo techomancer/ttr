@@ -276,6 +276,9 @@ Start > Settings... opens the Settings dialog. Pick a category on the left:
 - **Colors:** the color theme, with a preview, and your own colors for the
   background, text and window frames.
 - **Taskbar:** clock format, how long notifications stay up.
+- **Terminal:** ttrt's font, colors, scrollback, shell, menu bar,
+  Backspace key and bell. New terminal windows use them; ttr does not
+  need to restart for them.
 - **Start Menu:** where programs come from, the terminal to use, shortcuts.
 - **Startup:** programs to start with ttr, and the startup script.
 - **XDG Autostart:** the desktop's autostart entries, off by default.
@@ -382,16 +385,40 @@ ttrt -e top                 # run a program instead of the shell
 | `-sl LINES` | lines of scrollback (default 2000) |
 | `-ls`, `+ls` | start the shell as a login shell, or not |
 | `-nomenu` | no menu bar |
+| `-vb` | flash the window instead of beeping |
 | `-title TEXT` | window title (programs can change it) |
+| `-xrm 'ttrt.NAME: VALUE'` | any setting below |
 | `-e PROGRAM ARGS...` | run a program instead of the shell; must come last |
 
-The same settings work as X resources of class `TTRt` (`TTRt*font`,
-`TTRt*foreground`, `TTRt*background`, `TTRt*cursorColor`,
-`TTRt*saveLines`, `TTRt*loginShell`, `TTRt*menuBar`).
+ttrt's settings are on ttr's Settings > Terminal page. It saves them in
+ttr's settings file as `ttrt.` lines, which you can also edit by hand:
+
+```
+ttrt.font: 9x15
+ttrt.foreground: wheat
+ttrt.bell: visual
+```
+
+| Setting | Values | Default |
+|---|---|---|
+| `font` | an X font name | the best fixed-width font the server has |
+| `foreground`, `background`, `cursorColor` | X color names or `#rrggbb` | `gray90`, `black`, the text color |
+| `saveLines` | lines of scrollback | `2000` |
+| `loginShell`, `menuBar` | `true`, `false` | `false`, `true` |
+| `boldIsBright` | `true`: bold text in the 8 basic colors uses the bright ones | `true` |
+| `backspace` | `del` or `bs`: what Backspace sends | `del` |
+| `bell` | `audible`, `visual` (flash), `off` | `audible` |
+
+The same names work as X resources of class `TTRt` (`TTRt*saveLines:
+5000`), so ttrt can be set up without ttr. The settings file wins over X
+resources, and the command line wins over both. The Terminal page writes
+only the settings you change from their defaults, so X resources keep
+working for the rest.
 
 Keys: Shift+PageUp and Shift+PageDown scroll back and forth, and so does
 the mouse wheel (in full-screen programs the wheel sends arrow keys
-instead). Typing scrolls back to the bottom. Backspace sends DEL.
+instead). Typing scrolls back to the bottom. Backspace sends DEL unless
+set to BS.
 
 Selecting and pasting works as in xterm:
 

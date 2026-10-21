@@ -1,8 +1,9 @@
 # ttrt: the ttr terminal
 
-Status: 2026-10-20. ttrt 0.1 runs (milestone 2 below): `tl/` through its
-milestone 3 plus key, paste and focus encoding, `tp/`, and `tw/`
-milestone 1.
+Status: 2026-10-20. Milestones 1-4 below are done: `tl/` through its
+milestone 3 plus key, paste and focus encoding, `tp/`, `tw/` milestones
+1 and 2, selection and clipboard, terminfo, packages, and the settings
+page. Next: the soft and GL renderers (milestone 5).
 
 ttrt is a Motif terminal emulator for IRIX and Linux. It is assembled
 from three reusable modules plus a thin application:
@@ -261,7 +262,21 @@ look in `~/.terminfo`. `COLORTERM=truecolor` only with a TrueColor visual.
 
 Settings live in ttr's settings store (a "Terminal" page in ttr's
 settings dialog) and as X resources (`TTRt*font`, `TTRt*renderer`,
-...), so ttrt also works stand-alone on a desktop without ttr. Command
+...), so ttrt also works stand-alone on a desktop without ttr.
+
+Implemented 2026-10-20: `src/core/termsettings.h` lists the settings
+(name and default) for both sides. In ttr's settings file they are
+`ttrt.<name>` lines; ttrt puts them into its resource database as
+`<app name>.<name>` (tight binding, so they reach the application's own
+resources and no Motif widget), over X resources, then parses its command
+line again with the same option table so the command line wins over the
+file. Options therefore name the application's resources (`.font`, not
+`*font`): `-fg` colours the terminal text and not the menu bar. The
+Terminal page (`src/shell/terminalpage.cpp`) writes only values that
+differ from the default and keeps a value's original text ("wheat",
+"9x15") unless the user changed it, so hand-written lines and X
+resources survive OK. ttrt reads the settings when a window opens;
+running windows keep theirs. Command
 line options follow xterm and xwsh where they overlap: `-e`, `-fn`,
 `-fg`, `-bg`, `-geometry`, `-title`, `-n`, `-sl`, `-ls`, `-hold`,
 `-console`, `-vb`, plus `-renderer`.
@@ -288,4 +303,5 @@ line options follow xterm and xwsh where they overlap: `-e`, `-fn`,
    STRING and TEXT targets, which IRIX's xwsh and Motif clients read; a
    selection is dropped when text under it changes, as in xterm.)
 4. Unicode on IRIX (tw milestone 2), settings page, terminfo, install.
+   (Done.)
 5. Soft and GL renderers (tw milestones 3-4), console mode, `-hold`.

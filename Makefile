@@ -86,6 +86,7 @@ OBJS = $(B)/main.o \
 	$(B)/shell_startuppage.o \
 	$(B)/shell_storagemenu.o \
 	$(B)/shell_taskbar.o \
+	$(B)/shell_terminalpage.o \
 	$(B)/shell_tray.o \
 	$(B)/shell_volume.o \
 	$(B)/shell_winmenu.o \
@@ -228,7 +229,9 @@ $(B)/tw_test_tw.o: $(B)/.dir tw/test/test_tw.cpp $(TW_H)
 
 # ttrt, the terminal (ttrt/DESIGN.md): tl + tp + tw and a Motif window.
 TTRT_OBJS = $(B)/ttrt_main.o \
-	$(B)/ttrt_source.o
+	$(B)/ttrt_source.o \
+	$(B)/core_settings.o \
+	$(B)/core_str.o
 
 ttrt: $(B)/ttrt
 
@@ -237,7 +240,7 @@ $(B)/ttrt: $(TTRT_OBJS) $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a
 		$(B)/libtp.a $(LIBS)
 
 $(B)/ttrt_main.o: $(B)/.dir src/ttrt/main.cpp src/ttrt/source.h tw/grid_widget.h $(TW_H) \
-		$(TL_TERMINAL_H) tp/tp.h
+		$(TL_TERMINAL_H) tp/tp.h $(CORE_H)
 	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrt/main.cpp -o $@
 $(B)/ttrt_source.o: $(B)/.dir src/ttrt/source.cpp src/ttrt/source.h tw/tw.h $(TL_TERMINAL_H)
 	$(COMPILE) -c src/ttrt/source.cpp -o $@
@@ -281,7 +284,7 @@ CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h \
 	src/core/settings.h src/core/shortcuts.h src/core/launch.h \
 	src/core/startup.h src/core/xdgautostart.h src/core/scale.h \
-	src/core/theme.h \
+	src/core/theme.h src/core/termsettings.h \
 	src/core/audio.h src/core/net.h src/core/storage.h src/core/notify.h
 X11_H = src/x11/wm.h src/x11/hints.h src/x11/config.h src/x11/xpainter.h \
 	src/x11/iconload.h src/x11/svg.h src/x11/keys.h \
@@ -292,7 +295,7 @@ SHELL_H = src/shell/shell.h src/shell/startmenu.h src/shell/taskbar.h \
 	src/shell/volume.h src/shell/netstatus.h src/shell/trayitem.h \
 	src/shell/storagemenu.h src/shell/popup.h src/shell/notifier.h \
 	src/shell/notifysrc.h src/shell/pickers.h src/shell/startuppage.h \
-	src/shell/colorpicker.h src/shell/colorspage.h
+	src/shell/colorpicker.h src/shell/colorspage.h src/shell/terminalpage.h
 
 $(B)/main.o: $(B)/.dir src/main.cpp $(X11_H) $(SHELL_H)
 	$(COMPILE) -c src/main.cpp -o $@
@@ -394,6 +397,10 @@ $(B)/shell_shortcutsdlg.o: $(B)/.dir src/shell/shortcutsdlg.cpp $(SHELL_H) \
 
 $(B)/shell_startmenu.o: $(B)/.dir src/shell/startmenu.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/startmenu.cpp -o $@
+
+$(B)/shell_terminalpage.o: $(B)/.dir src/shell/terminalpage.cpp $(SHELL_H) \
+		$(X11_H)
+	$(COMPILE) -c src/shell/terminalpage.cpp -o $@
 
 $(B)/shell_startuppage.o: $(B)/.dir src/shell/startuppage.cpp $(SHELL_H) \
 		$(X11_H)

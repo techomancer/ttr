@@ -97,6 +97,8 @@ uint32_t TermSource::background() const
 
 uint32_t TermSource::cursor_color() const
 {
+    if (have_cursor_)
+        return cursor_;
     return rgb(t_.modes().reverse ? t_.default_bg() : t_.default_fg());
 }
 

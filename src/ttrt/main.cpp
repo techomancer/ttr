@@ -9,6 +9,8 @@
 #include "../../tp/tp.h"
 #include "../../tw/grid_widget.h"
 #include "../../tw/surface.h"
+#include "core/settings.h"
+#include "core/termsettings.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -39,49 +41,70 @@ const size_t k_read_chunk = 16384;
 const size_t k_read_budget = 262144;
 
 struct Resources {
+    String font;
     String foreground;
     String background;
     String cursor_color;
     int scrollback;
     Boolean login_shell;
     Boolean menu_bar;
+    Boolean bold_is_bright;
+    String backspace;
+    String bell;
 };
 
+/* Names, classes and defaults come from core/termsettings.h, which ttr's
+ * Settings > Terminal page writes. */
 #define ROFF(f) XtOffsetOf(Resources, f)
+#define TS(i) (String)ttr::k_term_settings[ttr::i].name
+#define TSD(i) (XtPointer)ttr::k_term_settings[ttr::i].fallback
 XtResource k_resources[] = {
-    { (String)"foreground", (String)"Foreground", (String)XtRString, sizeof(String),
-      ROFF(foreground), (String)XtRString, (XtPointer)"gray90" },
-    { (String)"background", (String)"Background", (String)XtRString, sizeof(String),
-      ROFF(background), (String)XtRString, (XtPointer)"black" },
-    { (String)"cursorColor", (String)"CursorColor", (String)XtRString, sizeof(String),
-      ROFF(cursor_color), (String)XtRString, (XtPointer)0 },
-    { (String)"saveLines", (String)"SaveLines", (String)XtRInt, sizeof(int),
-      ROFF(scrollback), (String)XtRImmediate, (XtPointer)2000 },
-    { (String)"loginShell", (String)"LoginShell", (String)XtRBoolean, sizeof(Boolean),
-      ROFF(login_shell), (String)XtRImmediate, (XtPointer)False },
-    { (String)"menuBar", (String)"MenuBar", (String)XtRBoolean, sizeof(Boolean),
-      ROFF(menu_bar), (String)XtRImmediate, (XtPointer)True }
+    { TS(TS_FONT), (String)"Font", (String)XtRString, sizeof(String),
+      ROFF(font), (String)XtRString, TSD(TS_FONT) },
+    { TS(TS_FOREGROUND), (String)"Foreground", (String)XtRString, sizeof(String),
+      ROFF(foreground), (String)XtRString, TSD(TS_FOREGROUND) },
+    { TS(TS_BACKGROUND), (String)"Background", (String)XtRString, sizeof(String),
+      ROFF(background), (String)XtRString, TSD(TS_BACKGROUND) },
+    { TS(TS_CURSOR_COLOR), (String)"CursorColor", (String)XtRString, sizeof(String),
+      ROFF(cursor_color), (String)XtRString, TSD(TS_CURSOR_COLOR) },
+    { TS(TS_SAVE_LINES), (String)"SaveLines", (String)XtRInt, sizeof(int),
+      ROFF(scrollback), (String)XtRString, TSD(TS_SAVE_LINES) },
+    { TS(TS_LOGIN_SHELL), (String)"LoginShell", (String)XtRBoolean, sizeof(Boolean),
+      ROFF(login_shell), (String)XtRString, TSD(TS_LOGIN_SHELL) },
+    { TS(TS_MENU_BAR), (String)"MenuBar", (String)XtRBoolean, sizeof(Boolean),
+      ROFF(menu_bar), (String)XtRString, TSD(TS_MENU_BAR) },
+    { TS(TS_BOLD_IS_BRIGHT), (String)"BoldIsBright", (String)XtRBoolean, sizeof(Boolean),
+      ROFF(bold_is_bright), (String)XtRString, TSD(TS_BOLD_IS_BRIGHT) },
+    { TS(TS_BACKSPACE), (String)"Backspace", (String)XtRString, sizeof(String),
+      ROFF(backspace), (String)XtRString, TSD(TS_BACKSPACE) },
+    { TS(TS_BELL), (String)"Bell", (String)XtRString, sizeof(String),
+      ROFF(bell), (String)XtRString, TSD(TS_BELL) }
 };
+#undef TSD
+#undef TS
 #undef ROFF
 
+/* Options set the application's own resources ("ttrt.font"), not every
+ * widget's ("*font"): -fg is the terminal's text colour, not the menu
+ * bar's. The same table re-applies the command line over the settings
+ * file (merge_settings). */
 XrmOptionDescRec k_options[] = {
-    { (char*)"-sl", (char*)"*saveLines", XrmoptionSepArg, 0 },
-    { (char*)"-ls", (char*)"*loginShell", XrmoptionNoArg, (XPointer)"true" },
-    { (char*)"+ls", (char*)"*loginShell", XrmoptionNoArg, (XPointer)"false" },
-    { (char*)"-cr", (char*)"*cursorColor", XrmoptionSepArg, 0 },
-    { (char*)"-nomenu", (char*)"*menuBar", XrmoptionNoArg, (XPointer)"false" }
+    { (char*)"-fn", (char*)".font", XrmoptionSepArg, 0 },
+    { (char*)"-font", (char*)".font", XrmoptionSepArg, 0 },
+    { (char*)"-fg", (char*)".foreground", XrmoptionSepArg, 0 },
+    { (char*)"-foreground", (char*)".foreground", XrmoptionSepArg, 0 },
+    { (char*)"-bg", (char*)".background", XrmoptionSepArg, 0 },
+    { (char*)"-background", (char*)".background", XrmoptionSepArg, 0 },
+    { (char*)"-cr", (char*)".cursorColor", XrmoptionSepArg, 0 },
+    { (char*)"-sl", (char*)".saveLines", XrmoptionSepArg, 0 },
+    { (char*)"-ls", (char*)".loginShell", XrmoptionNoArg, (XPointer)"true" },
+    { (char*)"+ls", (char*)".loginShell", XrmoptionNoArg, (XPointer)"false" },
+    { (char*)"-nomenu", (char*)".menuBar", XrmoptionNoArg, (XPointer)"false" },
+    { (char*)"-vb", (char*)".bell", XrmoptionNoArg, (XPointer)"visual" },
+    { (char*)"-xrm", 0, XrmoptionResArg, 0 }
 };
-
-/* Fonts tried in order when no font resource is set. The ISO 10646 one
- * covers Unicode on Linux; IRIX servers have only Latin-1 fonts. */
-const char* const k_fonts[] = {
-    "-misc-fixed-medium-r-normal--15-140-75-75-c-90-iso10646-1",
-    "-misc-fixed-medium-r-normal--13-120-75-75-c-80-iso10646-1",
-    "-sgi-screen-medium-r-normal--15-150-72-72-m-90-iso8859-1",
-    "9x15",
-    "fixed",
-    0
-};
+/* XtAppInitialize handles -xrm itself; only merge_settings needs it. */
+const int k_noptions = (int)(sizeof(k_options) / sizeof(k_options[0])) - 1;
 
 class App;
 const char* pick_term();
@@ -94,6 +117,8 @@ public:
     void bell();
     void title_changed(tl::TitleKind kind, const char* utf8);
 };
+
+void visual_bell_end(XtPointer data, XtIntervalId*);
 
 class App {
 public:
@@ -112,9 +137,11 @@ public:
     tl::Buffer outq;
     size_t outq_off;
     XtInputId in_id, out_id;
+    XtIntervalId bell_id;       /* the visual bell is showing */
 
     App() : ctx(0), top(0), main_w(0), grid(0), scroll(0), src(term), cmd(0), started(false),
-            in_scroll_update(false), outq_off(0), in_id(0), out_id(0), selecting(false),
+            in_scroll_update(false), outq_off(0), in_id(0), out_id(0), bell_id(0),
+            selecting(false),
             sel_moved(false), click_count(0), last_click(0), last_click_col(-1),
             last_click_row(-1), drag_col(0), drag_row(0), autoscroll(0), autoscroll_id(0),
             a_clipboard(None), a_utf8(None), a_targets(None), a_text(None)
@@ -219,7 +246,27 @@ void App::flush_output()
 
 void Host::bell()
 {
-    XBell(XtDisplay(app->top), 0);
+    App* a = app;
+    if (strcmp(a->res.bell, "off") == 0)
+        return;
+    if (strcmp(a->res.bell, "visual") != 0) {
+        XBell(XtDisplay(a->top), 0);
+        return;
+    }
+    /* Flash: reverse video for a moment, as xterm's visualBell. */
+    if (a->bell_id)
+        return;
+    a->term.set_reverse_video(!a->term.modes().reverse);
+    TwGridDamage(a->grid);
+    a->bell_id = XtAppAddTimeOut(a->ctx, 100, visual_bell_end, (XtPointer)a);
+}
+
+void visual_bell_end(XtPointer data, XtIntervalId*)
+{
+    App* a = (App*)data;
+    a->bell_id = 0;
+    a->term.set_reverse_video(!a->term.modes().reverse);
+    TwGridDamage(a->grid);
 }
 
 void Host::title_changed(tl::TitleKind kind, const char* utf8)
@@ -925,18 +972,56 @@ void font_dirs(const char* argv0, char* out, size_t len)
 
 const char* pick_font(Display* dpy)
 {
-    for (int i = 0; k_fonts[i]; i++) {
+    for (int i = 0; ttr::k_term_auto_fonts[i]; i++) {
         int n = 0;
-        char** names = XListFonts(dpy, k_fonts[i], 1, &n);
+        char** names = XListFonts(dpy, ttr::k_term_auto_fonts[i], 1, &n);
         if (names)
             XFreeFontNames(names);
         if (n > 0)
-            return k_fonts[i];
+            return ttr::k_term_auto_fonts[i];
     }
     return "fixed";
 }
 
 } /* namespace */
+
+/* The settings file's "ttrt.<name>" lines (core/termsettings.h) as the
+ * application's resources, over X resources, and then the command line
+ * again over them. */
+void merge_settings(Widget top, int argc, char** argv)
+{
+    Display* dpy = XtDisplay(top);
+    XrmDatabase db = XtDatabase(dpy);
+    String app_name = 0, app_class = 0;
+    XtGetApplicationNameAndClass(dpy, &app_name, &app_class);
+    if (!app_name || strlen(app_name) > 100)
+        return;
+
+    ttr::SettingsFile file;
+    ttr::Str path = ttr::SettingsFile::default_path();
+    if (!file.load(path.c_str()))
+        return;
+    size_t plen = strlen(TTRT_SETTING_PREFIX);
+    bool any = false;
+    for (int i = 0; i < file.count(); i++) {
+        const char* name = file.name(i);
+        if (strncmp(name, TTRT_SETTING_PREFIX, plen) != 0 || strlen(name + plen) > 100)
+            continue;
+        char spec[256];
+        sprintf(spec, "%s.%s", app_name, name + plen);
+        XrmPutStringResource(&db, spec, file.value(i));
+        any = true;
+    }
+    if (!any)
+        return;
+
+    int n = argc;
+    XrmDatabase cmd = 0;
+    XrmParseCommand(&cmd, k_options, (int)(sizeof(k_options) / sizeof(k_options[0])), app_name,
+                    &n, argv);
+    if (cmd)
+        XrmCombineDatabase(cmd, &db, True);
+}
 
 int main(int argc, char** argv)
 {
@@ -956,12 +1041,21 @@ int main(int argc, char** argv)
         (String)"*menuBar*fontList: -*-helvetica-bold-r-normal--12-*",
         0
     };
-    a->top = XtAppInitialize(&a->ctx, "TTRt", k_options, XtNumber(k_options), &argc, argv,
+    /* The command line as given, for merge_settings: Xt removes what it
+     * parses. */
+    char** argv_copy = new char*[argc + 1];
+    for (int i = 0; i <= argc; i++)
+        argv_copy[i] = i < argc ? argv[i] : 0;
+    int argc_copy = argc;
+    a->top = XtAppInitialize(&a->ctx, "TTRt", k_options, (Cardinal)k_noptions, &argc, argv,
                              fallbacks, 0, 0);
+    merge_settings(a->top, argc_copy, argv_copy);
+    delete [] argv_copy;
     XtGetApplicationResources(a->top, &a->res, k_resources, XtNumber(k_resources), 0, 0);
     if (argc > 1) {
         fprintf(stderr, "usage: ttrt [-fn font] [-fg color] [-bg color] [-cr color] [-sl lines]\n"
-                        "            [-ls] [-nomenu] [-geometry WxH] [-title title] [-e command ...]\n");
+                        "            [-ls] [-nomenu] [-vb] [-geometry WxH] [-title title]\n"
+                        "            [-xrm resource] [-e command ...]\n");
         return 2;
     }
 
@@ -970,7 +1064,11 @@ int main(int argc, char** argv)
     uint32_t bg = parse_color(dpy, a->res.background, 0x000000);
     a->term.init(80, 24, (size_t)(a->res.scrollback > 0 ? a->res.scrollback : 0));
     a->term.set_default_colors(to_rgb(fg), to_rgb(bg));
+    if (a->res.cursor_color && a->res.cursor_color[0])
+        a->src.set_cursor_color(parse_color(dpy, a->res.cursor_color, fg));
     a->term.set_host(&a->host);
+    a->term.set_bold_is_bright(a->res.bold_is_bright != False);
+    a->term.set_backspace_is_del(strcmp(a->res.backspace, "bs") != 0);
 
     a->main_w = XtVaCreateManagedWidget("main", xmFormWidgetClass, a->top, (char*)0);
     Widget bar = a->res.menu_bar ? make_menu_bar(a, a->main_w) : 0;
@@ -990,15 +1088,8 @@ int main(int argc, char** argv)
     XtAddCallback(a->scroll, XmNvalueChangedCallback, scroll_moved, a);
     XtAddCallback(a->scroll, XmNdragCallback, scroll_moved, a);
 
-    /* The font resource (-fn) wins; otherwise the best font the server has. */
-    char* font_res = 0;
-    XtVaGetValues(a->top, (char*)0);
-    XrmDatabase db = XtDatabase(dpy);
-    char* type = 0;
-    XrmValue val;
-    if (XrmGetResource(db, "ttrt.font", "TTRt.Font", &type, &val) && val.addr)
-        font_res = (char*)val.addr;
-    const char* font = font_res ? font_res : pick_font(dpy);
+    /* The font setting (-fn) wins; otherwise the best font the server has. */
+    const char* font = a->res.font && a->res.font[0] ? a->res.font : pick_font(dpy);
 
     Arg args[16];
     Cardinal n = 0;

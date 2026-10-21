@@ -9,7 +9,14 @@ namespace ttrt {
 
 class TermSource : public tw::Source {
 public:
-    explicit TermSource(tl::Terminal& t) : t_(t), v_(t.view()) {}
+    explicit TermSource(tl::Terminal& t) : t_(t), v_(t.view()), cursor_(0), have_cursor_(false) {}
+
+    /* A fixed cursor colour (-cr); otherwise the text colour. */
+    void set_cursor_color(uint32_t rgb)
+    {
+        cursor_ = rgb;
+        have_cursor_ = true;
+    }
 
     void frame_begin() { v_ = t_.view(); }
     int cols() const { return v_.cols(); }
@@ -30,6 +37,8 @@ public:
 private:
     tl::Terminal& t_;
     tl::View v_;
+    uint32_t cursor_;
+    bool have_cursor_;
 };
 
 } /* namespace ttrt */

@@ -166,6 +166,9 @@ public:
     /* Bold text in palette colours 0-7 uses 8-15 (xterm's boldColors). */
     void set_bold_is_bright(bool on) { bold_bright_ = on; full_damage_ = true; }
     bool bold_is_bright() const { return bold_bright_; }
+    /* Reverse video (DECSCNM) set by the host: xterm's menu toggle, or a
+     * visual bell flashing the screen. */
+    void set_reverse_video(bool on) { set_mode(5, true, on); }
 
     /* Text between two positions of the active screen (absolute rows,
      * columns inclusive), soft wraps joined and trailing blanks of each
