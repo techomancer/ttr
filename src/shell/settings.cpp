@@ -2,7 +2,6 @@
 #include "shell/colorspage.h"
 #include "shell/shortcutsdlg.h"
 #include "shell/startuppage.h"
-#include "shell/terminalpage.h"
 #include "core/scale.h"
 #include "core/settings.h"
 #include "x11/config.h"
@@ -104,13 +103,12 @@ SettingsDialog::SettingsDialog(Widget parent, WmLink* wm, const Config& cfg,
     : parent_(parent), wm_(wm), cfg_(cfg), apps_(apps), dialog_(0),
       categories_(0), current_page_(0),
       shortcuts_(new ShortcutsDialog(parent, wm, apps)), startup_(0),
-      xdg_(0), colors_(0), terminal_page_(0)
+      xdg_(0), colors_(0)
 {
 }
 
 SettingsDialog::~SettingsDialog()
 {
-    delete terminal_page_;
     delete colors_;
     delete xdg_;
     delete startup_;
@@ -257,7 +255,7 @@ Widget SettingsDialog::drop_down(Widget parent, const char* name,
 }
 
 /* Select the entry equal to 'value' (or the first). */
-void select_item(Widget combo, const char* value)
+static void select_item(Widget combo, const char* value)
 {
     XmString s = xmstr(value);
     Widget list = XtNameToWidget(combo, "*List");
@@ -295,7 +293,7 @@ static Str selected_item(Widget combo, const char* const* items, int count)
 }
 
 /* The selected entry's text, read from the list itself. */
-Str combo_text(Widget combo)
+static Str combo_text(Widget combo)
 {
     Widget list = XtNameToWidget(combo, "*List");
     int* pos = 0;
@@ -545,7 +543,7 @@ void SettingsDialog::build()
     /* Categories on the left, the chosen page on the right. */
     static const char* const names[PAGE_COUNT] = {
         "Windows", "Desktops", "Appearance", "Colors", "Taskbar",
-        "Terminal", "Start Menu", "Startup", "XDG Autostart"
+        "Start Menu", "Startup", "XDG Autostart"
     };
     XmString items[PAGE_COUNT];
     int i;
@@ -688,11 +686,6 @@ void SettingsDialog::build()
     sprintf(secs, "%d", cfg_.notification_ms / 1000);
     select_item(notify_time_, secs);
 
-    /* Terminal */
-    pg = page(content, PAGE_TERMINAL);
-    delete terminal_page_;
-    terminal_page_ = new TerminalPage(this, pg);
-
     /* Start menu */
     pg = page(content, PAGE_START);
     f = frame(pg, "Programs");
@@ -826,7 +819,6 @@ void SettingsDialog::save()
                  selected_item(grip_, k_grips, k_ngrips).c_str());
     }
     colors_->save(&file);
-    terminal_page_->save(&file);
     file.set("clockFormat", text_value(clock_).c_str());
     file.set("notificationTime",
              selected_item(notify_time_, k_notify_times, k_nnotify).c_str());

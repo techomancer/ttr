@@ -2,8 +2,8 @@
 
 Status: 2026-10-20. Milestones 1-4 below are done: `tl/` through its
 milestone 3 plus key, paste and focus encoding, `tp/`, `tw/` milestones
-1 and 2, selection and clipboard, terminfo, packages, and the settings
-page. Next: the soft and GL renderers (milestone 5).
+1 and 2, selection and clipboard, terminfo, packages, and the Settings
+dialog. Next: the soft and GL renderers (milestone 5).
 
 ttrt is a Motif terminal emulator for IRIX and Linux. It is assembled
 from three reusable modules plus a thin application:
@@ -44,7 +44,7 @@ utmp entries (section 4.5).
           +-----------------------------------------------------+
           | ttrt application (src/ttrt/)                         |
           |  XmMainWindow: menu bar, TwGrid, XmScrollBar          |
-          |  settings (ttr core), resources, command line         |
+          |  own settings file + dialog, resources, command line  |
           +----+----------------+------------------+--------------+
                |                |                  |
      pty bytes |  tl::Terminal  |  tw::Source      |  keys, mouse,
@@ -202,8 +202,8 @@ in the style of libutempter can be added later if wanted.
 ## 5. The window
 
 - `XmMainWindow` with a menu bar (File: New Window, Close; Edit: Copy,
-  Paste, Select All, Clear Scrollback; View: Font, Bigger, Smaller,
-  Reset; Terminal: Reset, Full Reset; Help), the `TwGrid` as work area
+  Paste, Select All; Terminal: Clear Scrollback, Reset, Settings...;
+  later View: Bigger, Smaller; Help), the `TwGrid` as work area
   and an `XmScrollBar` bound to tl's viewport (scroll back with the bar,
   Shift+PageUp/Down, the wheel).
 - The menu bar can be hidden (`-nomenu`, a resource) for an xterm-like
@@ -260,26 +260,39 @@ look in `~/.terminfo`. `COLORTERM=truecolor` only with a TrueColor visual.
 
 ## 9. Settings and command line
 
-Settings live in ttr's settings store (a "Terminal" page in ttr's
-settings dialog) and as X resources (`TTRt*font`, `TTRt*renderer`,
-...), so ttrt also works stand-alone on a desktop without ttr.
+ttrt and ttr are independent: either works without the other, and the
+user picks the terminal and the window manager. ttrt's settings are its
+own, and so is the place to change them, its Terminal > Settings...
+dialog (also on the Ctrl+button 3 popup menu, so it stays reachable
+with the menu bar hidden). An earlier plan put them on a page of ttr's
+Settings dialog. That made the window manager the owner of the terminal's
+settings, which is the kind of coupling ttr exists to avoid.
 
-Implemented 2026-10-20: `src/core/termsettings.h` lists the settings
-(name and default) for both sides. In ttr's settings file they are
-`ttrt.<name>` lines; ttrt puts them into its resource database as
-`<app name>.<name>` (tight binding, so they reach the application's own
-resources and no Motif widget), over X resources, then parses its command
-line again with the same option table so the command line wins over the
-file. Options therefore name the application's resources (`.font`, not
-`*font`): `-fg` colours the terminal text and not the menu bar. The
-Terminal page (`src/shell/terminalpage.cpp`) writes only values that
-differ from the default and keeps a value's original text ("wheat",
-"9x15") unless the user changed it, so hand-written lines and X
-resources survive OK. ttrt reads the settings when a window opens;
-running windows keep theirs. Command
-line options follow xterm and xwsh where they overlap: `-e`, `-fn`,
-`-fg`, `-bg`, `-geometry`, `-title`, `-n`, `-sl`, `-ls`, `-hold`,
-`-console`, `-vb`, plus `-renderer`.
+Implemented 2026-10-20:
+
+- `src/ttrt/settings.h` lists the settings (name, default) and the file,
+  `$XDG_CONFIG_HOME/ttrt/settings` or `~/.config/ttrt/settings`, in the
+  same "name: value" format as ttr's (`core/settings.h` reads and writes
+  both).
+- At startup ttrt puts the file's lines into its resource database as
+  `<app name>.<name>` (tight binding, so they reach the application's own
+  resources and no Motif widget), over X resources, then parses its
+  command line again with the same option table so the command line wins
+  over the file. Options therefore name the application's resources
+  (`.font`, not `*font`): `-fg` colours the terminal text and not the
+  menu bar.
+- The dialog (`src/ttrt/settingsdlg.cpp`) shows the window's own values.
+  OK and Apply save only the settings changed in the dialog (a value set
+  back to its default is removed from the file, so X resources apply
+  again) and apply them to the window: font (the window keeps its size in
+  cells), colours, cursor colour, bold as bright, Backspace, bell, menu
+  bar. Scrollback and the login shell apply to new windows. A command-line
+  value the user does not touch is never written to the file, and
+  unchanged values keep their spelling ("wheat", "9x15").
+
+Command line options follow xterm and xwsh where they overlap: `-e`,
+`-fn`, `-fg`, `-bg`, `-cr`, `-geometry`, `-title`, `-sl`, `-ls`, `-vb`,
+`-nomenu`, `-xrm`; later `-n`, `-hold`, `-console`, `-renderer`.
 
 ## 10. Testing
 

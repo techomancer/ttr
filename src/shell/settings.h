@@ -17,7 +17,6 @@ namespace ttr {
 class ColorsPage;
 class ShortcutsDialog;
 class StartupPage;
-class TerminalPage;
 class XdgAutostartPage;
 struct AppFolder;
 struct Config;
@@ -34,11 +33,6 @@ public:
     Widget frame(Widget parent, const char* title);
     Widget row(Widget parent, const char* label);
     Widget text_field(Widget parent, const char* value, int columns);
-    /* Two radio buttons; returns the box, *first is the first button. */
-    Widget radio(Widget parent, const char* a, const char* b, Widget* first);
-    Widget drop_down(Widget parent, const char* name,
-                     const char* const* items, int count, int visible,
-                     int columns);
 
 private:
     struct FontRow {
@@ -50,6 +44,10 @@ private:
     };
 
     void build();
+    Widget radio(Widget parent, const char* a, const char* b, Widget* first);
+    Widget drop_down(Widget parent, const char* name,
+                     const char* const* items, int count, int visible,
+                     int columns);
     /* 'current' as set, 'resolved' as loaded (x11/config.h). */
     void font_row(FontRow* r, Widget parent, const char* label,
                   const char* current, const char* resolved);
@@ -66,7 +64,7 @@ private:
     static void page_cb(Widget w, XtPointer closure, XtPointer call);
 
     enum { PAGE_WINDOWS, PAGE_DESKTOPS, PAGE_APPEARANCE, PAGE_COLORS,
-           PAGE_TASKBAR, PAGE_TERMINAL,
+           PAGE_TASKBAR,
            PAGE_START, PAGE_STARTUP, PAGE_XDG, PAGE_COUNT };
     Widget page(Widget parent, int index);
     void show_page(int index);
@@ -100,13 +98,7 @@ private:
     StartupPage* startup_;      /* rebuilt with the dialog */
     XdgAutostartPage* xdg_;
     ColorsPage* colors_;
-    TerminalPage* terminal_page_;
 };
-
-/* Drop-down lists (SettingsDialog::drop_down): select the entry equal to
- * 'value' (or the first), and the selected entry's text. */
-void select_item(Widget combo, const char* value);
-Str combo_text(Widget combo);
 
 }
 

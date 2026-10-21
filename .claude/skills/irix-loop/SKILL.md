@@ -25,7 +25,7 @@ disk image, own control socket, so both can run at once.
 | Monitor | `tools/mon.py "status" "cpu regs"` (iris monitor on 127.0.0.1:8889; `help` lists commands) |
 | Screenshot | `xwd -root -display localhost:100 -silent \| magick xwd:- shot.png` (through X: correct colours in every visual). `tools/irix-shot.sh` (monitor `rex fbdump`) composes 8-bit colormap mode wrongly (everything dark blue); use its `ci.png` for structure only |
 | Guest X server from the host | `ignore/iris.toml` forwards host port 6100 to the guest's 6000, so `DISPLAY=localhost:100` on the host is the Indy's Xsgi. After each boot run `tools/irix-sh.py run '/usr/bin/X11/xhost +'` once the desktop is up. Linux builds (ttrt) can then be tested on the real 8-bit Xsgi without touching the host desktop |
-| Typing, clicking, resizing | `build/xtype -d localhost:100 @x,y 'text' +Return +shift+Prior %900x560` (`tools/xtype.c`, XTest: click at root x,y, type text, press keys, resize the focused top-level window). Build: `cc -o build/xtype tools/xtype.c -lXtst -lXext -lX11`. 4Dwm is click-to-type: click into a window before typing |
+| Typing, clicking, resizing | `build/xtype -d localhost:100 @x,y 'text' +Return +shift+Prior %900x560` (`tools/xtype.c`, XTest: click at root x,y (`@x,y,3` button 3, `^@x,y,3` with Ctrl held), type text, press keys, resize the focused top-level window). Build: `cc -o build/xtype tools/xtype.c -lXtst -lXext -lX11`. 4Dwm is click-to-type: click into a window before typing |
 
 `ignore/` is outside version control; the tools and this skill are in the
 repository.

@@ -17,6 +17,7 @@ public:
         cursor_ = rgb;
         have_cursor_ = true;
     }
+    void clear_cursor_color() { have_cursor_ = false; }
 
     void frame_begin() { v_ = t_.view(); }
     int cols() const { return v_.cols(); }

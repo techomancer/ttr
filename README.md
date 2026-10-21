@@ -276,9 +276,6 @@ Start > Settings... opens the Settings dialog. Pick a category on the left:
 - **Colors:** the color theme, with a preview, and your own colors for the
   background, text and window frames.
 - **Taskbar:** clock format, how long notifications stay up.
-- **Terminal:** ttrt's font, colors, scrollback, shell, menu bar,
-  Backspace key and bell. New terminal windows use them; ttr does not
-  need to restart for them.
 - **Start Menu:** where programs come from, the terminal to use, shortcuts.
 - **Startup:** programs to start with ttr, and the startup script.
 - **XDG Autostart:** the desktop's autostart entries, off by default.
@@ -387,16 +384,22 @@ ttrt -e top                 # run a program instead of the shell
 | `-nomenu` | no menu bar |
 | `-vb` | flash the window instead of beeping |
 | `-title TEXT` | window title (programs can change it) |
-| `-xrm 'ttrt.NAME: VALUE'` | any setting below |
+| `-xrm 'ttrt.NAME: VALUE'` | any setting below, for this window |
 | `-e PROGRAM ARGS...` | run a program instead of the shell; must come last |
 
-ttrt's settings are on ttr's Settings > Terminal page. It saves them in
-ttr's settings file as `ttrt.` lines, which you can also edit by hand:
+ttrt has its own settings and does not need ttr: use it under any window
+manager, and use any terminal under ttr. Terminal > Settings... (or
+Ctrl+right click in the window, which works with the menu bar hidden)
+sets the font, colors, scrollback, login shell, menu bar, Backspace key
+and bell. OK and Apply change the window you opened it from right away,
+except scrollback and the login shell, which apply to new windows. They
+are saved in `~/.config/ttrt/settings` (or `$XDG_CONFIG_HOME/ttrt/`),
+which you can also edit by hand:
 
 ```
-ttrt.font: 9x15
-ttrt.foreground: wheat
-ttrt.bell: visual
+font: 9x15
+foreground: wheat
+bell: visual
 ```
 
 | Setting | Values | Default |
@@ -410,10 +413,10 @@ ttrt.bell: visual
 | `bell` | `audible`, `visual` (flash), `off` | `audible` |
 
 The same names work as X resources of class `TTRt` (`TTRt*saveLines:
-5000`), so ttrt can be set up without ttr. The settings file wins over X
-resources, and the command line wins over both. The Terminal page writes
-only the settings you change from their defaults, so X resources keep
-working for the rest.
+5000`). The settings file wins over X resources, and the command line wins
+over both. The Settings dialog saves only what you change in it, and
+removes a line when you set it back to the default, so your X resources
+and command line options stay in charge of the rest.
 
 Keys: Shift+PageUp and Shift+PageDown scroll back and forth, and so does
 the mouse wheel (in full-screen programs the wheel sends arrow keys
@@ -434,8 +437,8 @@ Selecting and pasting works as in xterm:
 Selections offer UTF-8 and Latin-1 text, so they paste into IRIX's own
 programs (winterm, Motif text fields) and back. When a program in the
 terminal uses the mouse itself (vim with `mouse=a`, mc, htop), hold
-Shift to select instead. The Edit menu also has Select All, Clear
-Scrollback and Reset Terminal.
+Shift to select instead. The Edit menu also has Select All; the
+Terminal menu has Clear Scrollback and Reset.
 
 ttrt sets `TERM` to `ttrt` when its terminfo entry is installed. `make
 install` compiles `data/ttrt.ti` with `tic` into the system's terminfo

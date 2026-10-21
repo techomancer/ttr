@@ -1,8 +1,11 @@
 /*
  * ttrt, the ttr terminal (ttrt/DESIGN.md). One window: a menu bar, the
  * TwGrid showing a tl::Terminal, and a scroll bar for the scrollback,
- * running a shell on a tp::Pty.
+ * running a shell on a tp::Pty. Its settings are its own (settings.h);
+ * it does not need ttr.
  */
+#include "settings.h"
+#include "settingsdlg.h"
 #include "source.h"
 
 #include "../../tl/terminal.h"
@@ -10,7 +13,6 @@
 #include "../../tw/grid_widget.h"
 #include "../../tw/surface.h"
 #include "core/settings.h"
-#include "core/termsettings.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -53,32 +55,32 @@ struct Resources {
     String bell;
 };
 
-/* Names, classes and defaults come from core/termsettings.h, which ttr's
- * Settings > Terminal page writes. */
+/* Names and defaults come from settings.h, the list the Settings dialog
+ * shares. */
 #define ROFF(f) XtOffsetOf(Resources, f)
-#define TS(i) (String)ttr::k_term_settings[ttr::i].name
-#define TSD(i) (XtPointer)ttr::k_term_settings[ttr::i].fallback
+#define TS(i) (String)ttrt::k_settings[ttrt::i].name
+#define TSD(i) (XtPointer)ttrt::k_settings[ttrt::i].fallback
 XtResource k_resources[] = {
-    { TS(TS_FONT), (String)"Font", (String)XtRString, sizeof(String),
-      ROFF(font), (String)XtRString, TSD(TS_FONT) },
-    { TS(TS_FOREGROUND), (String)"Foreground", (String)XtRString, sizeof(String),
-      ROFF(foreground), (String)XtRString, TSD(TS_FOREGROUND) },
-    { TS(TS_BACKGROUND), (String)"Background", (String)XtRString, sizeof(String),
-      ROFF(background), (String)XtRString, TSD(TS_BACKGROUND) },
-    { TS(TS_CURSOR_COLOR), (String)"CursorColor", (String)XtRString, sizeof(String),
-      ROFF(cursor_color), (String)XtRString, TSD(TS_CURSOR_COLOR) },
-    { TS(TS_SAVE_LINES), (String)"SaveLines", (String)XtRInt, sizeof(int),
-      ROFF(scrollback), (String)XtRString, TSD(TS_SAVE_LINES) },
-    { TS(TS_LOGIN_SHELL), (String)"LoginShell", (String)XtRBoolean, sizeof(Boolean),
-      ROFF(login_shell), (String)XtRString, TSD(TS_LOGIN_SHELL) },
-    { TS(TS_MENU_BAR), (String)"MenuBar", (String)XtRBoolean, sizeof(Boolean),
-      ROFF(menu_bar), (String)XtRString, TSD(TS_MENU_BAR) },
-    { TS(TS_BOLD_IS_BRIGHT), (String)"BoldIsBright", (String)XtRBoolean, sizeof(Boolean),
-      ROFF(bold_is_bright), (String)XtRString, TSD(TS_BOLD_IS_BRIGHT) },
-    { TS(TS_BACKSPACE), (String)"Backspace", (String)XtRString, sizeof(String),
-      ROFF(backspace), (String)XtRString, TSD(TS_BACKSPACE) },
-    { TS(TS_BELL), (String)"Bell", (String)XtRString, sizeof(String),
-      ROFF(bell), (String)XtRString, TSD(TS_BELL) }
+    { TS(S_FONT), (String)"Font", (String)XtRString, sizeof(String),
+      ROFF(font), (String)XtRString, TSD(S_FONT) },
+    { TS(S_FOREGROUND), (String)"Foreground", (String)XtRString, sizeof(String),
+      ROFF(foreground), (String)XtRString, TSD(S_FOREGROUND) },
+    { TS(S_BACKGROUND), (String)"Background", (String)XtRString, sizeof(String),
+      ROFF(background), (String)XtRString, TSD(S_BACKGROUND) },
+    { TS(S_CURSOR_COLOR), (String)"CursorColor", (String)XtRString, sizeof(String),
+      ROFF(cursor_color), (String)XtRString, TSD(S_CURSOR_COLOR) },
+    { TS(S_SAVE_LINES), (String)"SaveLines", (String)XtRInt, sizeof(int),
+      ROFF(scrollback), (String)XtRString, TSD(S_SAVE_LINES) },
+    { TS(S_LOGIN_SHELL), (String)"LoginShell", (String)XtRBoolean, sizeof(Boolean),
+      ROFF(login_shell), (String)XtRString, TSD(S_LOGIN_SHELL) },
+    { TS(S_MENU_BAR), (String)"MenuBar", (String)XtRBoolean, sizeof(Boolean),
+      ROFF(menu_bar), (String)XtRString, TSD(S_MENU_BAR) },
+    { TS(S_BOLD_IS_BRIGHT), (String)"BoldIsBright", (String)XtRBoolean, sizeof(Boolean),
+      ROFF(bold_is_bright), (String)XtRString, TSD(S_BOLD_IS_BRIGHT) },
+    { TS(S_BACKSPACE), (String)"Backspace", (String)XtRString, sizeof(String),
+      ROFF(backspace), (String)XtRString, TSD(S_BACKSPACE) },
+    { TS(S_BELL), (String)"Bell", (String)XtRString, sizeof(String),
+      ROFF(bell), (String)XtRString, TSD(S_BELL) }
 };
 #undef TSD
 #undef TS
@@ -108,6 +110,7 @@ const int k_noptions = (int)(sizeof(k_options) / sizeof(k_options[0])) - 1;
 
 class App;
 const char* pick_term();
+const char* pick_font(Display* dpy);
 extern char g_terminfo_dir[512];
 
 class Host : public tl::Host {
@@ -120,10 +123,10 @@ public:
 
 void visual_bell_end(XtPointer data, XtIntervalId*);
 
-class App {
+class App : public ttrt::SettingsHost {
 public:
     XtAppContext ctx;
-    Widget top, main_w, grid, scroll;
+    Widget top, main_w, bar, grid, scroll;
     tl::Terminal term;
     ttrt::TermSource src;
     Host host;
@@ -139,12 +142,13 @@ public:
     XtInputId in_id, out_id;
     XtIntervalId bell_id;       /* the visual bell is showing */
 
-    App() : ctx(0), top(0), main_w(0), grid(0), scroll(0), src(term), cmd(0), started(false),
+    App() : ctx(0), top(0), main_w(0), bar(0), grid(0), scroll(0), src(term), cmd(0), started(false),
             in_scroll_update(false), outq_off(0), in_id(0), out_id(0), bell_id(0),
             selecting(false),
             sel_moved(false), click_count(0), last_click(0), last_click_col(-1),
             last_click_row(-1), drag_col(0), drag_row(0), autoscroll(0), autoscroll_id(0),
-            a_clipboard(None), a_utf8(None), a_targets(None), a_text(None)
+            a_clipboard(None), a_utf8(None), a_targets(None), a_text(None),
+            font_buf(0), settings(0), popup(0), base_w(0), base_h(0)
     {
         host.app = this;
     }
@@ -174,6 +178,20 @@ public:
     void handle_key(TwGridCallbackStruct* cb);
     void handle_pointer(TwGridCallbackStruct* cb);
     void session_ended();
+
+    /* Settings: the window's values, the dialog, applying changes. */
+    ttr::Str cur[ttrt::S_COUNT];
+    char* font_buf;             /* the font name TwGrid has */
+    ttrt::SettingsDialog* settings;
+    Widget popup;               /* Ctrl+button 3 */
+    int base_w, base_h;         /* window size that is not cells */
+    const char* current(int setting) const { return cur[setting].c_str(); }
+    void apply(const ttr::Str* values, const bool* changed);
+    void set_font(const char* name);
+    void update_size_hints();
+    void resize_to(int cols, int rows);
+    void show_menu_bar(bool on);
+    void post_popup(XEvent* ev);
 };
 
 
@@ -247,9 +265,10 @@ void App::flush_output()
 void Host::bell()
 {
     App* a = app;
-    if (strcmp(a->res.bell, "off") == 0)
+    const char* how = a->cur[ttrt::S_BELL].c_str();
+    if (strcmp(how, "off") == 0)
         return;
-    if (strcmp(a->res.bell, "visual") != 0) {
+    if (strcmp(how, "visual") != 0) {
         XBell(XtDisplay(a->top), 0);
         return;
     }
@@ -660,6 +679,13 @@ void App::handle_pointer(TwGridCallbackStruct* cb)
     int cw, ch;
     TwGridGetCellSize(grid, &cw, &ch);
 
+    /* Ctrl+button 3: the menu, as a popup (the menu bar may be hidden). */
+    if (cb->reason == TW_CR_BUTTON_PRESS && cb->button == 3 && (state & ControlMask) &&
+        cb->event && !selecting) {
+        post_popup(cb->event);
+        return;
+    }
+
     /* The application wants the mouse, unless Shift is held. */
     if (term.mouse_reporting() && !(state & ShiftMask) && !selecting) {
         tl::MouseAction act = cb->reason == TW_CR_BUTTON_PRESS ? tl::MOUSE_PRESS
@@ -856,6 +882,8 @@ void reset_cb(Widget, XtPointer data, XtPointer)
     a->update_scrollbar();
 }
 
+void settings_cb(Widget, XtPointer data, XtPointer);
+
 Widget make_menu_bar(App* a, Widget parent)
 {
     Widget bar = XmCreateMenuBar(parent, (char*)"menuBar", 0, 0);
@@ -876,11 +904,139 @@ Widget make_menu_bar(App* a, Widget parent)
     menu_item(edit, "Copy", 'C', "Ctrl+Shift+C", copy_cb, a);
     menu_item(edit, "Paste", 'P', "Ctrl+Shift+V", paste_cb, a);
     menu_item(edit, "Select All", 'A', 0, select_all_cb, a);
-    XtVaCreateManagedWidget("sep", xmSeparatorWidgetClass, edit, (char*)0);
-    menu_item(edit, "Clear Scrollback", 'S', 0, clear_sb_cb, a);
-    menu_item(edit, "Reset Terminal", 'R', 0, reset_cb, a);
+
+    Widget term = XmCreatePulldownMenu(bar, (char*)"terminalMenu", 0, 0);
+    XtVaCreateManagedWidget("Terminal", xmCascadeButtonWidgetClass, bar, XmNsubMenuId, term,
+                            XmNmnemonic, 'T', (char*)0);
+    menu_item(term, "Clear Scrollback", 'C', 0, clear_sb_cb, a);
+    menu_item(term, "Reset", 'R', 0, reset_cb, a);
+    XtVaCreateManagedWidget("sep", xmSeparatorWidgetClass, term, (char*)0);
+    menu_item(term, "Settings...", 'S', 0, settings_cb, a);
     XtManageChild(bar);
     return bar;
+}
+
+/* The same commands as a popup menu, for Ctrl+button 3. */
+void App::post_popup(XEvent* ev)
+{
+    if (ev->type != ButtonPress)
+        return;
+    if (!popup) {
+        popup = XmCreatePopupMenu(grid, (char*)"popupMenu", 0, 0);
+        menu_item(popup, "New Window", 'N', 0, new_window_cb, this);
+        XtVaCreateManagedWidget("sep", xmSeparatorWidgetClass, popup, (char*)0);
+        menu_item(popup, "Copy", 'C', "Ctrl+Shift+C", copy_cb, this);
+        menu_item(popup, "Paste", 'P', "Ctrl+Shift+V", paste_cb, this);
+        menu_item(popup, "Select All", 'A', 0, select_all_cb, this);
+        XtVaCreateManagedWidget("sep", xmSeparatorWidgetClass, popup, (char*)0);
+        menu_item(popup, "Clear Scrollback", 'b', 0, clear_sb_cb, this);
+        menu_item(popup, "Reset", 'R', 0, reset_cb, this);
+        menu_item(popup, "Settings...", 'S', 0, settings_cb, this);
+        XtVaCreateManagedWidget("sep", xmSeparatorWidgetClass, popup, (char*)0);
+        menu_item(popup, "Close", 'l', 0, close_cb, this);
+    }
+    XmMenuPosition(popup, &ev->xbutton);
+    XtManageChild(popup);
+}
+
+/* ---- settings ------------------------------------------------------------------ */
+
+/* What is not cells (scroll bar, menu bar, margins) and the cell size,
+ * so window managers resize in whole cells and show "80x24". */
+void App::update_size_hints()
+{
+    int cw, ch;
+    TwGridGetCellSize(grid, &cw, &ch);
+    XtWidgetGeometry pref;
+    base_w = 4;
+    base_h = 4;                 /* the grid's margins */
+    if (XtQueryGeometry(scroll, 0, &pref) != XtGeometryNo || pref.width)
+        base_w += pref.width;
+    if (bar && XtIsManaged(bar) &&
+        (XtQueryGeometry(bar, 0, &pref) != XtGeometryNo || pref.height))
+        base_h += pref.height;
+    XtVaSetValues(top, XmNwidthInc, cw, XmNheightInc, ch,
+                  XmNbaseWidth, base_w, XmNbaseHeight, base_h,
+                  XmNminWidth, base_w + 10 * cw, XmNminHeight, base_h + 2 * ch, (char*)0);
+}
+
+/* Keep the size in cells when the cells or the menu bar change. */
+void App::resize_to(int cols, int rows)
+{
+    update_size_hints();
+    int cw, ch;
+    TwGridGetCellSize(grid, &cw, &ch);
+    XtVaSetValues(top, XmNwidth, (Dimension)(base_w + cols * cw),
+                  XmNheight, (Dimension)(base_h + rows * ch), (char*)0);
+}
+
+void App::show_menu_bar(bool on)
+{
+    if (!bar || on == (XtIsManaged(bar) != False))
+        return;
+    int cols = term.cols(), rows = term.rows();
+    unsigned char att = on ? XmATTACH_WIDGET : XmATTACH_FORM;
+    XtVaSetValues(grid, XmNtopAttachment, att, XmNtopWidget, bar, (char*)0);
+    XtVaSetValues(scroll, XmNtopAttachment, att, XmNtopWidget, bar, (char*)0);
+    if (on)
+        XtManageChild(bar);
+    else
+        XtUnmanageChild(bar);
+    if (XtIsRealized(top))
+        resize_to(cols, rows);
+}
+
+/* name, or the best font the server has when it is empty. TwGrid keeps
+ * the pointer, so the copy lives until the next one. */
+void App::set_font(const char* name)
+{
+    const char* f = name && *name ? name : pick_font(XtDisplay(top));
+    char* copy = (char*)malloc(strlen(f) + 1);
+    strcpy(copy, f);
+    XtVaSetValues(grid, TwNfont, copy, (char*)0);
+    free(font_buf);
+    font_buf = copy;
+}
+
+void App::apply(const ttr::Str* v, const bool* changed)
+{
+    using namespace ttrt;
+    Display* dpy = XtDisplay(top);
+    if (changed[S_FONT]) {
+        int cols = term.cols(), rows = term.rows();
+        set_font(v[S_FONT].c_str());
+        resize_to(cols, rows);
+    }
+    if (changed[S_FOREGROUND] || changed[S_BACKGROUND]) {
+        uint32_t fg = parse_color(dpy, v[S_FOREGROUND].c_str(), 0xe5e5e5);
+        uint32_t bg = parse_color(dpy, v[S_BACKGROUND].c_str(), 0x000000);
+        term.set_default_colors(to_rgb(fg), to_rgb(bg));
+    }
+    if (changed[S_CURSOR_COLOR]) {
+        if (v[S_CURSOR_COLOR].empty())
+            src.clear_cursor_color();
+        else
+            src.set_cursor_color(parse_color(dpy, v[S_CURSOR_COLOR].c_str(), 0xe5e5e5));
+    }
+    if (changed[S_BOLD_IS_BRIGHT])
+        term.set_bold_is_bright(strcmp(v[S_BOLD_IS_BRIGHT].c_str(), "true") == 0);
+    if (changed[S_BACKSPACE])
+        term.set_backspace_is_del(strcmp(v[S_BACKSPACE].c_str(), "bs") != 0);
+    if (changed[S_MENU_BAR])
+        show_menu_bar(strcmp(v[S_MENU_BAR].c_str(), "true") == 0);
+    /* Scrollback and the login shell apply to new windows. */
+    for (int i = 0; i < S_COUNT; i++)
+        if (changed[i])
+            cur[i] = v[i];
+    TwGridDamage(grid);
+}
+
+void settings_cb(Widget, XtPointer data, XtPointer)
+{
+    App* a = (App*)data;
+    if (!a->settings)
+        a->settings = new ttrt::SettingsDialog(a->top, a);
+    a->settings->show();
 }
 
 void delete_window_cb(Widget w, XtPointer data, XtPointer)
@@ -972,22 +1128,21 @@ void font_dirs(const char* argv0, char* out, size_t len)
 
 const char* pick_font(Display* dpy)
 {
-    for (int i = 0; ttr::k_term_auto_fonts[i]; i++) {
+    for (int i = 0; ttrt::k_auto_fonts[i]; i++) {
         int n = 0;
-        char** names = XListFonts(dpy, ttr::k_term_auto_fonts[i], 1, &n);
+        char** names = XListFonts(dpy, ttrt::k_auto_fonts[i], 1, &n);
         if (names)
             XFreeFontNames(names);
         if (n > 0)
-            return ttr::k_term_auto_fonts[i];
+            return ttrt::k_auto_fonts[i];
     }
     return "fixed";
 }
 
 } /* namespace */
 
-/* The settings file's "ttrt.<name>" lines (core/termsettings.h) as the
- * application's resources, over X resources, and then the command line
- * again over them. */
+/* The settings file's lines (settings.h) as the application's resources,
+ * over X resources, and then the command line again over them. */
 void merge_settings(Widget top, int argc, char** argv)
 {
     Display* dpy = XtDisplay(top);
@@ -998,17 +1153,16 @@ void merge_settings(Widget top, int argc, char** argv)
         return;
 
     ttr::SettingsFile file;
-    ttr::Str path = ttr::SettingsFile::default_path();
+    ttr::Str path = ttrt::settings_path();
     if (!file.load(path.c_str()))
         return;
-    size_t plen = strlen(TTRT_SETTING_PREFIX);
     bool any = false;
     for (int i = 0; i < file.count(); i++) {
         const char* name = file.name(i);
-        if (strncmp(name, TTRT_SETTING_PREFIX, plen) != 0 || strlen(name + plen) > 100)
+        if (strlen(name) > 100)
             continue;
         char spec[256];
-        sprintf(spec, "%s.%s", app_name, name + plen);
+        sprintf(spec, "%s.%s", app_name, name);
         XrmPutStringResource(&db, spec, file.value(i));
         any = true;
     }
@@ -1038,7 +1192,11 @@ int main(int argc, char** argv)
     }
 
     static String fallbacks[] = {
+        (String)"*fontList: -*-helvetica-medium-r-normal--12-*-*-*-*-*-iso8859-1",
         (String)"*menuBar*fontList: -*-helvetica-bold-r-normal--12-*",
+        (String)"*popupMenu*fontList: -*-helvetica-bold-r-normal--12-*",
+        (String)"*settingsDialog*frame.title.fontList: -*-helvetica-bold-r-normal--12-*",
+        (String)"*XmToggleButton.selectColor: #3c5a8c",
         0
     };
     /* The command line as given, for merge_settings: Xt removes what it
@@ -1070,18 +1228,39 @@ int main(int argc, char** argv)
     a->term.set_bold_is_bright(a->res.bold_is_bright != False);
     a->term.set_backspace_is_del(strcmp(a->res.backspace, "bs") != 0);
 
+    /* The window's settings as the Settings dialog shows them. */
+    {
+        using namespace ttrt;
+        char lines[32];
+        sprintf(lines, "%d", a->res.scrollback);
+        a->cur[S_FONT] = a->res.font ? a->res.font : "";
+        a->cur[S_FOREGROUND] = a->res.foreground ? a->res.foreground : "";
+        a->cur[S_BACKGROUND] = a->res.background ? a->res.background : "";
+        a->cur[S_CURSOR_COLOR] = a->res.cursor_color ? a->res.cursor_color : "";
+        a->cur[S_SAVE_LINES] = lines;
+        a->cur[S_LOGIN_SHELL] = a->res.login_shell ? "true" : "false";
+        a->cur[S_MENU_BAR] = a->res.menu_bar ? "true" : "false";
+        a->cur[S_BOLD_IS_BRIGHT] = a->res.bold_is_bright ? "true" : "false";
+        a->cur[S_BACKSPACE] = strcmp(a->res.backspace, "bs") == 0 ? "bs" : "del";
+        a->cur[S_BELL] = a->res.bell ? a->res.bell : "audible";
+    }
+
     a->main_w = XtVaCreateManagedWidget("main", xmFormWidgetClass, a->top, (char*)0);
-    Widget bar = a->res.menu_bar ? make_menu_bar(a, a->main_w) : 0;
-    if (bar)
-        XtVaSetValues(bar, XmNtopAttachment, XmATTACH_FORM, XmNleftAttachment, XmATTACH_FORM,
-                      XmNrightAttachment, XmATTACH_FORM, (char*)0);
+    /* Always made, so Settings can bring it back; shown if set. */
+    Widget bar = make_menu_bar(a, a->main_w);
+    a->bar = bar;
+    XtVaSetValues(bar, XmNtopAttachment, XmATTACH_FORM, XmNleftAttachment, XmATTACH_FORM,
+                  XmNrightAttachment, XmATTACH_FORM, (char*)0);
+    bool show_bar = a->res.menu_bar != False;
+    if (!show_bar)
+        XtUnmanageChild(bar);
 
     a->scroll = XtVaCreateManagedWidget("scrollBar", xmScrollBarWidgetClass, a->main_w,
                                         XmNorientation, XmVERTICAL,
                                         XmNtraversalOn, False,
                                         XmNrightAttachment, XmATTACH_FORM,
                                         XmNbottomAttachment, XmATTACH_FORM,
-                                        XmNtopAttachment, bar ? XmATTACH_WIDGET : XmATTACH_FORM,
+                                        XmNtopAttachment, show_bar ? XmATTACH_WIDGET : XmATTACH_FORM,
                                         XmNtopWidget, bar,
                                         XmNminimum, 0, XmNmaximum, 24, XmNsliderSize, 24,
                                         (char*)0);
@@ -1090,15 +1269,17 @@ int main(int argc, char** argv)
 
     /* The font setting (-fn) wins; otherwise the best font the server has. */
     const char* font = a->res.font && a->res.font[0] ? a->res.font : pick_font(dpy);
+    a->font_buf = (char*)malloc(strlen(font) + 1);
+    strcpy(a->font_buf, font);
 
     Arg args[16];
     Cardinal n = 0;
     static char fdirs[2048];
     font_dirs(argv[0], fdirs, sizeof(fdirs));
-    XtSetArg(args[n], TwNfont, font); n++;
+    XtSetArg(args[n], TwNfont, a->font_buf); n++;
     XtSetArg(args[n], TwNfallbackFonts, fdirs); n++;
     XtSetArg(args[n], TwNsource, (tw::Source*)&a->src); n++;
-    XtSetArg(args[n], XmNtopAttachment, bar ? XmATTACH_WIDGET : XmATTACH_FORM); n++;
+    XtSetArg(args[n], XmNtopAttachment, show_bar ? XmATTACH_WIDGET : XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNtopWidget, bar); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNbottomAttachment, XmATTACH_FORM); n++;
@@ -1117,19 +1298,8 @@ int main(int argc, char** argv)
     XtVaSetValues(a->top, XmNdeleteResponse, XmDO_NOTHING, (char*)0);
 
     /* Size in whole cells, set before realizing so that -geometry 80x24
-     * means cells (as in xterm) and window managers resize by cells. The
-     * base size is what is not cells: menu bar, scroll bar, margins. */
-    int cw, ch;
-    TwGridGetCellSize(a->grid, &cw, &ch);
-    XtWidgetGeometry pref;
-    int extra_w = 4, extra_h = 4;           /* the grid's margins */
-    if (XtQueryGeometry(a->scroll, 0, &pref) != XtGeometryNo || pref.width)
-        extra_w += pref.width;
-    if (bar && (XtQueryGeometry(bar, 0, &pref) != XtGeometryNo || pref.height))
-        extra_h += pref.height;
-    XtVaSetValues(a->top, XmNwidthInc, cw, XmNheightInc, ch,
-                  XmNbaseWidth, extra_w, XmNbaseHeight, extra_h,
-                  XmNminWidth, extra_w + 10 * cw, XmNminHeight, extra_h + 2 * ch, (char*)0);
+     * means cells (as in xterm) and window managers resize by cells. */
+    a->update_size_hints();
 
     g_sel_app = a;
     a->a_clipboard = XInternAtom(dpy, "CLIPBOARD", False);

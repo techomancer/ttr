@@ -20,7 +20,7 @@ static const char* const k_header[] = {
     0
 };
 
-SettingsFile::SettingsFile() : existed_(false) {}
+SettingsFile::SettingsFile() : existed_(false), header_(k_header) {}
 
 SettingsFile::~SettingsFile()
 {
@@ -109,8 +109,8 @@ bool SettingsFile::save(const char* path) const
 
     int i;
     if (!existed_)
-        for (i = 0; k_header[i]; i++)
-            fprintf(f, "%s\n", k_header[i]);
+        for (i = 0; header_[i]; i++)
+            fprintf(f, "%s\n", header_[i]);
     for (i = 0; i < lines_.size(); i++) {
         const Line* l = lines_[i];
         if (l->entry)

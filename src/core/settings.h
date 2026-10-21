@@ -40,6 +40,10 @@ public:
     /* $XDG_CONFIG_HOME/ttr/settings, or ~/.config/ttr/settings. */
     static Str default_path();
 
+    /* The comment lines save() starts a new file with (null-terminated,
+     * kept by pointer); ttr's by default. */
+    void set_header(const char* const* lines) { header_ = lines; }
+
 private:
     struct Line {
         bool entry;
@@ -56,6 +60,7 @@ private:
 
     Vector<Line*> lines_;
     bool existed_;      /* loaded from a file; else save() adds a header */
+    const char* const* header_;
 };
 
 }

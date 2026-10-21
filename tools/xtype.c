@@ -7,7 +7,8 @@
  * Each ARG is text to type, a key spec starting with '+' (+Return,
  * +ctrl+c, +shift+Prior, +alt+x; keysym names as in <X11/keysymdef.h>),
  * a click at root coordinates "@x,y" (button 1; "@x,y,b" for button b;
- * "@@x,y" double and "@@@x,y" triple click), a button 1 drag "~x1,y1,x2,y2", or
+ * "@@x,y" double and "@@@x,y" triple click; "^@x,y,b" with Ctrl held),
+ * a button 1 drag "~x1,y1,x2,y2", or
  * "%WxH" to resize the focused top-level window to W x H pixels.
  * Example: xtype @400,300 'ls -l' +Return
  *
@@ -201,17 +202,23 @@ int main(int argc, char** argv)
     for (; i < argc; i++) {
         int x, y, b = 1;
         int x2, y2;
-        if (argv[i][0] == '@') {
+        if (argv[i][0] == '@' || (argv[i][0] == '^' && argv[i][1] == '@')) {
             int clicks = 0, k;
-            while (argv[i][clicks] == '@')
+            int ctrl = argv[i][0] == '^';
+            KeyCode ctrl_kc = XKeysymToKeycode(dpy, XK_Control_L);
+            while (argv[i][ctrl + clicks] == '@')
                 clicks++;
-            if (sscanf(argv[i] + clicks, "%d,%d,%d", &x, &y, &b) >= 2) {
+            if (sscanf(argv[i] + ctrl + clicks, "%d,%d,%d", &x, &y, &b) >= 2) {
                 XTestFakeMotionEvent(dpy, -1, x, y, 0);
+                if (ctrl)
+                    XTestFakeKeyEvent(dpy, ctrl_kc, True, 0);
                 for (k = 0; k < clicks; k++) {
                     XTestFakeButtonEvent(dpy, (unsigned)b, True, 0);
                     XTestFakeButtonEvent(dpy, (unsigned)b, False, 0);
                     pause_ms(30);
                 }
+                if (ctrl)
+                    XTestFakeKeyEvent(dpy, ctrl_kc, False, 0);
                 pause_ms(250);
             }
         } else if (argv[i][0] == '~' &&
