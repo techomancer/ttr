@@ -50,6 +50,37 @@ bool Path::is_root() const
     return strcmp(c_str(), "/") == 0;
 }
 
+/* A component like "utar:" that starts an archive (mc's notation). */
+static bool is_marker(const char* c, size_t n)
+{
+    static const char* const schemes[] = { "utar:", "uzip:", "ugz:", "ubz2:", "uz:", 0 };
+    for (int i = 0; schemes[i]; i++)
+        if (strlen(schemes[i]) == n && strncmp(c, schemes[i], n) == 0)
+            return true;
+    return false;
+}
+
+/* Where the last "/xxx://" marker of p starts, or 0. */
+static const char* last_marker(const char* p)
+{
+    const char* found = 0;
+    for (const char* s = strstr(p, "://"); s; s = strstr(s + 3, "://")) {
+        const char* b = s;
+        while (b > p && b[-1] != '/')
+            b--;
+        if (b > p && is_marker(b, (size_t)(s - b + 1)))
+            found = b - 1;
+    }
+    return found;
+}
+
+bool Path::is_archive_root() const
+{
+    const char* s = c_str();
+    size_t n = strlen(s);
+    return n > 3 && strcmp(s + n - 3, "://") == 0 && last_marker(s) != 0;
+}
+
 Path Path::child(const char* name) const
 {
     size_t a = strlen(c_str()), b = strlen(name);
@@ -71,10 +102,22 @@ Path Path::child(const char* name) const
 Path Path::parent() const
 {
     const char* s = c_str();
-    const char* slash = strrchr(s, '/');
     Path p;
+    if (is_archive_root()) {
+        /* Out of the archive: the directory holding the archive file. */
+        const char* m = last_marker(s);
+        Path file;
+        file.set(s, (size_t)(m - s));
+        return file.parent();
+    }
+    const char* slash = strrchr(s, '/');
     if (!slash || slash == s)
         return p;                       /* "/" */
+    /* Just inside an archive: its root. */
+    if (slash >= s + 2 && slash[-1] == '/' && slash[-2] == ':') {
+        p.set(s, (size_t)(slash - s + 1));
+        return p;
+    }
     p.set(s, (size_t)(slash - s));
     return p;
 }
@@ -82,22 +125,42 @@ Path Path::parent() const
 const char* Path::name() const
 {
     const char* s = c_str();
+    if (is_archive_root()) {
+        /* The archive file's own name. */
+        const char* m = last_marker(s);
+        const char* b = m;
+        while (b > s && b[-1] != '/')
+            b--;
+        static char buf[1024];
+        size_t n = (size_t)(m - b);
+        if (n >= sizeof(buf))
+            n = sizeof(buf) - 1;
+        memcpy(buf, b, n);
+        buf[n] = 0;
+        return buf;
+    }
     const char* slash = strrchr(s, '/');
     return slash ? slash + 1 : s;
 }
 
 Path Path::resolve(const Path& base, const char* p)
 {
-    /* Build the raw path, then normalize component by component. */
+    /* Build the raw path, then normalize component by component; an
+     * archive marker ("utar:") is followed by "//" in the result, and
+     * ".." right after one leaves the archive. */
     const char* home = getenv("HOME");
     size_t pl = strlen(p);
-    size_t cap = strlen(base.c_str()) + pl + (home ? strlen(home) : 0) + 4;
+    size_t cap = strlen(base.c_str()) + pl + (home ? strlen(home) : 0) + 8;
     char* raw = (char*)malloc(cap);
     char* out = (char*)malloc(cap);
+    size_t* starts = (size_t*)malloc(cap * sizeof(size_t));
+    bool* marks = (bool*)malloc(cap * sizeof(bool));
     Path result;
-    if (!raw || !out) {
+    if (!raw || !out || !starts || !marks) {
         free(raw);
         free(out);
+        free(starts);
+        free(marks);
         return result;
     }
     if (p[0] == '/')
@@ -108,7 +171,7 @@ Path Path::resolve(const Path& base, const char* p)
         sprintf(raw, "%s/%s", base.c_str(), p);
 
     size_t o = 0;
-    out[o++] = '/';
+    int depth = 0;                  /* components in out */
     const char* q = raw;
     while (*q) {
         while (*q == '/')
@@ -120,24 +183,48 @@ Path Path::resolve(const Path& base, const char* p)
         if (n == 1 && q[0] == '.') {
             /* nothing */
         } else if (n == 2 && q[0] == '.' && q[1] == '.') {
-            while (o > 1 && out[o - 1] != '/')
-                o--;
-            if (o > 1)
-                o--;                    /* the slash before it */
-            if (o == 0)
-                o = 1;
+            if (depth > 0) {
+                depth--;
+                o = starts[depth];
+                /* At an archive's root: out of it, past its file too. */
+                if (marks[depth] && depth > 0) {
+                    depth--;
+                    o = starts[depth];
+                }
+            }
         } else {
-            if (o > 1)
-                out[o++] = '/';
+            starts[depth] = o;
+            bool m = is_marker(q, n);
+            marks[depth] = m;
+            depth++;
+            out[o++] = '/';
             memcpy(out + o, q, n);
             o += n;
+            if (m) {
+                out[o++] = '/';
+                out[o++] = '/';
+            }
         }
         q += n;
     }
+    if (o == 0)
+        out[o++] = '/';
     out[o] = 0;
-    result.set(out, o);
+    /* "/x/utar:///y" -> "/x/utar://y": a marker's slashes are its own. */
+    char* fixed = (char*)malloc(o + 1);
+    size_t f = 0;
+    for (size_t i = 0; i < o; i++) {
+        if (out[i] == '/' && i >= 3 && out[i - 1] == '/' && out[i - 2] == '/' && out[i - 3] == ':')
+            continue;
+        fixed[f++] = out[i];
+    }
+    fixed[f] = 0;
+    result.set(fixed, f);
+    free(fixed);
     free(raw);
     free(out);
+    free(starts);
+    free(marks);
     return result;
 }
 

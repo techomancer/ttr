@@ -10,7 +10,8 @@
 #        CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF -no_prelink -ptused -woff 3970" \
 #        CPPFLAGS="-Isrc -I/usr/Motif-2.1/include -DTTR_HAVE_XPM -DTTR_HAVE_SVG" \
 #        LDFLAGS=-L/usr/Motif-2.1/lib32 LIBS="-lXm -lXt -lXpm -lX11 -lm" \
-#        TP_SYS=build-irix/tp_sys_irix.o TF_SYS=build-irix/tf_sys_irix.o
+#        TP_SYS=build-irix/tp_sys_irix.o TF_SYS=build-irix/tf_sys_irix.o \
+#        CC=cc CFLAGS=-n32
 #                                     (IRIX 6.5, MIPSpro; see README "Building on IRIX")
 #
 # TTR_HAVE_PNG, TTR_HAVE_XPM and TTR_HAVE_SVG enable icon files in those
@@ -22,6 +23,9 @@
 
 CXX = g++
 CXXFLAGS = -std=c++98 -O2 -g -fno-exceptions -fno-rtti
+# For the C sources of third-party libraries (zlib, bzip2).
+CC = cc
+CFLAGS = -O2 -g
 WARNFLAGS = -pedantic -Wall -Wextra
 CPPFLAGS = -Isrc -DTTR_HAVE_PNG -DTTR_HAVE_XPM -DTTR_HAVE_SVG -DTTR_HAVE_DBUS
 # libdbus-1 for desktop notifications. Its include directories differ per
@@ -272,11 +276,18 @@ $(B)/tu_test_tu.o: $(B)/.dir tu/test/test_tu.cpp $(TU_H) $(TL_TERMINAL_H)
 # tests. TF_SYS is the per-system part: tf_sys_linux.o or tf_sys_irix.o
 # (IRIX: make TF_SYS=$(B)/tf_sys_irix.o).
 TF_SYS = $(B)/tf_sys_linux.o
-TF_OBJS = $(B)/tf_local.o \
+TF_OBJS = $(B)/tf_archive.o \
+	$(B)/tf_local.o \
 	$(B)/tf_ops.o \
 	$(B)/tf_path.o \
+	$(B)/tf_vfs.o \
+	$(B)/tf_zlib.o \
+	$(B)/tf_zlib_inflate.o \
+	$(B)/tf_zlib_inffast.o \
+	$(B)/tf_zlib_inftrees.o \
+	$(B)/tf_bzip2.o \
 	$(TF_SYS)
-TF_H = tf/tf.h tf/ops.h tf/path.h tf/sys.h tl/port.h
+TF_H = tf/tf.h tf/archive.h tf/ops.h tf/path.h tf/sys.h tf/vfs.h tl/port.h
 
 $(B)/libtf.a: $(TF_OBJS)
 	rm -f $@
@@ -284,6 +295,21 @@ $(B)/libtf.a: $(TF_OBJS)
 
 $(B)/tf_local.o: $(B)/.dir tf/local.cpp $(TF_H)
 	$(COMPILE) -c tf/local.cpp -o $@
+$(B)/tf_archive.o: $(B)/.dir tf/archive.cpp $(TF_H)
+	$(COMPILE) -c tf/archive.cpp -o $@
+$(B)/tf_vfs.o: $(B)/.dir tf/vfs.cpp $(TF_H)
+	$(COMPILE) -c tf/vfs.cpp -o $@
+# zlib and bzip2 (third_party, pinned) through their wrappers in tf/third.
+$(B)/tf_zlib.o: $(B)/.dir tf/third/zlib.c
+	$(CC) $(CFLAGS) -c tf/third/zlib.c -o $@
+$(B)/tf_zlib_inflate.o: $(B)/.dir tf/third/zlib_inflate.c
+	$(CC) $(CFLAGS) -c tf/third/zlib_inflate.c -o $@
+$(B)/tf_zlib_inffast.o: $(B)/.dir tf/third/zlib_inffast.c
+	$(CC) $(CFLAGS) -c tf/third/zlib_inffast.c -o $@
+$(B)/tf_zlib_inftrees.o: $(B)/.dir tf/third/zlib_inftrees.c
+	$(CC) $(CFLAGS) -c tf/third/zlib_inftrees.c -o $@
+$(B)/tf_bzip2.o: $(B)/.dir tf/third/bzip2.c
+	$(CC) $(CFLAGS) -c tf/third/bzip2.c -o $@
 $(B)/tf_ops.o: $(B)/.dir tf/ops.cpp $(TF_H)
 	$(COMPILE) -c tf/ops.cpp -o $@
 $(B)/tf_path.o: $(B)/.dir tf/path.cpp $(TF_H)
@@ -297,7 +323,7 @@ $(B)/tf_test: $(B)/tf_test_tf.o $(B)/libtf.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/tf_test_tf.o $(B)/libtf.a
 
 tf-test: $(B)/tf_test
-	$(B)/tf_test
+	$(B)/tf_test tf/test/data
 
 $(B)/tf_test_tf.o: $(B)/.dir tf/test/test_tf.cpp $(TF_H)
 	$(COMPILE) -c tf/test/test_tf.cpp -o $@

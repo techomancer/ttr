@@ -23,6 +23,8 @@ public:
     const char* c_str() const { return s_ ? s_ : ""; }
     bool empty() const { return !s_ || !*s_; }
     bool is_root() const;
+    /* "file.tar.gz/utar://": the top of an archive. */
+    bool is_archive_root() const;
 
     /* This path with name appended ("/a" + "b" = "/a/b"). */
     Path child(const char* name) const;

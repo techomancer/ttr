@@ -1,8 +1,10 @@
 /* Tests for tf: path normalization and the local file system. */
 #include "../ops.h"
+#include "../vfs.h"
 #include "../path.h"
 #include "../tf.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -257,11 +259,177 @@ static void test_ops()
     CHECK(tf::match_pattern("*a*b*", "xxaxxbxx", false));
 }
 
-int main()
+static const char* g_data = "tf/test/data";
+
+/* Read a whole file through the VFS. */
+static int slurp(const char* path, char* buf, size_t cap, long* total)
 {
+    int err = 0;
+    tf::Stream* s = tf::vfs()->open(path, tf::OPEN_READ, 0, &err);
+    *total = 0;
+    if (!s)
+        return err;
+    for (;;) {
+        long n = s->read(buf + *total, cap - 1 - (size_t)*total);
+        if (n < 0) {
+            delete s;
+            return (int)-n;
+        }
+        if (n == 0)
+            break;
+        *total += n;
+        if ((size_t)*total >= cap - 1)
+            break;
+    }
+    buf[*total] = 0;
+    delete s;
+    return 0;
+}
+
+static bool lists(const char* dir, const char* name)
+{
+    int err = 0;
+    tf::DirReader* d = tf::vfs()->open_dir(dir, &err);
+    if (!d)
+        return false;
+    bool found = false;
+    const char* n;
+    while ((n = d->next()) != 0)
+        if (strcmp(n, name) == 0)
+            found = true;
+    delete d;
+    return found;
+}
+
+static void test_archive_paths()
+{
+    tf::Path b("/a");
+    CHECK_STR(tf::Path::resolve(b, "b.tar/utar://x/y").c_str(), "/a/b.tar/utar://x/y");
+    CHECK_STR(tf::Path::resolve(b, "/a/b.tar/utar://x/..").c_str(), "/a/b.tar/utar://");
+    CHECK_STR(tf::Path::resolve(b, "/a/b.tar/utar://x/../..").c_str(), "/a");
+    CHECK_STR(tf::Path("/a/b.tar/utar://").parent().c_str(), "/a");
+    CHECK_STR(tf::Path("/a/b.tar/utar://x").parent().c_str(), "/a/b.tar/utar://");
+    CHECK_STR(tf::Path("/a/b.tar/utar://x/y").parent().c_str(), "/a/b.tar/utar://x");
+    CHECK_STR(tf::Path("/a/b.tar/utar://").name(), "b.tar");
+    CHECK(tf::Path("/a/b.tar/utar://").is_archive_root());
+    CHECK_STR(tf::Path("/a/b.tar/utar://").child("x").c_str(), "/a/b.tar/utar://x");
+    CHECK(!tf::is_local_path("/a/b.tar/utar://x"));
+    CHECK(tf::is_local_path("/a/b.tar"));
+    CHECK_STR(tf::archive_scheme("x.TAR.GZ"), "utar");
+    CHECK_STR(tf::archive_scheme("x.tgz"), "utar");
+    CHECK_STR(tf::archive_scheme("x.zip"), "uzip");
+    CHECK_STR(tf::archive_scheme("x.txt.gz"), "ugz");
+    CHECK_STR(tf::archive_scheme("x.Z"), "uz");
+    CHECK(tf::archive_scheme("x.txt") == 0);
+}
+
+static void test_archives()
+{
+    char cwd[1024];
+    if (!getcwd(cwd, sizeof(cwd)))
+        return;
+    tf::Path data = tf::Path::resolve(tf::Path(cwd), g_data);
+    static const char* const tars[] = {
+        "t.tar/utar://", "t_pax.tar/utar://", "t.tar.gz/utar://", "t.tar.bz2/utar://",
+        "t.tar.Z/utar://", "t.zip/uzip://", "t_stored.zip/uzip://", 0
+    };
+    static char first_big[80000];
+    long first_len = -1;
+    for (int i = 0; tars[i]; i++) {
+        tf::Path root = data.child(tars[i]);
+        char path[2048], buf[80000];
+        long n = 0;
+        tf::Stat st;
+        printf("  %s\n", tars[i]);
+        CHECK(tf::vfs()->stat(root.c_str(), &st, true) == 0 && st.type == tf::FT_DIR);
+        CHECK(lists(root.c_str(), "t"));
+        sprintf(path, "%s/t", root.c_str());
+        CHECK(lists(path, "hello.txt"));
+        CHECK(lists(path, "dir"));
+        CHECK(lists(path, "a_name_that_is_longer_than_the_hundred_characters_a_plain_tar_header_can_hold_so_it_needs_an_extension.txt"));
+        sprintf(path, "%s/t/hello.txt", root.c_str());
+        CHECK(slurp(path, buf, sizeof(buf), &n) == 0 && strcmp(buf, "hello\n") == 0);
+        CHECK(tf::vfs()->stat(path, &st, false) == 0 && st.type == tf::FT_FILE && st.size == 6);
+        sprintf(path, "%s/t/dir/sub/deep.txt", root.c_str());
+        CHECK(slurp(path, buf, sizeof(buf), &n) == 0 && strcmp(buf, "deep\n") == 0);
+        sprintf(path, "%s/t/link", root.c_str());
+        char target[256] = "";
+        CHECK(tf::vfs()->stat(path, &st, false) == 0 && st.type == tf::FT_LINK);
+        CHECK(tf::vfs()->readlink(path, target, sizeof(target)) == 0 &&
+              strcmp(target, "hello.txt") == 0);
+        CHECK(tf::vfs()->stat(path, &st, true) == 0 && st.type == tf::FT_FILE);
+        sprintf(path, "%s/t/big.bin", root.c_str());
+        CHECK(slurp(path, buf, sizeof(buf), &n) == 0 && n == 70000);
+        if (first_len < 0) {
+            memcpy(first_big, buf, (size_t)n);
+            first_len = n;
+        } else {
+            CHECK(n == first_len && memcmp(first_big, buf, (size_t)n) == 0);
+        }
+        /* Archives are read-only. */
+        sprintf(path, "%s/t/new", root.c_str());
+        CHECK(tf::vfs()->mkdir(path, 0755) == EROFS);
+    }
+    /* Single compressed files. */
+    static const char* const singles[] = {
+        "hello.txt.gz/ugz://hello.txt", "hello.txt.bz2/ubz2://hello.txt",
+        "hello.txt.Z/uz://hello.txt", 0
+    };
+    for (int i = 0; singles[i]; i++) {
+        char buf[64];
+        long n = 0;
+        CHECK(slurp(data.child(singles[i]).c_str(), buf, sizeof(buf), &n) == 0 &&
+              strcmp(buf, "hello\n") == 0);
+    }
+    /* Names that would leave the archive are left out. */
+    tf::Path evil = data.child("evil.tar/utar://");
+    CHECK(lists(evil.c_str(), "fine.txt"));
+    CHECK(lists(evil.c_str(), "abs.txt"));
+    CHECK(!lists(evil.c_str(), "escape.txt"));
+    CHECK(!lists(evil.c_str(), "up.txt"));
+    /* A cut-off archive does not open. */
+    tf::Stat st;
+    CHECK(tf::vfs()->stat(data.child("truncated.tar.gz/utar://").c_str(), &st, true) != 0);
+
+    /* Copying out of an archive; moving out fails on the delete. */
+    char out[64];
+    sprintf(out, "/tmp/tfarc%ld", (long)getpid());
+    tf::local_fs()->mkdir(out, 0755);
+    {
+        tf::Job j(tf::OP_COPY, tf::vfs(), tf::vfs());
+        j.add(data.child("t.tar.gz/utar://t/dir").c_str());
+        j.set_target(out, true);
+        CHECK(run(j) == tf::Job::DONE);
+        char p[200], buf[64];
+        long n = 0;
+        sprintf(p, "%s/dir/sub/deep.txt", out);
+        CHECK(slurp(p, buf, sizeof(buf), &n) == 0 && strcmp(buf, "deep\n") == 0);
+    }
+    {
+        tf::Job j(tf::OP_MOVE, tf::vfs(), tf::vfs());
+        j.add(data.child("t.zip/uzip://t/hello.txt").c_str());
+        j.set_target(out, true);
+        CHECK(run(j) == tf::Job::ASK_ERROR && j.error() == EROFS);
+        j.answer(tf::ANS_SKIP);
+        CHECK(run(j) == tf::Job::DONE);
+        char p[200];
+        sprintf(p, "%s/hello.txt", out);
+        CHECK(tf::local_fs()->stat(p, &st, false) == 0);
+    }
+    tf::Job cleanup(tf::OP_DELETE, tf::local_fs(), 0);
+    cleanup.add(out);
+    run(cleanup);
+}
+
+int main(int argc, char** argv)
+{
+    if (argc > 1)
+        g_data = argv[1];
     test_path();
     test_local();
     test_ops();
+    test_archive_paths();
+    test_archives();
     printf("tf tests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

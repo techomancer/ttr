@@ -6,6 +6,7 @@
 #include "app.h"
 
 #include "../../tf/ops.h"
+#include "../../tf/vfs.h"
 
 #include <errno.h>
 #include <grp.h>
@@ -15,6 +16,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
+#include <unistd.h>
 
 namespace ttrc {
 
@@ -419,7 +421,7 @@ void App::cmd_copy(bool move)
         hist_target_.add(in->text());
     tf::Path target = tf::Path::resolve(active_path(), in->text());
     tf::Stat st;
-    bool is_dir = tf::local_fs()->stat(target.c_str(), &st, true) == 0 && st.type == tf::FT_DIR;
+    bool is_dir = tf::vfs()->stat(target.c_str(), &st, true) == 0 && st.type == tf::FT_DIR;
     if (names.size() > 1 && !is_dir) {
         show_error("Copying or moving several files needs a directory as the target.");
         return;
@@ -1055,15 +1057,39 @@ bool App::open_file(const Entry& e)
     return done;
 }
 
-/* F3 and F4 run the pager and editor until ttrc has its own. */
+/* The file under the cursor as a local path: the file itself, or a copy
+ * of it in a temporary directory when it is inside an archive. */
+ttr::Str App::local_file(const Entry& e)
+{
+    tf::Path p = active_path().child(e.name.c_str());
+    if (tf::is_local_path(p.c_str()))
+        return ttr::Str(p.c_str());
+    char dir[200];
+    const char* tmp = getenv("TMPDIR");
+    snprintf(dir, sizeof(dir), "%.100s/ttrc.%ld", tmp && *tmp ? tmp : "/tmp", (long)getpid());
+    tf::local_fs()->mkdir(dir, 0700);
+    tf::Job job(tf::OP_COPY, tf::vfs(), tf::vfs());
+    job.add(p.c_str());
+    job.set_target(dir, true);
+    job.set_overwrite_all(true);
+    if (!run_job(job, "Extracting"))
+        return ttr::Str("");
+    return ttr::Str(tf::Path(dir).child(e.name.c_str()).c_str());
+}
+
+/* F3 and F4 run the pager and editor until ttrc has its own. Files in
+ * archives are seen (and edited) as a temporary copy. */
 void App::cmd_view()
 {
     const Entry* e = active()->current();
     if (!e || e->up || e->st.type == tf::FT_DIR)
         return;
+    ttr::Str f = local_file(*e);
+    if (f.empty())
+        return;
     const char* pager = getenv("PAGER");
     char c[4400];
-    snprintf(c, sizeof(c), "%s %s", pager && *pager ? pager : "more", quoted(e->name.c_str()).c_str());
+    snprintf(c, sizeof(c), "%s %s", pager && *pager ? pager : "more", quoted(f.c_str()).c_str());
     run(c);
 }
 
@@ -1072,11 +1098,16 @@ void App::cmd_edit()
     const Entry* e = active()->current();
     if (!e || e->up || e->st.type == tf::FT_DIR)
         return;
+    ttr::Str f = local_file(*e);
+    if (f.empty())
+        return;
+    if (!tf::is_local_path(active_path().c_str()))
+        message("%s", "Changes to a file in an archive stay in the temporary copy.");
     const char* ed = getenv("VISUAL");
     if (!ed || !*ed)
         ed = getenv("EDITOR");
     char c[4400];
-    snprintf(c, sizeof(c), "%s %s", ed && *ed ? ed : "vi", quoted(e->name.c_str()).c_str());
+    snprintf(c, sizeof(c), "%s %s", ed && *ed ? ed : "vi", quoted(f.c_str()).c_str());
     run(c);
 }
 

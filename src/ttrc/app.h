@@ -101,6 +101,7 @@ private:
     void cmd_appearance();
     void save_setup();
     bool open_file(const Entry& e);
+    ttr::Str local_file(const Entry& e);
     ttr::Str expand(const char* command);
     ttr::Str quoted(const char* s);
 

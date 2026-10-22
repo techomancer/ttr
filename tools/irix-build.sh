@@ -26,4 +26,4 @@ TARGETS=${*:-all}
 exec python3 "$ROOT/tools/irix-sh.py" --timeout 7200 run \
     "cd /shared && make B=build-irix CXX=CC CXXFLAGS='$CXXFLAGS' WARNFLAGS= \
      CPPFLAGS='$CPPFLAGS' DBUS_CFLAGS= LDFLAGS='$LDFLAGS' LIBS='$LIBS' \
-     TP_SYS=build-irix/tp_sys_irix.o TF_SYS=build-irix/tf_sys_irix.o $TARGETS 2>&1"
+     TP_SYS=build-irix/tp_sys_irix.o TF_SYS=build-irix/tf_sys_irix.o CC=cc CFLAGS='-n32 -O2' $TARGETS 2>&1"

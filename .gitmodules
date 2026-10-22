@@ -13,3 +13,9 @@
 [submodule "third_party/misc-misc"]
 	path = third_party/misc-misc
 	url = https://gitlab.freedesktop.org/xorg/font/misc-misc.git
+[submodule "third_party/zlib"]
+	path = third_party/zlib
+	url = https://github.com/madler/zlib.git
+[submodule "third_party/bzip2"]
+	path = third_party/bzip2
+	url = https://gitlab.com/bzip2/bzip2.git

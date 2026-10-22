@@ -1,0 +1,29 @@
+# Archives open like directories: enter t.tar.gz, copy a file out of it
+# to the other panel, leave it again with "..".
+expect Quit
+send \x13t.tar
+send \r
+send \r
+expect utar://
+expect /t
+send \eOB
+send \r
+expect hello.txt
+expect big.bin
+send \x13hello
+send \r
+send \e[15~
+expect Copy "hello.txt" to:
+send \r
+wait 600
+send \t
+expect hello.txt
+send \t
+send \eOH
+send \r
+wait 200
+send \eOH
+send \r
+expect t.tar.gz
+absent utar://
+send \e0

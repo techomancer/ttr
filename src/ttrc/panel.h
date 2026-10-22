@@ -61,6 +61,8 @@ public:
     /* Enter the directory under the cursor (or go up on ".."). True if
      * the panel changed. */
     bool enter();
+    /* A file that enter() opens as an archive. */
+    static bool is_archive(const Entry& e);
     bool up();
     void toggle_mark();
 

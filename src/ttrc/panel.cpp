@@ -1,6 +1,7 @@
 #include "panel.h"
 
 #include "../../tf/ops.h"
+#include "../../tf/vfs.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -236,7 +237,11 @@ bool Panel::load(const tf::Path& path, const char* select)
     int err = 0;
     tf::DirReader* d = fs_->open_dir(path.c_str(), &err);
     if (!d) {
-        sprintf(error_, "%.200s: %.80s", path.c_str(), strerror(err));
+        if (err == EINVAL && !tf::is_local_path(path.c_str()))
+            sprintf(error_, "%.200s: not an archive ttrc can read, or a damaged one",
+                    path.c_str());
+        else
+            sprintf(error_, "%.200s: %.80s", path.c_str(), strerror(err));
         return false;
     }
     error_[0] = 0;
@@ -499,9 +504,21 @@ bool Panel::enter()
         return false;
     if (e->up)
         return up();
-    if (!is_dir(e))
-        return false;
+    if (!is_dir(e)) {
+        /* Archives open like directories (mc's notation). */
+        const char* scheme = tf::archive_scheme(e->name.c_str());
+        if (!scheme || e->st.type == tf::FT_DIR)
+            return false;
+        char p[4200];
+        snprintf(p, sizeof(p), "%s/%s://", path_.child(e->name.c_str()).c_str(), scheme);
+        return load(tf::Path(p));
+    }
     return load(path_.child(e->name.c_str()));
+}
+
+bool Panel::is_archive(const Entry& e)
+{
+    return !e.up && e.st.type == tf::FT_FILE && tf::archive_scheme(e.name.c_str()) != 0;
 }
 
 bool Panel::up()

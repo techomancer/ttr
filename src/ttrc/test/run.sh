@@ -17,6 +17,7 @@ for sh in /bin/sh /bin/bash /bin/zsh /bin/ksh /usr/bin/ksh /bin/csh /usr/bin/tcs
         name=`basename $d .drive`
         rm -rf $W/other $W/newdir $W/.config
         mkdir -p $W/other
+        cp $T/../../../tf/test/data/t.tar.gz $W/
         SHELL=$sh HOME=$W TERM=xterm LANG=C $B/ttrc_drive -s 80x20 $B/ttrc $W $W/other \
             < $d > $W/out 2>&1
         rc=$?

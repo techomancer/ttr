@@ -1,5 +1,7 @@
 #include "app.h"
 
+#include "../../tf/vfs.h"
+
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -43,8 +45,8 @@ App::App(tu::Term& term, const tf::Path& left, const tf::Path& right, bool dirs_
         if (!config_.right_dir.empty())
             r = tf::Path(config_.right_dir.c_str());
     }
-    panels_[0] = new Panel(tf::local_fs(), l);
-    panels_[1] = new Panel(tf::local_fs(), r);
+    panels_[0] = new Panel(tf::vfs(), l);
+    panels_[1] = new Panel(tf::vfs(), r);
     panels_[0]->set_list_mode(config_.left_mode == LIST_BRIEF ? LIST_BRIEF : LIST_FULL);
     panels_[1]->set_list_mode(config_.right_mode == LIST_BRIEF ? LIST_BRIEF : LIST_FULL);
     panels_[0]->set_sort_mode((SortMode)(config_.left_sort & 15), (config_.left_sort & 16) != 0);
@@ -218,7 +220,8 @@ void App::draw()
 
 void App::start_shell()
 {
-    if (!shell_.start(term_.cols(), term_.rows(), active_path().c_str(), false, term_.utf8())) {
+    const char* dir = tf::is_local_path(active_path().c_str()) ? active_path().c_str() : "/";
+    if (!shell_.start(term_.cols(), term_.rows(), dir, false, term_.utf8())) {
         message("No shell: %s", shell_.error());
         return;
     }
@@ -229,6 +232,9 @@ void App::start_shell()
 bool App::needs_cd()
 {
     char where[4096];
+    /* The shell cannot go into an archive; it stays where it is. */
+    if (!tf::is_local_path(active_path().c_str()))
+        return false;
     if (!shell_.cwd(where, sizeof(where)))
         return false;
     return strcmp(where, active_path().c_str()) != 0;
@@ -525,7 +531,13 @@ bool App::handle_panel_key(const tu::Event& ev)
             const Entry* e = p->current();
             /* An executable file runs, as in mc; other files go to their
              * association, if one matches. */
-            if (e && !e->up && e->st.type == tf::FT_FILE && (e->st.mode & 0111)) {
+            if (e && Panel::is_archive(*e)) {
+                if (!p->enter())
+                    message("%s", p->error());
+                return true;
+            }
+            if (e && !e->up && e->st.type == tf::FT_FILE && (e->st.mode & 0111) &&
+                tf::is_local_path(active_path().c_str())) {
                 char q[1100], c[1200];
                 if (shell_.quote(e->name.c_str(), q, sizeof(q))) {
                     snprintf(c, sizeof(c), "./%s", q);
