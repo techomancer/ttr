@@ -15,7 +15,8 @@ for sh in /bin/sh /bin/bash /bin/zsh /bin/ksh /usr/bin/ksh /bin/csh /usr/bin/tcs
     [ -x $sh ] || continue
     for d in $T/*.drive; do
         name=`basename $d .drive`
-        rm -rf $W/other $W/newdir $W/.config
+        rm -rf $W/other $W/newdir $W/.config $W/made.txt
+        printf 'line one\nline two\n' > $W/note.txt
         mkdir -p $W/other
         cp $T/../../../tf/test/data/t.tar.gz $W/
         SHELL=$sh HOME=$W TERM=xterm LANG=C $B/ttrc_drive -s 80x20 $B/ttrc $W $W/other \

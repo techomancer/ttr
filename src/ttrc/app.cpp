@@ -32,7 +32,7 @@ App::App(tu::Term& term, const tf::Path& left, const tf::Path& right, bool dirs_
     : term_(term), screen_(term), active_(0), quit_(false), quick_(false), panel_y_(1),
       panel_h_(0), shrink_(0), last_click_(0), last_click_entry_(-1), ctrl_x_(false), view_(0),
       mode_(MODE_PANELS), pending_(PEND_NONE), syncing_(false), sync_started_(0),
-      cmd_started_(0), prompt_known_(false), history_pos_(0)
+      cmd_started_(0), prompt_known_(false), history_pos_(0), tool_(0)
 {
     config_.load();
     input_.init(term.info(), term.utf8());
@@ -181,6 +181,10 @@ void App::draw_command_line()
 
 void App::draw()
 {
+    if (tool_) {
+        tool_->draw(screen_, theme_);
+        return;
+    }
     int w = screen_.cols(), h = screen_.rows();
     screen_.clear(theme_.command);
     if (w < 24 || h < 8) {
@@ -680,6 +684,10 @@ void App::handle(const tu::Event& ev)
     }
     if (ev.key == tu::KEY_CHAR && ev.mods == tu::MOD_ALT && ev.ch >= '0' && ev.ch <= '9') {
         function_key(ev.ch == '0' ? 10 : (int)(ev.ch - '0'));
+        return;
+    }
+    if (ev.key == tu::KEY_F1 + 3 && (ev.mods & tu::MOD_SHIFT)) {
+        cmd_new_file();
         return;
     }
     if (ev.key >= tu::KEY_F1 && ev.key <= tu::KEY_F1 + 9 && !(ev.mods & tu::MOD_CTRL)) {

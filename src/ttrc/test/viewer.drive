@@ -1,0 +1,29 @@
+# F3: ttrc's viewer, text and hex, search; a file inside an archive.
+expect Menu
+send \x13note
+send \r
+send \e[13~
+expect line two
+expect line 1 of 2
+send \e[14~
+expect 6c 69 6e 65
+send \e[14~
+send /
+expect Find:
+send two\r
+absent Not found
+send q
+expect Menu
+send \x13t.tar
+send \r
+send \r
+send \eOB
+send \r
+send \x13big
+send \r
+send \e[13~
+expect 00000000
+expect [hex]
+send q
+expect big.bin
+send \e0

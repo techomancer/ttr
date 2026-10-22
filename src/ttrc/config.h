@@ -18,6 +18,8 @@ struct Config {
     bool show_hidden;
     bool remember_dirs;         /* start where the panels were */
     bool preserve_attrs;        /* copies keep modes and times */
+    bool internal_viewer;       /* F3: ttrc's viewer, or $PAGER */
+    bool internal_editor;       /* F4: ttrc's editor, or $EDITOR */
     ttr::Str theme;             /* "" (automatic), or a theme_names() entry */
     ttr::Str tier;              /* "" (automatic), basic, ansi, 256, modern */
     /* Saved state */

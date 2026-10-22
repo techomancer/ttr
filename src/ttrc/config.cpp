@@ -55,7 +55,8 @@ ttr::Str config_file(const char* name)
 
 Config::Config()
     : confirm_delete(true), confirm_overwrite(true), auto_return(true), show_hidden(true),
-      remember_dirs(true), preserve_attrs(true), left_mode(0), right_mode(0), left_sort(0),
+      remember_dirs(true), preserve_attrs(true), internal_viewer(true), internal_editor(true),
+      left_mode(0), right_mode(0), left_sort(0),
       right_sort(0)
 {
 }
@@ -71,6 +72,8 @@ void Config::load()
     show_hidden = flag(f, "showHidden", true);
     remember_dirs = flag(f, "rememberDirectories", true);
     preserve_attrs = flag(f, "preserveAttributes", true);
+    internal_viewer = flag(f, "internalViewer", true);
+    internal_editor = flag(f, "internalEditor", true);
     theme = text(f, "theme", "");
     tier = text(f, "terminal", "");
     left_dir = text(f, "leftDirectory", "");
@@ -93,6 +96,8 @@ bool Config::save() const
     f.set("showHidden", show_hidden ? "true" : "false");
     f.set("rememberDirectories", remember_dirs ? "true" : "false");
     f.set("preserveAttributes", preserve_attrs ? "true" : "false");
+    f.set("internalViewer", internal_viewer ? "true" : "false");
+    f.set("internalEditor", internal_editor ? "true" : "false");
     f.set("theme", theme.c_str());
     f.set("terminal", tier.c_str());
     if (remember_dirs) {

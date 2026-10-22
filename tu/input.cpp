@@ -46,10 +46,15 @@ void Input::init(const Terminfo& ti, bool utf8)
     };
     for (int i = 0; caps[i].cap; i++)
         add(ti.str(caps[i].cap), caps[i].key, caps[i].mods);
+    /* kf13-kf24 are Shift+F1-F12 on PC keyboards (ncurses' convention
+     * in the xterm entries). */
     for (int f = 1; f <= 24; f++) {
         char name[8];
         sprintf(name, "kf%d", f);
-        add(ti.str(name), KEY_F1 + f - 1, 0);
+        if (f <= 12)
+            add(ti.str(name), KEY_F1 + f - 1, 0);
+        else
+            add(ti.str(name), KEY_F1 + f - 13, MOD_SHIFT);
     }
 }
 
@@ -382,9 +387,13 @@ bool Input::next(Event* ev, bool timed_out)
                 consume(used);
                 continue;
             }
-            if (buf_[1] == 0x1b) {      /* Esc Esc */
+            if (buf_[1] == 0x1b) {
+                /* Esc, then a sequence that starts with Esc (a quick
+                 * Esc and an arrow key): just the first Esc. A lone
+                 * Esc Esc is one Esc, as in mc. */
+                bool seq = len_ > 2 && (buf_[2] == '[' || buf_[2] == 'O');
                 ev->key = KEY_ESC;
-                consume(2);
+                consume(seq ? 1 : 2);
                 return true;
             }
             /* Alt + the next key */

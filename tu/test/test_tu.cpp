@@ -181,6 +181,8 @@ static void test_input()
     CHECK(e.key == tu::KEY_F1 + 4);
     e = key(in, "\033[24;2~");
     CHECK(e.key == tu::KEY_F1 + 11 && e.mods == tu::MOD_SHIFT);
+    e = key(in, "\033[1;2S");
+    CHECK(e.key == tu::KEY_F1 + 3 && e.mods == tu::MOD_SHIFT);
     e = key(in, "\033[<0;10;5M");
     CHECK(e.key == tu::KEY_MOUSE && e.x == 9 && e.y == 4 && e.button == 1 &&
           e.action == tu::MOUSE_PRESS);
@@ -206,6 +208,10 @@ static void test_input()
     CHECK(in.pending());
     CHECK(in.next(&e, true) && e.key == tu::KEY_ESC);
     CHECK(!in.pending());
+    /* Esc right before a key sequence: two keys. */
+    in.feed("\033\033[A", 4);
+    CHECK(in.next(&e, false) && e.key == tu::KEY_ESC);
+    CHECK(in.next(&e, false) && e.key == tu::KEY_UP);
     /* Half a sequence waits for the rest. */
     e = key(in, "\033[1;");
     CHECK(e.key == -1);

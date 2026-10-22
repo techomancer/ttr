@@ -1084,6 +1084,18 @@ void App::cmd_view()
     const Entry* e = active()->current();
     if (!e || e->up || e->st.type == tf::FT_DIR)
         return;
+    if (config_.internal_viewer) {
+        Viewer v;
+        int err = v.load(tf::vfs(), active_path().child(e->name.c_str()).c_str());
+        if (err) {
+            char m[600];
+            snprintf(m, sizeof(m), "Cannot read %.400s:\n%s", e->name.c_str(), strerror(err));
+            show_error(m);
+            return;
+        }
+        run_tool(&v, 0);
+        return;
+    }
     ttr::Str f = local_file(*e);
     if (f.empty())
         return;
@@ -1098,6 +1110,20 @@ void App::cmd_edit()
     const Entry* e = active()->current();
     if (!e || e->up || e->st.type == tf::FT_DIR)
         return;
+    if (config_.internal_editor) {
+        Editor ed;
+        int err = ed.load(tf::vfs(), active_path().child(e->name.c_str()).c_str());
+        if (err) {
+            char m[600];
+            snprintf(m, sizeof(m), "Cannot read %.400s:\n%s", e->name.c_str(), strerror(err));
+            show_error(m);
+            return;
+        }
+        if (!tf::is_local_path(active_path().c_str()))
+            ed.set_note("In an archive: save a copy elsewhere with Shift-F2.");
+        run_tool(&ed, &ed);
+        return;
+    }
     ttr::Str f = local_file(*e);
     if (f.empty())
         return;
@@ -1204,22 +1230,26 @@ void App::menu_command(int id)
 
 void App::cmd_config()
 {
-    tu::Dialog d("Configuration", 56, 14);
+    tu::Dialog d("Configuration", 56, 16);
     tu::CheckBox* c1 = new tu::CheckBox("Confirm &delete", config_.confirm_delete);
     tu::CheckBox* c2 = new tu::CheckBox("Ask before &overwriting", config_.confirm_overwrite);
     tu::CheckBox* c3 = new tu::CheckBox("&Return to the panels after a command", config_.auto_return);
     tu::CheckBox* c4 = new tu::CheckBox("Show &hidden files", config_.show_hidden);
     tu::CheckBox* c5 = new tu::CheckBox("Re&member the panels' directories", config_.remember_dirs);
     tu::CheckBox* c6 = new tu::CheckBox("Copies keep modes and &times", config_.preserve_attrs);
+    tu::CheckBox* c7 = new tu::CheckBox("F3: ttrc's own &viewer ($PAGER if off)", config_.internal_viewer);
+    tu::CheckBox* c8 = new tu::CheckBox("F4: ttrc's own &editor ($EDITOR if off)", config_.internal_editor);
     d.add(c1, 4, 2, 48);
     d.add(c2, 4, 3, 48);
     d.add(c3, 4, 4, 48);
     d.add(c4, 4, 5, 48);
     d.add(c5, 4, 6, 48);
     d.add(c6, 4, 7, 48);
-    d.add(new tu::Label("Saved in ~/.config/ttrc/settings"), 4, 9, 48);
+    d.add(c7, 4, 8, 48);
+    d.add(c8, 4, 9, 48);
+    d.add(new tu::Label("Saved in ~/.config/ttrc/settings"), 4, 11, 48);
     tu::Button* b[2] = { new tu::Button("&OK", 1, true), new tu::Button("&Cancel", 2) };
-    d.add_buttons(11, b, 2);
+    d.add_buttons(13, b, 2);
     if (modal(d, theme_.dialog) != 1)
         return;
     config_.confirm_delete = c1->on;
@@ -1227,6 +1257,8 @@ void App::cmd_config()
     config_.auto_return = c3->on;
     config_.remember_dirs = c5->on;
     config_.preserve_attrs = c6->on;
+    config_.internal_viewer = c7->on;
+    config_.internal_editor = c8->on;
     if (c4->on != config_.show_hidden) {
         config_.show_hidden = c4->on;
         panels_[0]->set_hidden(c4->on);
@@ -1289,6 +1321,138 @@ void App::save_setup()
     config_.right_sort = panels_[1]->sort() | (panels_[1]->reversed() ? 16 : 0);
     make_config_dir();
     config_.save();
+}
+
+} /* namespace ttrc */
+
+namespace ttrc {
+
+/* The viewer or editor full-screen, until it closes; its requests for a
+ * dialog are answered here. */
+void App::run_tool(FullScreen* tool, Editor* editor)
+{
+    tool_ = tool;
+    screen_.invalidate();
+    bool done = false;
+    while (!quit_ && !done) {
+        draw();
+        screen_.flush();
+        bool timed_out = false;
+        if (!wait_input(input_.pending() ? input_.timeout_ms() : -1, &timed_out)) {
+            quit_ = true;
+            break;
+        }
+        tu::Event ev;
+        while (!done && input_.next(&ev, timed_out)) {
+            ToolRequest r = tool->handle(ev);
+            switch (r) {
+            case REQ_CLOSE:
+                done = true;
+                break;
+            case REQ_SEARCH: {
+                ttr::Str v("");
+                if (hist_search_.size())
+                    v = hist_search_[hist_search_.size() - 1];
+                if (ask_text("Search", "Find:", &v, &hist_search_) && !v.empty())
+                    tool->search(v.c_str());
+                break;
+            }
+            case REQ_GOTO: {
+                ttr::Str v("");
+                if (ask_text("Go to line", "Line number:", &v, 0) && atol(v.c_str()) > 0)
+                    tool->goto_line(atol(v.c_str()));
+                break;
+            }
+            case REQ_REPLACE: {
+                if (!editor)
+                    break;
+                int w = screen_.cols() - 10;
+                if (w > 60)
+                    w = 60;
+                tu::Dialog d("Replace all", w, 10);
+                d.add(new tu::Label("Find:"), 3, 2, w - 6);
+                tu::InputLine* a = new tu::InputLine("");
+                a->set_history(&hist_search_);
+                d.add(a, 3, 3, w - 6);
+                d.add(new tu::Label("Replace with:"), 3, 4, w - 6);
+                tu::InputLine* b = new tu::InputLine("");
+                d.add(b, 3, 5, w - 6);
+                tu::Button* bt[2] = { new tu::Button("&Replace", 1, true),
+                                      new tu::Button("&Cancel", 2) };
+                d.add_buttons(7, bt, 2);
+                d.focus(a);
+                if (modal(d, theme_.dialog) == 1 && *a->text())
+                    editor->replace_all(a->text(), b->text());
+                break;
+            }
+            case REQ_SAVE: case REQ_SAVE_AS: {
+                if (!editor)
+                    break;
+                const char* where = 0;
+                ttr::Str v(editor->path());
+                if (r == REQ_SAVE_AS) {
+                    if (!ask_text("Save as", "File name:", &v, 0) || v.empty())
+                        break;
+                    v = tf::Path::resolve(active_path(), v.c_str()).c_str();
+                    where = v.c_str();
+                }
+                int err = editor->save(where);
+                if (err) {
+                    char m[700];
+                    snprintf(m, sizeof(m), "Cannot save %.400s:\n%s%s", where ? where : editor->path(),
+                             strerror(err), err == EROFS ? "\n\nSave a copy elsewhere with Shift-F2." : "");
+                    show_error(m);
+                } else {
+                    editor->set_note("Saved.");
+                }
+                break;
+            }
+            case REQ_ASK_QUIT: {
+                static const char* const b[] = { "&Save", "&Discard", "&Cancel", 0 };
+                int a = ask("Quit", "The file has changed. Save it?", b, false);
+                if (a == 1) {
+                    int err = editor ? editor->save(0) : 0;
+                    if (err) {
+                        char m[600];
+                        snprintf(m, sizeof(m), "Cannot save:\n%s", strerror(err));
+                        show_error(m);
+                    } else {
+                        done = true;
+                    }
+                } else if (a == 2) {
+                    done = true;
+                }
+                break;
+            }
+            default:
+                break;
+            }
+        }
+    }
+    tool_ = 0;
+    screen_.invalidate();
+    panels_[0]->reload();
+    panels_[1]->reload();
+}
+
+/* Shift-F4: edit a new file. */
+void App::cmd_new_file()
+{
+    ttr::Str name("");
+    if (!ask_text("New file", "Name of the file to edit:", &name, 0) || name.empty())
+        return;
+    Editor ed;
+    tf::Path p = tf::Path::resolve(active_path(), name.c_str());
+    int err = ed.load(tf::vfs(), p.c_str());
+    if (err) {
+        char m[600];
+        snprintf(m, sizeof(m), "Cannot read %.400s:\n%s", p.c_str(), strerror(err));
+        show_error(m);
+        return;
+    }
+    run_tool(&ed, &ed);
+    if (strcmp(p.parent().c_str(), active_path().c_str()) == 0)
+        active()->select_name(p.name());
 }
 
 } /* namespace ttrc */

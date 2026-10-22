@@ -337,10 +337,12 @@ TTRC_OBJS = $(B)/ttrc_main.o \
 	$(B)/ttrc_panel.o \
 	$(B)/ttrc_shell.o \
 	$(B)/ttrc_theme.o \
+	$(B)/ttrc_viewer.o \
+	$(B)/ttrc_editor.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
 TTRC_H = src/ttrc/app.h src/ttrc/cmdline.h src/ttrc/config.h src/ttrc/panel.h src/ttrc/shell.h \
-	src/ttrc/theme.h $(TU_H) $(TF_H) $(TL_TERMINAL_H) tp/tp.h src/core/str.h \
+	src/ttrc/theme.h src/ttrc/viewer.h $(TU_H) $(TF_H) $(TL_TERMINAL_H) tp/tp.h src/core/str.h \
 	src/core/vector.h
 
 ttrc: $(B)/ttrc
@@ -371,6 +373,10 @@ $(B)/ttrc_shell.o: $(B)/.dir src/ttrc/shell.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/shell.cpp -o $@
 $(B)/ttrc_panel.o: $(B)/.dir src/ttrc/panel.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/panel.cpp -o $@
+$(B)/ttrc_viewer.o: $(B)/.dir src/ttrc/viewer.cpp $(TTRC_H)
+	$(COMPILE) -c src/ttrc/viewer.cpp -o $@
+$(B)/ttrc_editor.o: $(B)/.dir src/ttrc/editor.cpp $(TTRC_H)
+	$(COMPILE) -c src/ttrc/editor.cpp -o $@
 $(B)/ttrc_theme.o: $(B)/.dir src/ttrc/theme.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/theme.cpp -o $@
 

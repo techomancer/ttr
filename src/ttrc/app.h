@@ -11,6 +11,7 @@
 #include "panel.h"
 #include "shell.h"
 #include "theme.h"
+#include "viewer.h"
 
 #include "../../tf/ops.h"
 #include "../../tu/input.h"
@@ -101,6 +102,8 @@ private:
     void cmd_appearance();
     void save_setup();
     bool open_file(const Entry& e);
+    void run_tool(FullScreen* tool, Editor* editor);
+    void cmd_new_file();
     ttr::Str local_file(const Entry& e);
     ttr::Str expand(const char* command);
     ttr::Str quoted(const char* s);
@@ -135,7 +138,8 @@ private:
     bool prompt_known_;
     ttr::Vector<ttr::Str> history_;
     int history_pos_;
-    tu::StrList hist_target_, hist_mkdir_, hist_pattern_, hist_find_;
+    tu::StrList hist_target_, hist_mkdir_, hist_pattern_, hist_find_, hist_search_;
+    FullScreen* tool_;          /* the viewer or editor on screen, or 0 */
 };
 
 } /* namespace ttrc */

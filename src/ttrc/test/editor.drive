@@ -1,0 +1,30 @@
+# F4: ttrc's editor: type, save, undo, quit with changes, a new file.
+expect Menu
+send \x13note
+send \r
+send \e[14~
+expect line one
+send X
+expect Xline one
+send \eOQ
+expect Saved.
+send \e
+expect Menu
+send \e[14~
+expect Xline one
+send Y
+expect YXline one
+send \x15
+absent YXline
+send \e
+expect The file has changed
+send d
+expect Menu
+send \e[1;2S
+expect Name of the file to edit
+send made.txt\r
+send hello\r
+send \eOQ
+send \e
+expect made.txt
+send \e0

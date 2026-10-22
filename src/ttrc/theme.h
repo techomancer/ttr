@@ -33,6 +33,11 @@ struct Theme {
     tu::Style command;          /* the command line */
     tu::Style error;
     tu::FrameStyle frame_style;
+    /* The viewer and the editor */
+    tu::Style text;
+    tu::Style text_status;
+    tu::Style text_select;      /* a selection, a search hit */
+    tu::Style text_ctrl;        /* control characters, hex offsets */
     tu::DialogStyle dialog;
     tu::DialogStyle alarm;      /* errors and dangerous questions */
     tu::DialogStyle menu;       /* pull-down menus */

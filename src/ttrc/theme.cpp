@@ -59,6 +59,10 @@ Theme mono()
     t.command = plain;
     t.error = Style(COLOR_DEFAULT, COLOR_DEFAULT, tu::ATTR_BOLD | tu::ATTR_REVERSE);
     t.frame_style = tu::FRAME_DOUBLE;
+    t.text = plain;
+    t.text_status = rev;
+    t.text_select = rev;
+    t.text_ctrl = bold;
     tu::DialogStyle d;
     d.body = plain;
     d.frame = plain;
@@ -107,6 +111,10 @@ Theme classic()
     t.command = Style();
     t.error = Style(white, red, tu::ATTR_BOLD);
     t.frame_style = tu::FRAME_DOUBLE;
+    t.text = Style(white, blue);
+    t.text_status = Style(black, teal);
+    t.text_select = Style(black, teal);
+    t.text_ctrl = Style(yellow, blue);
     t.dialog = dialog_style(black, grey, white, blue, black, teal, black, teal, red,
                             tu::FRAME_DOUBLE);
     t.alarm = dialog_style(white, red, white, yellow, black, grey, black, grey, yellow,
@@ -138,6 +146,10 @@ Theme midnight()
     t.menu_hotkey = Style(0x8a1c00, 0x6fd3e8, tu::ATTR_BOLD);
     t.key_label = Style(0x0b1530, 0x6fd3e8);
     t.key_num = Style(0xffffff, 0x101010);
+    t.text = Style(0xe8f0ff, bg);
+    t.text_status = Style(0x0b1530, 0x6fd3e8);
+    t.text_select = Style(0x0b1530, 0xffe27a);
+    t.text_ctrl = Style(0xffe27a, bg);
     t.dialog = dialog_style(0x101828, 0xd4dae6, 0x506078, 0x0b2a78, 0x101828, 0x9fd8ff,
                             0x0b1530, 0x6fd3e8, 0xa02000, tu::FRAME_ROUNDED);
     t.alarm = dialog_style(0xffffff, 0xa82828, 0xffd0d0, 0xffe27a, 0x101828, 0xe0e0e0,
@@ -170,6 +182,10 @@ Theme dark()
     t.key_label = Style(0x1c1c1c, 0x8a8a8a);
     t.key_num = Style(amber, 0x000000);
     t.frame_style = tu::FRAME_SINGLE;
+    t.text = Style(0xd0d0d0, bg);
+    t.text_status = Style(0x1c1c1c, 0x8a8a8a);
+    t.text_select = Style(0x1c1c1c, amber);
+    t.text_ctrl = Style(amber, bg);
     t.dialog = dialog_style(0xd0d0d0, 0x303030, 0x707070, amber, 0xffffff, 0x4a4a4a,
                             0x1c1c1c, amber, amber, tu::FRAME_ROUNDED);
     t.alarm = dialog_style(0xffffff, 0x5f0000, 0xd78787, amber, 0xffffff, 0x870000,
