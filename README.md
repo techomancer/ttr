@@ -49,6 +49,9 @@ run as a window manager there yet. A Wayland mode is planned for later
   a plain text file you can also edit by hand.
 - **ttrt**, a terminal emulator in the same style (early; see "The
   terminal" below).
+- **ttrc**, To The Roots Commander, a two-panel file manager for any
+  terminal in the Norton Commander tradition (early; see "The file
+  manager" below).
 
 ## Building
 
@@ -145,6 +148,8 @@ This installs:
 |---|---|
 | `/usr/bin/ttr` | the window manager and desktop |
 | `/usr/bin/ttrt` | the terminal |
+| `/usr/bin/ttrc` | the file manager |
+| `/usr/share/ttrc/tc.sh`, `tc.csh` | the `tc` command for your shell (see "The file manager") |
 | `/usr/share/ttr/fonts/` | ttrt's Unicode fonts (public domain misc-fixed BDF) |
 | `/usr/share/terminfo/t/ttrt` | ttrt's terminfo entry (`/usr/share/lib/terminfo` on IRIX; packages built with `DESTDIR` set `TERMINFO_DIR`) |
 | `/usr/bin/ttr-session` | starts a ttr session (see below) |
@@ -177,10 +182,11 @@ tools/irix-dist.sh                      # writes build-irix/ttr-VERSION.tardist
 inst -f ttr-VERSION.tardist             # on IRIX, as root
 ```
 
-The package has two subsystems, `ttr.sw.wm` (ttr and its themes) and
-`ttr.sw.term` (ttrt, its fonts and a Desktop toolchest entry). Installing it
-compiles ttrt's terminfo entry into `/usr/share/lib/terminfo` with `tic`, and
-removing it deletes the entry.
+The package has three subsystems: `ttr.sw.wm` (ttr and its themes),
+`ttr.sw.term` (ttrt, its fonts and a Desktop toolchest entry) and
+`ttr.sw.commander` (ttrc, with `/usr/bin/tc` as a link to it, since IRIX has
+no other `tc`). Installing it compiles ttrt's terminfo entry into
+`/usr/share/lib/terminfo` with `tic`, and removing it deletes the entry.
 
 ## Running
 
@@ -452,6 +458,65 @@ install it with `tic -o ~/.terminfo data/ttrt.ti` (ncurses) or
 `~/.terminfo` by itself).
 Otherwise it uses the best entry the system has: `xterm-256color` on
 Linux, `xterm` on IRIX 6.5, whose old entry knows only 8 colours.
+
+Programs in ttrt get Alt+letter and F10: the menu bar has no keyboard
+shortcuts of its own, so file managers and editors that use those keys
+work as they do in xterm. Open the menus with the mouse.
+
+### The file manager (ttrc)
+
+`ttrc`, To The Roots Commander, is a file manager with two panels, a
+command line and a function key bar, in the line of Norton Commander and
+Midnight Commander. It runs in any terminal: ttrt, xterm, the Linux
+console, winterm and xwsh on IRIX, a vt100 on a serial line. It does not
+need ttr or X. It is early work: this first version browses. The shell,
+copying and moving, menus and archives come next (see
+[ttrc/DESIGN.md](ttrc/DESIGN.md)).
+
+```sh
+ttrc                        # both panels in the current directory
+ttrc ~/src /usr/share       # left and right panel
+```
+
+To get `tc`, which starts ttrc and leaves your shell in the directory you
+were in when you quit it, add this to your shell's startup file:
+
+```sh
+. /usr/share/ttrc/tc.sh             # sh, ksh, bash, zsh (~/.profile, ~/.bashrc)
+source /usr/share/ttrc/tc.csh       # csh, tcsh (~/.cshrc)
+```
+
+On Linux the function hides iproute2's `/sbin/tc` in your interactive
+shell; call that one by its full path.
+
+| Key | Does |
+|---|---|
+| Up, Down, PgUp, PgDn, Home, End | move in the panel |
+| Left, Right | move between columns in the brief listing |
+| Enter | open the directory under the cursor (`..` goes up) |
+| Ctrl+PgUp, Ctrl+PgDn | go up, go into |
+| Tab | switch panels |
+| Insert, Ctrl+T | mark a file and move down |
+| Alt+T | full or brief listing |
+| Alt+. | show or hide files starting with a dot |
+| Ctrl+F3, F4, F5, F6 | sort by name, extension, time, size (again: reverse) |
+| Ctrl+S, Alt+S | search by typing the start of a name |
+| Alt+letter | jump to the next name starting with it |
+| Ctrl+U | swap the panels |
+| Ctrl+R | read the directory again |
+| Ctrl+L | redraw the screen |
+| Ctrl+Z | suspend to the shell (`fg` comes back) |
+| F10, Esc then 0 | quit |
+
+Typing goes to the command line under the panels; `cd DIR` there changes
+the panel's directory. Esc then a digit works as the function key of that
+number on terminals without them. The mouse selects files (double-click
+opens) and scrolls. ttrc uses what the terminal offers: true colour and
+Unicode lines in ttrt and modern Linux terminals, 256 or 8 colours
+elsewhere, ASCII frames where the terminal has no line drawing (xwsh and
+winterm on a stock IRIX), and bold and reverse on a vt100.
+It reads terminfo itself, with no curses library. `TU_TIER=basic`,
+`ansi`, `256` or `modern` in the environment overrides what it detects.
 
 ### High-resolution screens
 

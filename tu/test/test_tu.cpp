@@ -346,10 +346,10 @@ static void test_screen()
         CHECK_STR(r.row(1), "\xe2\x94\x82" "caf\xc3\xa9    " "\xe2\x94\x82");
     }
     {
-        /* iris-ansi: colours and lines come from the gap table. */
+        /* iris-ansi: colours come from the gap table, lines are ASCII. */
         Rig r("iris-ansi", 10, 3, "LANG=C");
         CHECK(r.term.tier() == tu::TIER_ANSI);
-        CHECK(r.term.has_acs());
+        CHECK(!r.term.has_acs());
         tu::Screen s(r.term);
         tu::Style st(0xffff55, 0x0000aa);
         s.clear(st);
@@ -359,8 +359,9 @@ static void test_screen()
         r.pump();
         CHECK(strstr(r.buf, "\033[44m") != 0);  /* blue background */
         CHECK(strstr(r.buf, "\033[33m") != 0);  /* bright yellow: 3 and bold */
-        CHECK(strstr(r.buf, "\033(0") != 0);
-        CHECK_STR(r.row(1), "\xe2\x94\x82" "caf\xc3\xa9    " "\xe2\x94\x82");
+        CHECK(strstr(r.buf, "\033(0") == 0);
+        CHECK_STR(r.row(0), "+--------+");
+        CHECK_STR(r.row(1), "|caf\xc3\xa9    |");
     }
     {
         /* Modern: true colour SGR. */

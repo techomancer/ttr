@@ -50,10 +50,11 @@ Theme theme_for(tu::Tier tier)
     t.special = Style(magenta, blue, tu::ATTR_BOLD);
     t.marked = Style(yellow, blue, tu::ATTR_BOLD);
     t.cursor = Style(black, teal);
-    t.cursor_marked = Style(yellow, teal, tu::ATTR_BOLD);
+    t.cursor_marked = Style(0xa80000, teal, tu::ATTR_BOLD);
     t.status = Style(cyan, blue);
     t.menu_bar = Style(black, teal);
-    t.menu_hotkey = Style(yellow, teal, tu::ATTR_BOLD);
+    /* Red: yellow on cyan all but vanishes in xwsh's palette. */
+    t.menu_hotkey = Style(0xa80000, teal);
     t.key_num = Style(white, black);
     t.key_label = Style(black, teal);
     t.command = Style();

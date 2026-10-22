@@ -59,12 +59,11 @@ struct Gap {
 };
 
 const Gap k_gaps[] = {
-    /* xwsh and winterm: 16 colours and DEC line drawing (ttrt/XWSH-NOTES.md),
-     * which the iris-ansi entries of IRIX 6.5 do not declare. */
-    { "iris-ansi",
-      "colors#8, setaf=\\E[3%p1%dm, setab=\\E[4%p1%dm,"
-      " acsc=``aaffggjjkkllmmnnooppqqrrssttuuvvwwxxyyzz{{||}}~~,"
-      " smacs=\\E(0, rmacs=\\E(B," },
+    /* xwsh and winterm: ANSI colours, which the iris-ansi entries of IRIX
+     * 6.5 do not declare. Not line drawing: xwsh takes it from the
+     * -dec-dectech fonts, which a stock IRIX X server does not have
+     * (checked on 6.5.22), so frames there are ASCII. */
+    { "iris-ansi", "colors#8, setaf=\\E[3%p1%dm, setab=\\E[4%p1%dm," },
     /* ttrt: the built-in entry if the installed one is missing pieces. */
     { "ttrt", "RGB, colors#256," },
     { 0, 0 }

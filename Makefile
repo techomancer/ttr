@@ -10,7 +10,7 @@
 #        CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF -no_prelink -ptused -woff 3970" \
 #        CPPFLAGS="-Isrc -I/usr/Motif-2.1/include -DTTR_HAVE_XPM -DTTR_HAVE_SVG" \
 #        LDFLAGS=-L/usr/Motif-2.1/lib32 LIBS="-lXm -lXt -lXpm -lX11 -lm" \
-#        TP_SYS=build-irix/tp_sys_irix.o
+#        TP_SYS=build-irix/tp_sys_irix.o TF_SYS=build-irix/tf_sys_irix.o
 #                                     (IRIX 6.5, MIPSpro; see README "Building on IRIX")
 #
 # TTR_HAVE_PNG, TTR_HAVE_XPM and TTR_HAVE_SVG enable icon files in those
@@ -40,6 +40,8 @@ PREFIX = /usr
 BINDIR = $(PREFIX)/bin
 XSESSIONDIR = $(PREFIX)/share/xsessions
 DATADIR = $(PREFIX)/share/ttr
+# ttrc's own files (the tc shell function); ttrc does not need ttr.
+TTRC_DATADIR = $(PREFIX)/share/ttrc
 # Where tic puts ttrt's compiled terminfo entry. Empty: tic's own default,
 # the system directory every user's curses reads (/usr/share/lib/terminfo
 # on IRIX, /usr/share/terminfo with ncurses). Packages built with DESTDIR
@@ -551,7 +553,7 @@ asan:
 # A running ttr cannot be overwritten ("Text file busy"), but it can be
 # renamed: the old one becomes ttr.old and keeps running, and Restart ttr
 # starts the new one.
-install: $(B)/ttr $(B)/ttrt
+install: $(B)/ttr $(B)/ttrt $(B)/ttrc
 	mkdir -p $(DESTDIR)$(BINDIR) $(DESTDIR)$(XSESSIONDIR)
 	if [ -f $(DESTDIR)$(BINDIR)/ttr ]; then \
 		mv -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old; fi
@@ -560,6 +562,12 @@ install: $(B)/ttr $(B)/ttrt
 	rm -f $(DESTDIR)$(BINDIR)/ttrt
 	cp $(B)/ttrt $(DESTDIR)$(BINDIR)/ttrt
 	chmod 755 $(DESTDIR)$(BINDIR)/ttrt
+	rm -f $(DESTDIR)$(BINDIR)/ttrc
+	cp $(B)/ttrc $(DESTDIR)$(BINDIR)/ttrc
+	chmod 755 $(DESTDIR)$(BINDIR)/ttrc
+	mkdir -p $(DESTDIR)$(TTRC_DATADIR)
+	cp data/ttrc/tc.sh data/ttrc/tc.csh $(DESTDIR)$(TTRC_DATADIR)
+	chmod 644 $(DESTDIR)$(TTRC_DATADIR)/tc.sh $(DESTDIR)$(TTRC_DATADIR)/tc.csh
 	mkdir -p $(DESTDIR)$(DATADIR)/fonts
 	cp $(TW_FONTS) third_party/misc-misc/COPYING $(DESTDIR)$(DATADIR)/fonts
 	chmod 644 $(DESTDIR)$(DATADIR)/fonts/*
@@ -587,11 +595,12 @@ install: $(B)/ttr $(B)/ttrt
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old \
 		$(DESTDIR)$(BINDIR)/ttrt $(DESTDIR)$(BINDIR)/ttr-session \
+		$(DESTDIR)$(BINDIR)/ttrc \
 		$(DESTDIR)$(TERMINFO_DIR)/t/ttrt \
 		$(DESTDIR)/usr/share/terminfo/t/ttrt \
 		$(DESTDIR)/usr/share/lib/terminfo/t/ttrt \
 		$(DESTDIR)$(XSESSIONDIR)/ttr.desktop
-	rm -rf $(DESTDIR)$(DATADIR)
+	rm -rf $(DESTDIR)$(DATADIR) $(DESTDIR)$(TTRC_DATADIR)
 
 clean:
 	rm -rf $(B) build-asan

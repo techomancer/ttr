@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build an IRIX inst package (tardist) of ttr in the guest: tools/irix-dist.sh
 #
-# Builds ttr and ttrt with MIPSpro (tools/irix-build.sh), stages the files
+# Builds ttr, ttrt and ttrc with MIPSpro (tools/irix-build.sh), stages the files
 # under /tmp/ttr-dist/root in the guest, writes the idb (sorted on fields 5
 # and 6, as gendist requires), runs gendist with dist/irix/ttr.spec and
 # bundles build-irix/ttr-VERSION.tardist. Install it in IRIX with
@@ -11,13 +11,18 @@ ROOT=`dirname "$0"`/..
 VERSION=${VERSION:-`date +%Y%m%d`}
 SH="python3 $ROOT/tools/irix-sh.py --timeout 1800"
 
-"$ROOT/tools/irix-build.sh" build-irix/ttr build-irix/ttrt || exit 1
+"$ROOT/tools/irix-build.sh" build-irix/ttr build-irix/ttrt build-irix/ttrc || exit 1
 
 # The idb: type mode owner group target source subsystem [attributes].
 IDB="$ROOT/build-irix/ttr.idb"
 {
     echo "f 0755 root sys usr/bin/ttr usr/bin/ttr ttr.sw.wm"
     echo "f 0755 root sys usr/bin/ttrt usr/bin/ttrt ttr.sw.term"
+    echo "f 0755 root sys usr/bin/ttrc usr/bin/ttrc ttr.sw.commander"
+    # Nothing on IRIX is called tc (Linux has iproute2's): a link too.
+    echo "l 0777 root sys usr/bin/tc usr/bin/tc ttr.sw.commander symval(ttrc)"
+    echo "f 0644 root sys usr/share/ttrc/tc.sh usr/share/ttrc/tc.sh ttr.sw.commander"
+    echo "f 0644 root sys usr/share/ttrc/tc.csh usr/share/ttrc/tc.csh ttr.sw.commander"
     for f in "$ROOT"/data/schemes/ttr/* "$ROOT"/data/schemes/irix/*; do
         rel=usr/share/ttr/schemes/`basename \`dirname "$f"\``/`basename "$f"`
         echo "f 0644 root sys $rel $rel ttr.sw.wm"
@@ -37,13 +42,20 @@ IDB="$ROOT/build-irix/ttr.idb"
 
 sed "s/VERSION/$VERSION/g" "$ROOT/dist/irix/ttr.spec" > "$ROOT/build-irix/ttr.spec"
 
+# Each command does its own cd: irix-sh.py runs long lines from a script,
+# where a cd would not carry over to the next command.
+IN="cd /tmp/ttr-dist/root &&"
 $SH run \
 "rm -rf /tmp/ttr-dist && mkdir -p /tmp/ttr-dist/root/usr/bin /tmp/ttr-dist/out" \
-"cd /tmp/ttr-dist/root && mkdir -p usr/share/ttr/fonts usr/share/ttr/schemes/ttr usr/share/ttr/schemes/irix usr/lib/X11/app-chests" \
-"cp /shared/build-irix/ttr /shared/build-irix/ttrt usr/bin/ && strip usr/bin/ttr usr/bin/ttrt" \
-"/usr/sbin/tag 0x54545252 usr/bin/ttr; /usr/sbin/tag 0x54545254 usr/bin/ttrt" \
-"cp /shared/data/schemes/ttr/* usr/share/ttr/schemes/ttr/ && cp /shared/data/schemes/irix/* usr/share/ttr/schemes/irix/" \
-"for f in \`awk '\$7 == \"ttr.sw.term\" { print \$5 }' /shared/build-irix/ttr.idb | grep fonts/\`; do cp /shared/third_party/misc-misc/\`basename \$f\` \$f; done" \
-"cp /shared/data/ttrt.ti usr/share/ttr/ttrt.ti && cp /shared/dist/irix/ttrt.chest usr/lib/X11/app-chests/" \
+"$IN mkdir -p usr/share/ttr/fonts usr/share/ttr/schemes/ttr usr/share/ttr/schemes/irix" \
+"$IN mkdir -p usr/share/ttrc usr/lib/X11/app-chests" \
+"$IN cp /shared/build-irix/ttr /shared/build-irix/ttrt /shared/build-irix/ttrc usr/bin/" \
+"$IN strip usr/bin/ttr usr/bin/ttrt usr/bin/ttrc && ln -s ttrc usr/bin/tc" \
+"$IN /usr/sbin/tag 0x54545252 usr/bin/ttr; /usr/sbin/tag 0x54545254 usr/bin/ttrt" \
+"$IN cp /shared/data/ttrc/tc.sh /shared/data/ttrc/tc.csh usr/share/ttrc/" \
+"$IN cp /shared/data/schemes/ttr/* usr/share/ttr/schemes/ttr/" \
+"$IN cp /shared/data/schemes/irix/* usr/share/ttr/schemes/irix/" \
+"$IN for f in \`awk '\$7 == \"ttr.sw.term\" { print \$5 }' /shared/build-irix/ttr.idb | grep fonts/\`; do cp /shared/third_party/misc-misc/\`basename \$f\` \$f; done" \
+"$IN cp /shared/data/ttrt.ti usr/share/ttr/ttrt.ti && cp /shared/dist/irix/ttrt.chest usr/lib/X11/app-chests/" \
 "cd /tmp/ttr-dist && sort -k 5,6 /shared/build-irix/ttr.idb -o ttr.idb && /usr/sbin/gendist -sbase root -idb ttr.idb -spec /shared/build-irix/ttr.spec -dist out 2>&1 | tail -5" \
 "cd /tmp/ttr-dist/out && ls -l && tar cf /shared/build-irix/ttr-$VERSION.tardist * && ls -l /shared/build-irix/ttr-$VERSION.tardist"

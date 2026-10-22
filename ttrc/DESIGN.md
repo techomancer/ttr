@@ -1,9 +1,16 @@
 # ttrc: To The Roots Commander
 
-Status: design reviewed 2026-10-21 (decisions in section 12). Nothing is
-implemented yet. First target: the dual-panel commander with its shell
-and file operations. The viewer (F3) and editor (F4) come later, but tu
-is designed for them from the start (section 3.5).
+Status: design reviewed 2026-10-21 (decisions in section 12). Milestone
+1 implemented the same day: tu (terminfo reader and `tparm`, tiers,
+screen diff, key and mouse input; 97 checks, also run on IRIX), tf's
+local layer and paths (45 checks), and two browsable panels, run in
+ttrt and xterm on Linux and in winterm on the emulated Indy. Next:
+milestone 2, the shell.
+
+Found while testing on IRIX: a stock IRIX 6.5 X server has no
+`-dec-dectech` fonts, so xwsh and winterm show DEC line drawing as plain
+letters. tu therefore gives iris-ansi colours (missing from its terminfo
+entry) but not line drawing, and frames there are ASCII.
 
 ttrc is an orthodox file manager in the line of Norton Commander, Volkov
 Commander and Midnight Commander: two panels, a command line under them,
