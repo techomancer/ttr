@@ -1,4 +1,5 @@
 /* Tests for tf: path normalization and the local file system. */
+#include "../ops.h"
 #include "../path.h"
 #include "../tf.h"
 
@@ -124,10 +125,143 @@ static void test_local()
     CHECK(fs->remove(dir.c_str()) == 0);
 }
 
+static void write_file(tf::Fs* fs, const char* path, const char* text)
+{
+    int err = 0;
+    tf::Stream* s = fs->open(path, tf::OPEN_WRITE | tf::OPEN_CREATE | tf::OPEN_TRUNCATE, 0644,
+                             &err);
+    if (s) {
+        s->write(text, strlen(text));
+        s->close();
+        delete s;
+    }
+}
+
+static bool read_is(tf::Fs* fs, const char* path, const char* text)
+{
+    int err = 0;
+    tf::Stream* s = fs->open(path, tf::OPEN_READ, 0, &err);
+    if (!s)
+        return false;
+    char buf[256];
+    long n = s->read(buf, sizeof(buf) - 1);
+    delete s;
+    if (n < 0)
+        return false;
+    buf[n] = 0;
+    return strcmp(buf, text) == 0;
+}
+
+static tf::Job::State run(tf::Job& j)
+{
+    tf::Job::State st;
+    while ((st = j.step(50)) == tf::Job::WORKING) {
+    }
+    return st;
+}
+
+static void test_ops()
+{
+    tf::Fs* fs = tf::local_fs();
+    char root[64];
+    sprintf(root, "/tmp/tfops%ld", (long)getpid());
+    tf::Path r(root);
+    CHECK(fs->mkdir(root, 0755) == 0);
+    tf::Path a = r.child("a"), b = r.child("b");
+    fs->mkdir(a.c_str(), 0755);
+    fs->mkdir(b.c_str(), 0755);
+    fs->mkdir(a.child("sub").c_str(), 0750);
+    write_file(fs, a.child("one.txt").c_str(), "one");
+    write_file(fs, a.child("sub").child("two.txt").c_str(), "two");
+    fs->symlink("one.txt", a.child("link").c_str());
+
+    /* Copy the tree into b. */
+    {
+        tf::Job j(tf::OP_COPY, fs, fs);
+        j.add(a.c_str());
+        j.set_target(b.c_str(), true);
+        CHECK(run(j) == tf::Job::DONE);
+        CHECK(j.files_total() == 3 && j.files_done() == 3 && j.bytes_total() == 6);
+    }
+    tf::Path ba = b.child("a");
+    CHECK(read_is(fs, ba.child("one.txt").c_str(), "one"));
+    CHECK(read_is(fs, ba.child("sub").child("two.txt").c_str(), "two"));
+    tf::Stat st;
+    CHECK(fs->stat(ba.child("link").c_str(), &st, false) == 0 && st.type == tf::FT_LINK);
+    CHECK(fs->stat(ba.child("sub").c_str(), &st, false) == 0 && st.mode == 0750);
+
+    /* Again: overwrite questions. */
+    write_file(fs, ba.child("one.txt").c_str(), "old");
+    {
+        tf::Job j(tf::OP_COPY, fs, fs);
+        j.add(a.child("one.txt").c_str());
+        j.set_target(ba.c_str(), true);
+        CHECK(run(j) == tf::Job::ASK_OVERWRITE);
+        CHECK(strcmp(j.target(), ba.child("one.txt").c_str()) == 0);
+        j.answer(tf::ANS_NO);
+        CHECK(run(j) == tf::Job::DONE);
+    }
+    CHECK(read_is(fs, ba.child("one.txt").c_str(), "old"));
+    {
+        tf::Job j(tf::OP_COPY, fs, fs);
+        j.add(a.child("one.txt").c_str());
+        j.set_target(ba.c_str(), true);
+        CHECK(run(j) == tf::Job::ASK_OVERWRITE);
+        j.answer(tf::ANS_YES);
+        CHECK(run(j) == tf::Job::DONE);
+    }
+    CHECK(read_is(fs, ba.child("one.txt").c_str(), "one"));
+
+    /* A copy under a new name, and into itself (refused). */
+    {
+        tf::Job j(tf::OP_COPY, fs, fs);
+        j.add(a.child("one.txt").c_str());
+        j.set_target(a.child("copy.txt").c_str(), false);
+        CHECK(run(j) == tf::Job::DONE);
+        CHECK(read_is(fs, a.child("copy.txt").c_str(), "one"));
+    }
+    {
+        tf::Job j(tf::OP_COPY, fs, fs);
+        j.add(a.c_str());
+        j.set_target(a.child("sub").c_str(), true);
+        CHECK(run(j) == tf::Job::ASK_ERROR);
+        j.answer(tf::ANS_SKIP);
+        CHECK(run(j) == tf::Job::DONE && j.failures() == 1);
+    }
+
+    /* Move (a rename) and delete. */
+    {
+        tf::Job j(tf::OP_MOVE, fs, fs);
+        j.add(a.child("copy.txt").c_str());
+        j.set_target(b.c_str(), true);
+        CHECK(run(j) == tf::Job::DONE);
+        CHECK(fs->stat(a.child("copy.txt").c_str(), &st, false) != 0);
+        CHECK(read_is(fs, b.child("copy.txt").c_str(), "one"));
+    }
+    {
+        tf::Job j(tf::OP_DELETE, fs, 0);
+        j.add(a.c_str());
+        j.add(b.c_str());
+        CHECK(run(j) == tf::Job::DONE);
+        CHECK(fs->stat(a.c_str(), &st, false) != 0 && fs->stat(b.c_str(), &st, false) != 0);
+    }
+    CHECK(fs->remove(root) == 0);
+
+    CHECK(tf::match_pattern("*.txt", "a.txt", false));
+    CHECK(!tf::match_pattern("*.txt", "a.txt.gz", false));
+    CHECK(tf::match_pattern("*.TXT", "a.txt", true));
+    CHECK(tf::match_pattern("a?c", "abc", false));
+    CHECK(tf::match_pattern("[a-c]*", "build", false));
+    CHECK(!tf::match_pattern("[!a-c]*", "build", false));
+    CHECK(tf::match_pattern("*", "", false));
+    CHECK(tf::match_pattern("*a*b*", "xxaxxbxx", false));
+}
+
 int main()
 {
     test_path();
     test_local();
+    test_ops();
     printf("tf tests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

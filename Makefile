@@ -232,12 +232,13 @@ $(B)/tw_test_tw.o: $(B)/.dir tw/test/test_tw.cpp $(TW_H)
 # tests. It reads terminfo itself; no curses. "make tu-test" runs them.
 TU_OBJS = $(B)/tu_capnames.o \
 	$(B)/tu_input.o \
+	$(B)/tu_widgets.o \
 	$(B)/tu_screen.o \
 	$(B)/tu_term.o \
 	$(B)/tu_terminfo.o \
 	$(B)/tu_tparm.o
 TU_H = tu/tu.h tu/capnames.h tu/input.h tu/screen.h tu/term.h tu/terminfo.h \
-	tu/tparm.h tl/port.h
+	tu/tparm.h tu/widgets.h tl/port.h
 
 $(B)/libtu.a: $(TU_OBJS)
 	rm -f $@
@@ -245,6 +246,8 @@ $(B)/libtu.a: $(TU_OBJS)
 
 $(B)/tu_capnames.o: $(B)/.dir tu/capnames.cpp tu/capnames.h
 	$(COMPILE) -c tu/capnames.cpp -o $@
+$(B)/tu_widgets.o: $(B)/.dir tu/widgets.cpp $(TU_H)
+	$(COMPILE) -c tu/widgets.cpp -o $@
 $(B)/tu_input.o: $(B)/.dir tu/input.cpp $(TU_H)
 	$(COMPILE) -c tu/input.cpp -o $@
 $(B)/tu_screen.o: $(B)/.dir tu/screen.cpp $(TU_H) tl/unicode.h
@@ -270,9 +273,10 @@ $(B)/tu_test_tu.o: $(B)/.dir tu/test/test_tu.cpp $(TU_H) $(TL_TERMINAL_H)
 # (IRIX: make TF_SYS=$(B)/tf_sys_irix.o).
 TF_SYS = $(B)/tf_sys_linux.o
 TF_OBJS = $(B)/tf_local.o \
+	$(B)/tf_ops.o \
 	$(B)/tf_path.o \
 	$(TF_SYS)
-TF_H = tf/tf.h tf/path.h tf/sys.h tl/port.h
+TF_H = tf/tf.h tf/ops.h tf/path.h tf/sys.h tl/port.h
 
 $(B)/libtf.a: $(TF_OBJS)
 	rm -f $@
@@ -280,6 +284,8 @@ $(B)/libtf.a: $(TF_OBJS)
 
 $(B)/tf_local.o: $(B)/.dir tf/local.cpp $(TF_H)
 	$(COMPILE) -c tf/local.cpp -o $@
+$(B)/tf_ops.o: $(B)/.dir tf/ops.cpp $(TF_H)
+	$(COMPILE) -c tf/ops.cpp -o $@
 $(B)/tf_path.o: $(B)/.dir tf/path.cpp $(TF_H)
 	$(COMPILE) -c tf/path.cpp -o $@
 $(B)/tf_sys_linux.o: $(B)/.dir tf/sys_linux.cpp $(TF_H)
