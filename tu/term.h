@@ -36,6 +36,17 @@ public:
     void stop();
     bool started() const { return started_; }
 
+    /* Hand the screen to a program (ttrc's shell) and take it back,
+     * staying in raw mode: suspend_ui() undoes what start() set up
+     * (mouse, paste, keypad, hidden cursor) and leaves the alternate
+     * screen if leave_alt; resume_ui() sets it up again and enters the
+     * alternate screen if enter_alt. */
+    void suspend_ui(bool leave_alt);
+    void resume_ui(bool enter_alt);
+    /* Bytes straight to the terminal (after what is buffered). The
+     * cursor position and pen are unknown afterwards. */
+    void write_raw(const char* data, size_t n);
+
     /* Size in cells; update_size() re-reads it after SIGWINCH and says
      * whether it changed. */
     int cols() const { return cols_; }

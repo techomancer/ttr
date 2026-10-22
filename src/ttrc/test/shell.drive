@@ -1,0 +1,22 @@
+# A command from the command line runs in the shell and ttrc comes back;
+# Ctrl-O shows the shell and back; the panel follows the shell's cd, and
+# the shell follows the panel (lazy cd) when a command runs.
+expect Quit
+wait 1500
+send echo ran-it\r
+expect ran-it
+expect Quit
+send \x0f
+wait 500
+send cd /usr/share\r
+wait 700
+send \x0f
+expect /usr/share
+send cd /etc\r
+wait 300
+send pwd\r
+wait 1500
+send \x0f
+expect /etc
+send \x0f
+expect Quit

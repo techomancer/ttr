@@ -47,6 +47,10 @@ void sleep_ms(int ms);
  * this system's default. */
 const char* default_shell();
 
+/* See tp::process_cwd and tp::process_has_children. */
+bool process_cwd(int pid, char* buf, size_t n);
+int process_has_children(int pid);
+
 } /* namespace sys */
 } /* namespace tp */
 

@@ -299,20 +299,37 @@ $(B)/tf_test_tf.o: $(B)/.dir tf/test/test_tf.cpp $(TF_H)
 # ttrc, To The Roots Commander (ttrc/DESIGN.md): tu + tf (+ tl) on a
 # character terminal; no X.
 TTRC_OBJS = $(B)/ttrc_main.o \
+	$(B)/ttrc_app.o \
 	$(B)/ttrc_panel.o \
+	$(B)/ttrc_shell.o \
 	$(B)/ttrc_theme.o \
 	$(B)/core_str.o
-TTRC_H = src/ttrc/panel.h src/ttrc/theme.h $(TU_H) $(TF_H) src/core/str.h \
+TTRC_H = src/ttrc/app.h src/ttrc/cmdline.h src/ttrc/panel.h src/ttrc/shell.h \
+	src/ttrc/theme.h $(TU_H) $(TF_H) $(TL_TERMINAL_H) tp/tp.h src/core/str.h \
 	src/core/vector.h
 
 ttrc: $(B)/ttrc
 
-$(B)/ttrc: $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a $(B)/libtl.a
+$(B)/ttrc: $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a $(B)/libtl.a $(B)/libtp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a \
-		$(B)/libtl.a
+		$(B)/libtl.a $(B)/libtp.a
 
 $(B)/ttrc_main.o: $(B)/.dir src/ttrc/main.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/main.cpp -o $@
+# ttrc-drive runs ttrc on a pty and checks its screen through tl; the
+# scripts in src/ttrc/test/ use it. "make ttrc-test" runs them.
+$(B)/ttrc_drive: $(B)/ttrc_test_drive.o $(B)/libtl.a $(B)/libtp.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/ttrc_test_drive.o $(B)/libtl.a $(B)/libtp.a
+$(B)/ttrc_test_drive.o: $(B)/.dir src/ttrc/test/drive.cpp $(TL_TERMINAL_H) tp/tp.h
+	$(COMPILE) -c src/ttrc/test/drive.cpp -o $@
+
+ttrc-test: $(B)/ttrc $(B)/ttrc_drive
+	sh src/ttrc/test/run.sh $(B)
+
+$(B)/ttrc_app.o: $(B)/.dir src/ttrc/app.cpp $(TTRC_H)
+	$(COMPILE) -c src/ttrc/app.cpp -o $@
+$(B)/ttrc_shell.o: $(B)/.dir src/ttrc/shell.cpp $(TTRC_H)
+	$(COMPILE) -c src/ttrc/shell.cpp -o $@
 $(B)/ttrc_panel.o: $(B)/.dir src/ttrc/panel.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/panel.cpp -o $@
 $(B)/ttrc_theme.o: $(B)/.dir src/ttrc/theme.cpp $(TTRC_H)

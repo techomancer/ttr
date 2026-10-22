@@ -107,3 +107,81 @@ const char* default_shell()
 
 } /* namespace sys */
 } /* namespace tp */
+
+/* ------------------------------------------------------------------ */
+/* Other processes, through IRIX's /proc ioctls (ttrc/DESIGN.md 4.5). */
+
+#include <dirent.h>
+#include <stdio.h>
+#include <sys/procfs.h>
+
+/* The checkpoint/restart ioctl that opens a process's working directory;
+ * not in the 6.5 headers, verified on 6.5.22. */
+#ifndef PIOCCKPTOPENCWD
+#define PIOCCKPTOPENCWD (PIOC | 216)
+#endif
+
+namespace tp {
+namespace sys {
+
+bool process_cwd(int pid, char* buf, size_t n)
+{
+    char path[64];
+    sprintf(path, "/proc/%d", pid);
+    int pr = open(path, O_RDONLY);
+    if (pr < 0)
+        return false;
+    int dir = ioctl(pr, PIOCCKPTOPENCWD, 0);
+    close(pr);
+    if (dir < 0)
+        return false;
+    /* getcwd only works on our own directory: go there and back. */
+    char here[1024];
+    bool ok = false;
+    if (getcwd(here, sizeof(here)) && fchdir(dir) == 0) {
+        ok = getcwd(buf, n) != 0;
+        if (chdir(here) != 0)
+            ok = false;
+    }
+    close(dir);
+    return ok;
+}
+
+int process_has_children(int pid)
+{
+    /* /proc/pinfo answers PIOCPSINFO for everyone's processes. */
+    const char* base = "/proc/pinfo";
+    DIR* d = opendir(base);
+    if (!d) {
+        base = "/proc";
+        d = opendir(base);
+    }
+    if (!d)
+        return -1;
+    int found = 0;
+    bool any = false;
+    struct dirent* e;
+    while ((e = readdir(d)) != 0) {
+        if (e->d_name[0] < '0' || e->d_name[0] > '9' || strlen(e->d_name) > 20)
+            continue;
+        char path[64];
+        sprintf(path, "%s/%s", base, e->d_name);
+        int fd = open(path, O_RDONLY);
+        if (fd < 0)
+            continue;
+        prpsinfo_t ps;
+        if (ioctl(fd, PIOCPSINFO, &ps) == 0) {
+            any = true;
+            if ((int)ps.pr_ppid == pid)
+                found = 1;
+        }
+        close(fd);
+        if (found)
+            break;
+    }
+    closedir(d);
+    return any ? found : -1;
+}
+
+} /* namespace sys */
+} /* namespace tp */

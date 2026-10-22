@@ -63,6 +63,24 @@ void Pty::close()
     slave_[0] = 0;
 }
 
+int Pty::foreground_group() const
+{
+    if (fd_ < 0)
+        return -1;
+    pid_t g = tcgetpgrp(fd_);
+    return g > 0 ? (int)g : -1;
+}
+
+bool process_cwd(int pid, char* buf, size_t n)
+{
+    return sys::process_cwd(pid, buf, n);
+}
+
+int process_has_children(int pid)
+{
+    return sys::process_has_children(pid);
+}
+
 bool Pty::resize(const WinSize& size)
 {
     size_ = size;

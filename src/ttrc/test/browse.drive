@@ -1,0 +1,14 @@
+# Panels: listing modes, marking, the other panel, cd on the command line.
+expect Quit
+expect note.txt
+send \eT
+expect note.txt
+send \eT
+send \t
+send cd /\r
+expect UP--DIR
+send \t
+send \eOB
+send \x14
+expect bytes in 1 file
+send \x1b0

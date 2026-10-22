@@ -1,0 +1,13 @@
+# Ctrl-O leaves vi running and comes back to its screen, from the copy;
+# when vi ends, ttrc returns to the panels.
+expect Quit
+wait 1500
+send vi note.txt\r
+expect line two
+send \x0f
+expect Quit
+absent line two
+send \x0f
+expect line two
+send :q\r
+expect Quit

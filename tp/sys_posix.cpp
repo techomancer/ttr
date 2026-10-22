@@ -111,3 +111,79 @@ const char* default_shell()
 
 } /* namespace sys */
 } /* namespace tp */
+
+/* ------------------------------------------------------------------ */
+/* Other processes, through Linux's /proc. Elsewhere (the BSDs, without
+ * /proc mounted) the answers are "cannot tell". */
+
+#include <dirent.h>
+#include <stdio.h>
+
+namespace tp {
+namespace sys {
+
+bool process_cwd(int pid, char* buf, size_t n)
+{
+    char link[64];
+    sprintf(link, "/proc/%d/cwd", pid);
+    if (n == 0)
+        return false;
+    ssize_t r = readlink(link, buf, n - 1);
+    if (r <= 0)
+        return false;
+    buf[r] = 0;
+    return buf[0] == '/';
+}
+
+/* The parent pid from /proc/N/stat: "pid (comm) state ppid ...", where
+ * comm may itself contain spaces and parentheses. */
+static int parent_of(const char* pid)
+{
+    char path[64], buf[512];
+    if (strlen(pid) > 20)
+        return -1;
+    sprintf(path, "/proc/%s/stat", pid);
+    int fd = open(path, O_RDONLY);
+    if (fd < 0)
+        return -1;
+    ssize_t r = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if (r <= 0)
+        return -1;
+    buf[r] = 0;
+    char* p = strrchr(buf, ')');
+    if (!p || p[1] != ' ')
+        return -1;
+    char state;
+    int ppid;
+    if (sscanf(p + 2, "%c %d", &state, &ppid) != 2)
+        return -1;
+    return ppid;
+}
+
+int process_has_children(int pid)
+{
+    DIR* d = opendir("/proc");
+    if (!d)
+        return -1;
+    int found = 0;
+    bool any = false;
+    struct dirent* e;
+    while ((e = readdir(d)) != 0) {
+        if (e->d_name[0] < '0' || e->d_name[0] > '9')
+            continue;
+        int pp = parent_of(e->d_name);
+        if (pp < 0)
+            continue;
+        any = true;
+        if (pp == pid) {
+            found = 1;
+            break;
+        }
+    }
+    closedir(d);
+    return any ? found : -1;
+}
+
+} /* namespace sys */
+} /* namespace tp */

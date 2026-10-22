@@ -18,6 +18,11 @@ namespace tu {
  * has. COLOR_DEFAULT is the terminal's own foreground or background. */
 typedef uint32_t Color;
 const Color COLOR_DEFAULT = 0xff000000u;
+/* A colour of the terminal's own palette (0-255), sent as that index:
+ * what a program in the shell asked for, redrawn exactly. */
+const Color COLOR_INDEXED = 0x01000000u;
+inline Color color_index(int i) { return COLOR_INDEXED | (Color)(i & 255); }
+inline bool is_indexed(Color c) { return (c & 0xff000000u) == COLOR_INDEXED; }
 
 enum {
     ATTR_BOLD = 1,

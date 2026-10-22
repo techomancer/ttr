@@ -42,6 +42,10 @@ public:
     long write(const void* buf, size_t n);
     /* Wait up to timeout_ms for data: 1 readable, 0 timeout, -1 error. */
     int wait_readable(int timeout_ms);
+    /* The process group in the foreground of the terminal (the job
+     * running in it), or -1 where the system cannot tell from the master
+     * side. */
+    int foreground_group() const;
 
     const char* error() const { return error_; }
 
@@ -113,6 +117,15 @@ private:
     Process(const Process&);
     Process& operator=(const Process&);
 };
+
+/* Facts about other processes, read from the kernel without their help
+ * (ttrc/DESIGN.md sections 4.4 and 4.5). Per system: /proc on Linux,
+ * the /proc ioctls on IRIX. */
+
+/* The working directory of process pid. False where it cannot be read. */
+bool process_cwd(int pid, char* buf, size_t n);
+/* 1 if pid has child processes, 0 if not, -1 if the system cannot tell. */
+int process_has_children(int pid);
 
 } /* namespace tp */
 

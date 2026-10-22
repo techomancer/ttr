@@ -336,6 +336,38 @@ static void test_cwd()
     p.wait(5000);
 }
 
+/* Another process's directory, children and the terminal's foreground
+ * job, read from outside (what ttrc does with its shell). */
+static void test_process_queries()
+{
+    tp::Pty pty;
+    tp::Process proc;
+    tp::WinSize ws;
+    ws.cols = 80;
+    ws.rows = 24;
+    ws.width_px = ws.height_px = 0;
+    CHECK(pty.open(ws));
+    /* "; true" keeps sh from exec'ing sleep in its place. */
+    const char* argv[] = { "/bin/sh", "-c", "cd /usr && sleep 3; true", 0 };
+    tp::SpawnOptions o;
+    o.argv = argv;
+    CHECK(proc.spawn(pty, o));
+    char cwd[512] = "";
+    bool got = false;
+    for (int i = 0; i < 40 && !got; i++) {
+        usleep(50000);
+        got = tp::process_cwd(proc.pid(), cwd, sizeof(cwd)) && strcmp(cwd, "/usr") == 0;
+    }
+    CHECK(got);
+    CHECK(tp::process_has_children(proc.pid()) == 1);
+    /* sh -c has no job control: its own group stays in the foreground. */
+    int fg = pty.foreground_group();
+    CHECK(fg == -1 || fg == proc.pid());
+    proc.signal_group(SIGTERM);
+    CHECK(proc.wait(5000));
+    CHECK(!tp::process_cwd(proc.pid(), cwd, sizeof(cwd)));
+}
+
 int main(int argc, char** argv)
 {
     if (argc >= 3 && strcmp(argv[1], "--child") == 0)
@@ -360,6 +392,7 @@ int main(int argc, char** argv)
     test_exit_and_signals();
     test_spawn_errors();
     test_cwd();
+    test_process_queries();
 
     printf("tp tests: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;

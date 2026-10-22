@@ -326,7 +326,24 @@ bool Term::start()
         tcsetattr(in_fd_, TCSAFLUSH, &raw);
     }
     started_ = true;
-    cap("smcup");
+    resume_ui(true);
+    return true;
+}
+
+void Term::stop()
+{
+    if (!started_)
+        return;
+    suspend_ui(true);
+    if (have_saved_)
+        tcsetattr(in_fd_, TCSAFLUSH, &saved_);
+    started_ = false;
+}
+
+void Term::resume_ui(bool enter_alt)
+{
+    if (enter_alt)
+        cap("smcup");
     cap("smkx");
     if (ti_.str("enacs"))
         cap("enacs");
@@ -341,24 +358,36 @@ bool Term::start()
     cx_ = cy_ = -1;
     clear_screen();
     flush();
-    return true;
 }
 
-void Term::stop()
+void Term::suspend_ui(bool leave_alt)
 {
-    if (!started_)
-        return;
     acs(false);
     reset_style();
     if (xterm_like_)
         out("\033[?2004l\033[?1006l\033[?1000l");
     show_cursor(true);
     cap("rmkx");
-    cap("rmcup");
+    if (leave_alt)
+        cap("rmcup");
     flush();
-    if (have_saved_)
-        tcsetattr(in_fd_, TCSAFLUSH, &saved_);
-    started_ = false;
+    cx_ = cy_ = -1;
+    pen_known_ = false;
+}
+
+void Term::write_raw(const char* data, size_t n)
+{
+    flush();
+    size_t off = 0;
+    while (off < n) {
+        ssize_t w = write(out_fd_, data + off, n - off);
+        if (w < 0) {
+            if (errno == EINTR || errno == EAGAIN)
+                continue;
+            break;
+        }
+        off += (size_t)w;
+    }
     cx_ = cy_ = -1;
     pen_known_ = false;
 }
@@ -461,6 +490,39 @@ void Term::color_sgr(Color c, bool bg, unsigned* extra)
     if (c == COLOR_DEFAULT || tier_ == TIER_BASIC)
         return;
     char b[64];
+    if (is_indexed(c)) {
+        int idx = (int)(c & 255);
+        if (xterm_like_ || truecolor_) {
+            if (idx < 8)
+                sprintf(b, "\033[%dm", (bg ? 40 : 30) + idx);
+            else if (idx < 16)
+                sprintf(b, "\033[%dm", (bg ? 100 : 90) + idx - 8);
+            else
+                sprintf(b, "\033[%d;5;%dm", bg ? 48 : 38, idx);
+            out(b);
+            return;
+        }
+        if (idx >= colors_) {
+            /* More than the terminal has: by its RGB value instead. */
+            int r, g, bl;
+            if (idx < 16) {
+                c = k_ansi16[idx];
+            } else if (idx < 232) {
+                r = (idx - 16) / 36;
+                g = ((idx - 16) / 6) % 6;
+                bl = (idx - 16) % 6;
+                c = ((Color)k_cube[r] << 16) | ((Color)k_cube[g] << 8) | (Color)k_cube[bl];
+            } else {
+                int v = 8 + (idx - 232) * 10;
+                c = ((Color)v << 16) | ((Color)v << 8) | (Color)v;
+            }
+        } else {
+            const char* s = ti_.str(bg ? "setab" : "setaf");
+            if (s && tparm1(b, sizeof(b), s, idx) > 0)
+                out(b);
+            return;
+        }
+    }
     if (truecolor_) {
         sprintf(b, "\033[%d;2;%lu;%lu;%lum", bg ? 48 : 38, (unsigned long)((c >> 16) & 255),
                 (unsigned long)((c >> 8) & 255), (unsigned long)(c & 255));

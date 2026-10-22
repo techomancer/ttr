@@ -38,7 +38,7 @@ int char_width(uint32_t cp)
 
 Color darken(Color c, Color dflt)
 {
-    if (c == COLOR_DEFAULT)
+    if (c == COLOR_DEFAULT || is_indexed(c))
         c = dflt;
     unsigned r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
     return ((Color)(r * 2 / 5) << 16) | ((Color)(g * 2 / 5) << 8) | (Color)(b * 2 / 5);
