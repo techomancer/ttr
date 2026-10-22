@@ -226,6 +226,43 @@ tw-test: $(B)/tw_test
 $(B)/tw_test_tw.o: $(B)/.dir tw/test/test_tw.cpp $(TW_H)
 	$(COMPILE) -c tw/test/test_tw.cpp -o $@
 
+# tu, the terminal UI library (ttrc/DESIGN.md section 3): libtu.a and its
+# tests. It reads terminfo itself; no curses. "make tu-test" runs them.
+TU_OBJS = $(B)/tu_capnames.o \
+	$(B)/tu_input.o \
+	$(B)/tu_screen.o \
+	$(B)/tu_term.o \
+	$(B)/tu_terminfo.o \
+	$(B)/tu_tparm.o
+TU_H = tu/tu.h tu/capnames.h tu/input.h tu/screen.h tu/term.h tu/terminfo.h \
+	tu/tparm.h tl/port.h
+
+$(B)/libtu.a: $(TU_OBJS)
+	rm -f $@
+	$(AR) rc $@ $(TU_OBJS)
+
+$(B)/tu_capnames.o: $(B)/.dir tu/capnames.cpp tu/capnames.h
+	$(COMPILE) -c tu/capnames.cpp -o $@
+$(B)/tu_input.o: $(B)/.dir tu/input.cpp $(TU_H)
+	$(COMPILE) -c tu/input.cpp -o $@
+$(B)/tu_screen.o: $(B)/.dir tu/screen.cpp $(TU_H) tl/unicode.h
+	$(COMPILE) -c tu/screen.cpp -o $@
+$(B)/tu_term.o: $(B)/.dir tu/term.cpp $(TU_H)
+	$(COMPILE) -c tu/term.cpp -o $@
+$(B)/tu_terminfo.o: $(B)/.dir tu/terminfo.cpp $(TU_H)
+	$(COMPILE) -c tu/terminfo.cpp -o $@
+$(B)/tu_tparm.o: $(B)/.dir tu/tparm.cpp tu/tparm.h
+	$(COMPILE) -c tu/tparm.cpp -o $@
+
+$(B)/tu_test: $(B)/tu_test_tu.o $(B)/libtu.a $(B)/libtl.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/tu_test_tu.o $(B)/libtu.a $(B)/libtl.a
+
+tu-test: $(B)/tu_test
+	$(B)/tu_test
+
+$(B)/tu_test_tu.o: $(B)/.dir tu/test/test_tu.cpp $(TU_H) $(TL_TERMINAL_H)
+	$(COMPILE) -c tu/test/test_tu.cpp -o $@
+
 # ttrt, the terminal (ttrt/DESIGN.md): tl + tp + tw and a Motif window.
 TTRT_OBJS = $(B)/ttrt_main.o \
 	$(B)/ttrt_settingsdlg.o \
