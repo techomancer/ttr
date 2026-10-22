@@ -1,29 +1,36 @@
 /*
  * ttrc's application: the two panels, the command line, the function key
- * bar and the shell, and the event loop that runs them (ttrc/DESIGN.md
- * sections 4 and 7).
+ * bar, menus and dialogs, and the shell, and the event loop that runs
+ * them (ttrc/DESIGN.md sections 4 and 7). Commands are in commands.cpp.
  */
 #ifndef TTRC_APP_H
 #define TTRC_APP_H
 
 #include "cmdline.h"
+#include "config.h"
 #include "panel.h"
 #include "shell.h"
 #include "theme.h"
 
+#include "../../tf/ops.h"
 #include "../../tu/input.h"
 #include "../../tu/screen.h"
 #include "../../tu/term.h"
+#include "../../tu/widgets.h"
 #include "core/vector.h"
 
 namespace ttrc {
 
 class App {
 public:
-    App(tu::Term& term, const tf::Path& left, const tf::Path& right);
+    App(tu::Term& term, const tf::Path& left, const tf::Path& right, bool dirs_given);
     ~App();
     int run();
     const tf::Path& active_path() const { return panels_[active_]->path(); }
+
+    /* For work that runs while a dialog is open (find file): called
+     * between events; return true while there is more to do. */
+    typedef bool (*IdleFn)(void* ctx);
 
 private:
     enum Mode {
@@ -42,8 +49,10 @@ private:
     void draw_menu_bar();
     void draw_key_bar();
     void draw_command_line();
+    void apply_look();
 
     /* Input */
+    bool wait_input(int timeout_ms, bool* timed_out);
     void handle(const tu::Event& ev);
     bool handle_panel_key(const tu::Event& ev);
     void handle_mouse(const tu::Event& ev);
@@ -52,6 +61,7 @@ private:
     void suspend();
     void message(const char* fmt, const char* arg = 0);
     Panel* active() { return panels_[active_]; }
+    Panel* other() { return panels_[1 - active_]; }
 
     /* The shell */
     void start_shell();
@@ -66,9 +76,38 @@ private:
     void shell_output();
     void resize();
 
+    /* Dialogs and commands (commands.cpp) */
+    int modal(tu::Dialog& d, const tu::DialogStyle& st, IdleFn idle = 0, void* ctx = 0);
+    int ask(const char* title, const char* text, const char* const* buttons, bool alarm);
+    bool ask_text(const char* title, const char* label, ttr::Str* value, tu::StrList* history);
+    void show_error(const char* text);
+    bool run_job(tf::Job& job, const char* title);
+    void open_menu(int which);
+    void menu_command(int id);
+    void cmd_copy(bool move);
+    void cmd_mkdir();
+    void cmd_delete();
+    void cmd_select(char how);
+    void cmd_chmod();
+    void cmd_chown();
+    void cmd_symlink();
+    void cmd_hotlist();
+    void cmd_find();
+    void cmd_compare();
+    void cmd_user_menu();
+    void cmd_view();
+    void cmd_edit();
+    void cmd_config();
+    void cmd_appearance();
+    void save_setup();
+    bool open_file(const Entry& e);
+    ttr::Str expand(const char* command);
+    ttr::Str quoted(const char* s);
+
     tu::Term& term_;
     tu::Screen screen_;
     tu::Input input_;
+    Config config_;
     Theme theme_;
     Panel* panels_[2];
     int active_;
@@ -81,6 +120,8 @@ private:
     int shrink_;                /* panel rows given to the shell's output */
     long last_click_;
     int last_click_entry_;
+    bool ctrl_x_;               /* Ctrl-X was pressed: a second key follows */
+    tu::MenuBar menu_;
 
     Shell shell_;
     ShellView* view_;
@@ -93,6 +134,7 @@ private:
     bool prompt_known_;
     ttr::Vector<ttr::Str> history_;
     int history_pos_;
+    tu::StrList hist_target_, hist_mkdir_, hist_pattern_, hist_find_;
 };
 
 } /* namespace ttrc */

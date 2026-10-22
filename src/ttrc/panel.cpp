@@ -1,5 +1,7 @@
 #include "panel.h"
 
+#include "../../tf/ops.h"
+
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
@@ -326,6 +328,24 @@ void Panel::set_sort(SortMode m)
     clamp();
 }
 
+void Panel::set_hidden(bool on)
+{
+    if (on != hidden_) {
+        hidden_ = on;
+        reload();
+    }
+}
+
+void Panel::set_sort_mode(SortMode m, bool reverse)
+{
+    sort_ = m;
+    reverse_ = reverse;
+    ttr::Str at = current() ? current()->name : ttr::Str("");
+    sort_entries();
+    if (!at.empty())
+        select_name(at.c_str());
+}
+
 void Panel::toggle_hidden()
 {
     hidden_ = !hidden_;
@@ -335,6 +355,65 @@ void Panel::toggle_hidden()
 const Entry* Panel::current() const
 {
     return cursor_ >= 0 && cursor_ < entries_.size() ? entries_[cursor_] : 0;
+}
+
+int Panel::selection(ttr::Vector<ttr::Str>* names) const
+{
+    for (int i = 0; i < entries_.size(); i++)
+        if (entries_[i]->marked)
+            names->push_back(entries_[i]->name);
+    if (names->size() == 0) {
+        const Entry* e = current();
+        if (e && !e->up)
+            names->push_back(e->name);
+    }
+    return names->size();
+}
+
+int Panel::mark_matching(const char* pattern, bool on, bool dirs_too)
+{
+    int n = 0;
+    for (int i = 0; i < entries_.size(); i++) {
+        Entry* e = entries_[i];
+        if (e->up || (!dirs_too && is_dir(e)))
+            continue;
+        if (tf::match_pattern(pattern, e->name.c_str(), false)) {
+            e->marked = on;
+            n++;
+        }
+    }
+    return n;
+}
+
+void Panel::invert_marks()
+{
+    for (int i = 0; i < entries_.size(); i++)
+        if (!entries_[i]->up && !is_dir(entries_[i]))
+            entries_[i]->marked = !entries_[i]->marked;
+}
+
+void Panel::unmark_all()
+{
+    for (int i = 0; i < entries_.size(); i++)
+        entries_[i]->marked = false;
+}
+
+void Panel::set_marked(const char* name, bool on)
+{
+    for (int i = 0; i < entries_.size(); i++)
+        if (strcmp(entries_[i]->name.c_str(), name) == 0)
+            entries_[i]->marked = on;
+}
+
+bool Panel::select_name(const char* name)
+{
+    for (int i = 0; i < entries_.size(); i++)
+        if (strcmp(entries_[i]->name.c_str(), name) == 0) {
+            cursor_ = i;
+            clamp();
+            return true;
+        }
+    return false;
 }
 
 int Panel::marked_count() const

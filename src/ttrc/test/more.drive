@@ -1,0 +1,36 @@
+# The user menu (F2), chmod (Ctrl-X c), compare directories (Ctrl-X d),
+# Options > Configuration and Appearance through F9.
+expect Quit
+send \e[12~
+expect User menu
+expect Show disk usage
+send \e
+wait 200
+send \x13note
+send \r
+send \x18c
+expect Chmod note.txt
+expect [x] read by owner
+send \e
+wait 200
+send \x18d
+expect bytes in
+send \e[20~
+expect Sort by name
+send \eOC
+send \eOC
+send \eOC
+expect Configuration...
+send \r
+expect Confirm delete
+send \e
+wait 200
+send \e[20~
+send \eOC
+send \eOC
+send \eOC
+send a
+expect Theme:
+send \e
+wait 200
+send \e0

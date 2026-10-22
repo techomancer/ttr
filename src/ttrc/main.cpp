@@ -44,7 +44,7 @@ int main(int argc, char** argv)
     tf::Path right = dirs[1] ? tf::Path::resolve(cwd, dirs[1]) : left;
     int rc;
     {
-        ttrc::App app(term, left, right);
+        ttrc::App app(term, left, right, nd > 0);
         rc = app.run();
         if (pwd_file) {
             FILE* f = fopen(pwd_file, "w");

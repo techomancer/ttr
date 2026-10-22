@@ -69,6 +69,11 @@ public:
     ListMode list_mode() const { return mode_; }
     void set_list_mode(ListMode m) { mode_ = m; }
     void toggle_hidden();
+    bool hidden_shown() const { return hidden_; }
+    void set_hidden(bool on);
+    /* Sort mode and direction without toggling. */
+    void set_sort_mode(SortMode m, bool reverse);
+    bool reversed() const { return reverse_; }
 
     /* Quick search: the first name from the cursor on that starts with
      * prefix (case-insensitive); false if none. */
@@ -79,6 +84,18 @@ public:
     void set_cursor(int i);
 
     const Entry* current() const;
+    /* What a command works on: the marked entries, or the one under the
+     * cursor (never ".."). Names, not paths. */
+    int selection(ttr::Vector<ttr::Str>* names) const;
+    /* Mark (or unmark) the entries matching a shell pattern. */
+    int mark_matching(const char* pattern, bool on, bool dirs_too);
+    void invert_marks();
+    void unmark_all();
+    void set_marked(const char* name, bool on);
+    /* Put the cursor on this name, if it is listed. */
+    bool select_name(const char* name);
+    const Entry* entry(int i) const { return entries_[i]; }
+    tf::Fs* fs() const { return fs_; }
     int count() const { return entries_.size(); }
     int marked_count() const;
     uint64_t marked_bytes() const;

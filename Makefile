@@ -306,11 +306,14 @@ $(B)/tf_test_tf.o: $(B)/.dir tf/test/test_tf.cpp $(TF_H)
 # character terminal; no X.
 TTRC_OBJS = $(B)/ttrc_main.o \
 	$(B)/ttrc_app.o \
+	$(B)/ttrc_commands.o \
+	$(B)/ttrc_config.o \
 	$(B)/ttrc_panel.o \
 	$(B)/ttrc_shell.o \
 	$(B)/ttrc_theme.o \
+	$(B)/core_settings.o \
 	$(B)/core_str.o
-TTRC_H = src/ttrc/app.h src/ttrc/cmdline.h src/ttrc/panel.h src/ttrc/shell.h \
+TTRC_H = src/ttrc/app.h src/ttrc/cmdline.h src/ttrc/config.h src/ttrc/panel.h src/ttrc/shell.h \
 	src/ttrc/theme.h $(TU_H) $(TF_H) $(TL_TERMINAL_H) tp/tp.h src/core/str.h \
 	src/core/vector.h
 
@@ -334,6 +337,10 @@ ttrc-test: $(B)/ttrc $(B)/ttrc_drive
 
 $(B)/ttrc_app.o: $(B)/.dir src/ttrc/app.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/app.cpp -o $@
+$(B)/ttrc_commands.o: $(B)/.dir src/ttrc/commands.cpp $(TTRC_H)
+	$(COMPILE) -c src/ttrc/commands.cpp -o $@
+$(B)/ttrc_config.o: $(B)/.dir src/ttrc/config.cpp $(TTRC_H) src/core/settings.h
+	$(COMPILE) -c src/ttrc/config.cpp -o $@
 $(B)/ttrc_shell.o: $(B)/.dir src/ttrc/shell.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/shell.cpp -o $@
 $(B)/ttrc_panel.o: $(B)/.dir src/ttrc/panel.cpp $(TTRC_H)

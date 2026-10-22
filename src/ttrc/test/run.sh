@@ -15,7 +15,9 @@ for sh in /bin/sh /bin/bash /bin/zsh /bin/ksh /usr/bin/ksh /bin/csh /usr/bin/tcs
     [ -x $sh ] || continue
     for d in $T/*.drive; do
         name=`basename $d .drive`
-        SHELL=$sh HOME=$W TERM=xterm LANG=C $B/ttrc_drive -s 80x20 $B/ttrc $W /tmp \
+        rm -rf $W/other $W/newdir $W/.config
+        mkdir -p $W/other
+        SHELL=$sh HOME=$W TERM=xterm LANG=C $B/ttrc_drive -s 80x20 $B/ttrc $W $W/other \
             < $d > $W/out 2>&1
         rc=$?
         ran=`expr $ran + 1`

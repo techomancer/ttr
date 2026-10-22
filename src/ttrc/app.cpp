@@ -26,19 +26,50 @@ const char k_ctrl_u = 0x15;
 
 } /* namespace */
 
-App::App(tu::Term& term, const tf::Path& left, const tf::Path& right)
+App::App(tu::Term& term, const tf::Path& left, const tf::Path& right, bool dirs_given)
     : term_(term), screen_(term), active_(0), quit_(false), quick_(false), panel_y_(1),
-      panel_h_(0), shrink_(0), last_click_(0), last_click_entry_(-1), view_(0),
+      panel_h_(0), shrink_(0), last_click_(0), last_click_entry_(-1), ctrl_x_(false), view_(0),
       mode_(MODE_PANELS), pending_(PEND_NONE), syncing_(false), sync_started_(0),
       cmd_started_(0), prompt_known_(false), history_pos_(0)
 {
+    config_.load();
     input_.init(term.info(), term.utf8());
-    theme_ = theme_for(term.tier());
-    panels_[0] = new Panel(tf::local_fs(), left);
-    panels_[1] = new Panel(tf::local_fs(), right);
+    apply_look();
+    tf::Path l = left, r = right;
+    /* Where the panels were last time, unless directories were given. */
+    if (!dirs_given && config_.remember_dirs) {
+        if (!config_.left_dir.empty())
+            l = tf::Path(config_.left_dir.c_str());
+        if (!config_.right_dir.empty())
+            r = tf::Path(config_.right_dir.c_str());
+    }
+    panels_[0] = new Panel(tf::local_fs(), l);
+    panels_[1] = new Panel(tf::local_fs(), r);
+    panels_[0]->set_list_mode(config_.left_mode == LIST_BRIEF ? LIST_BRIEF : LIST_FULL);
+    panels_[1]->set_list_mode(config_.right_mode == LIST_BRIEF ? LIST_BRIEF : LIST_FULL);
+    panels_[0]->set_sort_mode((SortMode)(config_.left_sort & 15), (config_.left_sort & 16) != 0);
+    panels_[1]->set_sort_mode((SortMode)(config_.right_sort & 15), (config_.right_sort & 16) != 0);
+    panels_[0]->set_hidden(config_.show_hidden);
+    panels_[1]->set_hidden(config_.show_hidden);
     message_[0] = 0;
     quick_text_[0] = 0;
     panel_x_[0] = panel_x_[1] = panel_w_[0] = panel_w_[1] = 0;
+}
+
+/* The theme and terminal tier from the settings. */
+void App::apply_look()
+{
+    const char* t = config_.tier.c_str();
+    if (strcmp(t, "basic") == 0)
+        term_.set_tier(tu::TIER_BASIC);
+    else if (strcmp(t, "ansi") == 0)
+        term_.set_tier(tu::TIER_ANSI);
+    else if (strcmp(t, "256") == 0)
+        term_.set_tier(tu::TIER_256);
+    else if (strcmp(t, "modern") == 0)
+        term_.set_tier(tu::TIER_MODERN);
+    theme_ = theme_for(term_.tier(), config_.theme.c_str());
+    screen_.invalidate();
 }
 
 App::~App()
@@ -344,7 +375,10 @@ void App::tick(long now)
         return;
     }
     if (mode_ == MODE_COMMAND && now - cmd_started_ >= 200 && shell_.idle(now)) {
-        back_to_panels(true);
+        if (config_.auto_return)
+            back_to_panels(true);
+        else
+            mode_ = MODE_SHELL;     /* stay in the shell; Ctrl-O comes back */
         return;
     }
     if (mode_ == MODE_PANELS && !prompt_known_ && shell_.idle(now)) {
@@ -400,20 +434,20 @@ void App::resize()
 void App::function_key(int n)
 {
     switch (n) {
-    case 10:
-        quit_ = true;
-        break;
-    case 3: case 4: case 5: case 6: case 7: case 8:
-        message("F%s: comes in a later milestone.",
-                n == 3 ? "3" : n == 4 ? "4" : n == 5 ? "5" : n == 6 ? "6" : n == 7 ? "7" : "8");
-        break;
     case 1:
-        message("%s", "Tab: other panel. Ins: mark. Ctrl-O: shell. Alt-T: listing. "
-                      "Ctrl-S: search. F10: quit.");
+        message("%s", "Tab: other panel. Ins: mark. Ctrl-O: shell. F9: menu. "
+                      "Alt-T: listing. Ctrl-S: search. F10: quit.");
         break;
-    default:
-        message("%s", "Menus come in a later milestone.");
-        break;
+    case 2: cmd_user_menu(); break;
+    case 3: cmd_view(); break;
+    case 4: cmd_edit(); break;
+    case 5: cmd_copy(false); break;
+    case 6: cmd_copy(true); break;
+    case 7: cmd_mkdir(); break;
+    case 8: cmd_delete(); break;
+    case 9: open_menu(active_ == 0 ? 0 : 4); break;
+    case 10: quit_ = true; break;
+    default: break;
     }
 }
 
@@ -489,7 +523,8 @@ bool App::handle_panel_key(const tu::Event& ev)
         }
         if (!text) {
             const Entry* e = p->current();
-            /* An executable file runs, as in mc. */
+            /* An executable file runs, as in mc; other files go to their
+             * association, if one matches. */
             if (e && !e->up && e->st.type == tf::FT_FILE && (e->st.mode & 0111)) {
                 char q[1100], c[1200];
                 if (shell_.quote(e->name.c_str(), q, sizeof(q))) {
@@ -498,6 +533,9 @@ bool App::handle_panel_key(const tu::Event& ev)
                 }
                 return true;
             }
+            if (e && !e->up && e->st.type != tf::FT_DIR &&
+                !(e->st.type == tf::FT_LINK && e->target == tf::FT_DIR) && open_file(*e))
+                return true;
         }
         enter_pressed();
         return true;
@@ -595,6 +633,39 @@ void App::handle(const tu::Event& ev)
             return;
     }
 
+    /* Ctrl-X then a letter (mc's file commands). */
+    if (ctrl_x_) {
+        ctrl_x_ = false;
+        if (ev.key == tu::KEY_CHAR) {
+            switch (ev.ch) {
+            case 'c': cmd_chmod(); return;
+            case 'o': cmd_chown(); return;
+            case 's': case 'l': cmd_symlink(); return;
+            case 'd': cmd_compare(); return;
+            default: break;
+            }
+        }
+        message("%s", "Ctrl-X then: c chmod, o chown, s symlink, d compare directories.");
+        return;
+    }
+    if (ev.key == tu::KEY_CHAR && (ev.mods & tu::MOD_CTRL) && ev.ch == 'x') {
+        ctrl_x_ = true;
+        return;
+    }
+    if (ev.key == tu::KEY_CHAR && (ev.mods & tu::MOD_CTRL) && ev.ch == '\\') {
+        cmd_hotlist();
+        return;
+    }
+    if (ev.key == tu::KEY_CHAR && (ev.mods & tu::MOD_ALT) && ev.ch == '?') {
+        cmd_find();
+        return;
+    }
+    /* + - * select when the command line is empty (mc). */
+    if (ev.key == tu::KEY_CHAR && !ev.mods && cmd_.len == 0 &&
+        (ev.ch == '+' || ev.ch == '-' || ev.ch == '*')) {
+        cmd_select((char)ev.ch);
+        return;
+    }
     if (ev.key == tu::KEY_CHAR && ev.mods == tu::MOD_ALT && ev.ch >= '0' && ev.ch <= '9') {
         function_key(ev.ch == '0' ? 10 : (int)(ev.ch - '0'));
         return;
@@ -725,6 +796,65 @@ void App::handle(const tu::Event& ev)
 /* ------------------------------------------------------------------ */
 /* The loop                                                            */
 
+/* Wait for input, the shell or a signal, up to timeout_ms (-1: until
+ * something happens). Shell output and signals are handled here; key
+ * bytes go to the shell when it is on screen and to input_ otherwise.
+ * False when the terminal has gone. */
+bool App::wait_input(int timeout_ms, bool* timed_out)
+{
+    *timed_out = false;
+    fd_set rd;
+    FD_ZERO(&rd);
+    int in = term_.in_fd(), sig = term_.signal_fd(), sh = shell_.alive() ? shell_.fd() : -1;
+    int top = in;
+    FD_SET(in, &rd);
+    if (sig >= 0) {
+        FD_SET(sig, &rd);
+        if (sig > top)
+            top = sig;
+    }
+    if (sh >= 0) {
+        FD_SET(sh, &rd);
+        if (sh > top)
+            top = sh;
+    }
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    int n = select(top + 1, &rd, 0, 0, timeout_ms < 0 ? 0 : &tv);
+    if (n < 0)
+        return errno == EINTR;
+    if (n == 0) {
+        *timed_out = true;
+        return true;
+    }
+    if (sig >= 0 && FD_ISSET(sig, &rd)) {
+        char b[16];
+        ssize_t r = read(sig, b, sizeof(b));
+        for (ssize_t i = 0; i < r; i++) {
+            if (b[i] == 'W')
+                resize();
+            if (b[i] == 'T' || b[i] == 'H')
+                quit_ = true;
+        }
+    }
+    if (sh >= 0 && FD_ISSET(sh, &rd))
+        shell_output();
+    if (FD_ISSET(in, &rd)) {
+        char b[4096];
+        ssize_t r = read(in, b, sizeof(b));
+        if (r == 0 || (r < 0 && errno != EINTR && errno != EAGAIN))
+            return false;
+        if (r > 0) {
+            if (mode_ == MODE_PANELS)
+                input_.feed(b, (size_t)r);
+            else
+                shell_input(b, (size_t)r);
+        }
+    }
+    return true;
+}
+
 int App::run()
 {
     if (!term_.start())
@@ -736,56 +866,11 @@ int App::run()
             draw();
             screen_.flush();
         }
-        fd_set rd;
-        FD_ZERO(&rd);
-        int in = term_.in_fd(), sig = term_.signal_fd(), sh = shell_.alive() ? shell_.fd() : -1;
-        int top = in;
-        FD_SET(in, &rd);
-        if (sig >= 0) {
-            FD_SET(sig, &rd);
-            if (sig > top)
-                top = sig;
-        }
-        if (sh >= 0) {
-            FD_SET(sh, &rd);
-            if (sh > top)
-                top = sh;
-        }
-        struct timeval tv;
-        tv.tv_sec = 0;
         bool polling = syncing_ || mode_ == MODE_COMMAND || (mode_ == MODE_PANELS && !prompt_known_);
-        tv.tv_usec = input_.pending() ? input_.timeout_ms() * 1000 : 50000;
-        int n = select(top + 1, &rd, 0, 0, input_.pending() || polling ? &tv : 0);
-        if (n < 0) {
-            if (errno == EINTR)
-                continue;
+        int timeout = input_.pending() ? input_.timeout_ms() : polling ? 50 : -1;
+        bool timed_out = false;
+        if (!wait_input(timeout, &timed_out))
             break;
-        }
-        if (sig >= 0 && n > 0 && FD_ISSET(sig, &rd)) {
-            char b[16];
-            ssize_t r = read(sig, b, sizeof(b));
-            for (ssize_t i = 0; i < r; i++) {
-                if (b[i] == 'W')
-                    resize();
-                if (b[i] == 'T' || b[i] == 'H')
-                    quit_ = true;
-            }
-        }
-        if (sh >= 0 && n > 0 && FD_ISSET(sh, &rd))
-            shell_output();
-        bool timed_out = n == 0;
-        if (n > 0 && FD_ISSET(in, &rd)) {
-            char b[4096];
-            ssize_t r = read(in, b, sizeof(b));
-            if (r == 0 || (r < 0 && errno != EINTR && errno != EAGAIN))
-                break;
-            if (r > 0) {
-                if (mode_ == MODE_PANELS)
-                    input_.feed(b, (size_t)r);
-                else
-                    shell_input(b, (size_t)r);
-            }
-        }
         tu::Event ev;
         while (!quit_ && mode_ == MODE_PANELS && input_.next(&ev, timed_out))
             handle(ev);
@@ -793,6 +878,7 @@ int App::run()
     }
     if (view_ && view_->shown())
         view_->hide();
+    save_setup();
     term_.stop();
     return 0;
 }

@@ -55,6 +55,8 @@ public:
      * this path as its new name. */
     void set_target(const char* path, bool into_dir);
     bool preserve_attrs;
+    /* Overwrite without asking. */
+    void set_overwrite_all(bool on) { overwrite_all_ = on; }
 
     State step(int budget_ms);
     State state() const { return state_; }

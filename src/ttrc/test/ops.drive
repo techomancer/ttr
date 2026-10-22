@@ -1,0 +1,51 @@
+# File operations and dialogs: F7 mkdir, F5 copy to the other panel, F6
+# rename there, F8 delete, + select, F9 menu, the hotlist, find file.
+expect Quit
+expect note.txt
+send \e[18~
+expect Make directory
+send newdir\r
+expect /newdir
+send \x13note
+send \r
+send \e[15~
+expect Copy "note.txt" to:
+send \r
+wait 600
+send \t
+send \eOB
+send \e[17~
+expect Rename or move
+send \x15renamed.txt\r
+expect renamed.txt
+send \e[19~
+expect Delete "renamed.txt"?
+send \r
+wait 600
+absent renamed.txt
+send \t
+send +
+expect Files matching
+send \r
+expect bytes in
+send *
+absent bytes in
+send \e[20~
+expect Sort by name
+send \e
+wait 200
+absent Sort by name
+send \x1c
+expect Directory hotlist
+send a
+expect Add current
+send \e
+wait 200
+send \e?
+expect Find file
+send \x15note*\r
+expect Done:
+expect note.txt
+send \e
+wait 200
+send \e0

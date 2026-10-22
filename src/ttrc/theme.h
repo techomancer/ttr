@@ -1,13 +1,14 @@
 /*
  * ttrc's colours (ttrc/DESIGN.md section 3.4). One set of styles per
- * look; the colours are 24-bit and tu maps them to what the terminal
- * has. On a terminal without colours the theme uses bold, underline and
- * reverse instead.
+ * theme; the colours are 24-bit and tu maps them to what the terminal
+ * has. On a terminal without colours every theme becomes "mono": bold,
+ * underline and reverse.
  */
 #ifndef TTRC_THEME_H
 #define TTRC_THEME_H
 
 #include "../../tu/screen.h"
+#include "../../tu/widgets.h"
 
 namespace ttrc {
 
@@ -32,10 +33,14 @@ struct Theme {
     tu::Style command;          /* the command line */
     tu::Style error;
     tu::FrameStyle frame_style;
+    tu::DialogStyle dialog;
+    tu::DialogStyle alarm;      /* errors and dangerous questions */
+    tu::DialogStyle menu;       /* pull-down menus */
 };
 
-/* The theme for this terminal. */
-Theme theme_for(tu::Tier tier);
+/* The themes, by name; theme_names()[i] ends with a null pointer. */
+const char* const* theme_names();
+Theme theme_for(tu::Tier tier, const char* name);
 
 } /* namespace ttrc */
 
