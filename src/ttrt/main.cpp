@@ -886,10 +886,18 @@ void settings_cb(Widget, XtPointer data, XtPointer);
 
 Widget make_menu_bar(App* a, Widget parent)
 {
-    Widget bar = XmCreateMenuBar(parent, (char*)"menuBar", 0, 0);
+    /* Alt+letter and F10 belong to the programs in the terminal (mc, ttrc,
+     * emacs): no mnemonics on the menu titles, and no F10 to enter the
+     * menu bar. The menus are for the mouse. */
+    Arg bargs[2];
+    XtSetArg(bargs[0], XmNpopupEnabled, False);
+    /* An empty accelerator means Motif's default F10; this one is out of
+     * the way. */
+    XtSetArg(bargs[1], XmNmenuAccelerator, "Ctrl Shift<KeyUp>F12");
+    Widget bar = XmCreateMenuBar(parent, (char*)"menuBar", bargs, 2);
     Widget file = XmCreatePulldownMenu(bar, (char*)"fileMenu", 0, 0);
     XtVaCreateManagedWidget("File", xmCascadeButtonWidgetClass, bar, XmNsubMenuId, file,
-                            XmNmnemonic, 'F', (char*)0);
+                            (char*)0);
     Widget nw = XtVaCreateManagedWidget("New Window", xmPushButtonWidgetClass, file,
                                         XmNmnemonic, 'N', (char*)0);
     XtAddCallback(nw, XmNactivateCallback, new_window_cb, a);
@@ -900,14 +908,14 @@ Widget make_menu_bar(App* a, Widget parent)
 
     Widget edit = XmCreatePulldownMenu(bar, (char*)"editMenu", 0, 0);
     XtVaCreateManagedWidget("Edit", xmCascadeButtonWidgetClass, bar, XmNsubMenuId, edit,
-                            XmNmnemonic, 'E', (char*)0);
+                            (char*)0);
     menu_item(edit, "Copy", 'C', "Ctrl+Shift+C", copy_cb, a);
     menu_item(edit, "Paste", 'P', "Ctrl+Shift+V", paste_cb, a);
     menu_item(edit, "Select All", 'A', 0, select_all_cb, a);
 
     Widget term = XmCreatePulldownMenu(bar, (char*)"terminalMenu", 0, 0);
     XtVaCreateManagedWidget("Terminal", xmCascadeButtonWidgetClass, bar, XmNsubMenuId, term,
-                            XmNmnemonic, 'T', (char*)0);
+                            (char*)0);
     menu_item(term, "Clear Scrollback", 'C', 0, clear_sb_cb, a);
     menu_item(term, "Reset", 'R', 0, reset_cb, a);
     XtVaCreateManagedWidget("sep", xmSeparatorWidgetClass, term, (char*)0);

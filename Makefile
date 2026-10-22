@@ -97,7 +97,7 @@ OBJS = $(B)/main.o \
 	$(B)/x11_wm.o \
 	$(B)/x11_xpainter.o
 
-all: $(B)/ttr $(B)/ttrt
+all: $(B)/ttr $(B)/ttrt $(B)/ttrc
 
 $(B)/ttr: $(OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
@@ -262,6 +262,59 @@ tu-test: $(B)/tu_test
 
 $(B)/tu_test_tu.o: $(B)/.dir tu/test/test_tu.cpp $(TU_H) $(TL_TERMINAL_H)
 	$(COMPILE) -c tu/test/test_tu.cpp -o $@
+
+# tf, ttrc's file systems (ttrc/DESIGN.md section 5): libtf.a and its
+# tests. TF_SYS is the per-system part: tf_sys_linux.o or tf_sys_irix.o
+# (IRIX: make TF_SYS=$(B)/tf_sys_irix.o).
+TF_SYS = $(B)/tf_sys_linux.o
+TF_OBJS = $(B)/tf_local.o \
+	$(B)/tf_path.o \
+	$(TF_SYS)
+TF_H = tf/tf.h tf/path.h tf/sys.h tl/port.h
+
+$(B)/libtf.a: $(TF_OBJS)
+	rm -f $@
+	$(AR) rc $@ $(TF_OBJS)
+
+$(B)/tf_local.o: $(B)/.dir tf/local.cpp $(TF_H)
+	$(COMPILE) -c tf/local.cpp -o $@
+$(B)/tf_path.o: $(B)/.dir tf/path.cpp $(TF_H)
+	$(COMPILE) -c tf/path.cpp -o $@
+$(B)/tf_sys_linux.o: $(B)/.dir tf/sys_linux.cpp $(TF_H)
+	$(COMPILE) -c tf/sys_linux.cpp -o $@
+$(B)/tf_sys_irix.o: $(B)/.dir tf/sys_irix.cpp $(TF_H)
+	$(COMPILE) -c tf/sys_irix.cpp -o $@
+
+$(B)/tf_test: $(B)/tf_test_tf.o $(B)/libtf.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/tf_test_tf.o $(B)/libtf.a
+
+tf-test: $(B)/tf_test
+	$(B)/tf_test
+
+$(B)/tf_test_tf.o: $(B)/.dir tf/test/test_tf.cpp $(TF_H)
+	$(COMPILE) -c tf/test/test_tf.cpp -o $@
+
+# ttrc, To The Roots Commander (ttrc/DESIGN.md): tu + tf (+ tl) on a
+# character terminal; no X.
+TTRC_OBJS = $(B)/ttrc_main.o \
+	$(B)/ttrc_panel.o \
+	$(B)/ttrc_theme.o \
+	$(B)/core_str.o
+TTRC_H = src/ttrc/panel.h src/ttrc/theme.h $(TU_H) $(TF_H) src/core/str.h \
+	src/core/vector.h
+
+ttrc: $(B)/ttrc
+
+$(B)/ttrc: $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a $(B)/libtl.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a \
+		$(B)/libtl.a
+
+$(B)/ttrc_main.o: $(B)/.dir src/ttrc/main.cpp $(TTRC_H)
+	$(COMPILE) -c src/ttrc/main.cpp -o $@
+$(B)/ttrc_panel.o: $(B)/.dir src/ttrc/panel.cpp $(TTRC_H)
+	$(COMPILE) -c src/ttrc/panel.cpp -o $@
+$(B)/ttrc_theme.o: $(B)/.dir src/ttrc/theme.cpp $(TTRC_H)
+	$(COMPILE) -c src/ttrc/theme.cpp -o $@
 
 # ttrt, the terminal (ttrt/DESIGN.md): tl + tp + tw and a Motif window.
 TTRT_OBJS = $(B)/ttrt_main.o \
