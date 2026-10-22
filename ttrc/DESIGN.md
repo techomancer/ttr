@@ -1,6 +1,9 @@
 # ttrc: To The Roots Commander
 
-Status: design for review, 2026-10-21. Nothing is implemented yet.
+Status: design reviewed 2026-10-21 (decisions in section 12). Nothing is
+implemented yet. First target: the dual-panel commander with its shell
+and file operations. The viewer (F3) and editor (F4) come later, but tu
+is designed for them from the start (section 3.5).
 
 ttrc is an orthodox file manager in the line of Norton Commander, Volkov
 Commander and Midnight Commander: two panels, a command line under them,
@@ -38,15 +41,19 @@ Goals:
 - **Every file operation goes through a VFS** (section 5). Tar, zip,
   gzip, bzip2 and compress files open like directories.
 - **Standalone and small.** One program, `ttrc`, with no X, no glib,
-  and no curses screen library.
+  and no curses at all: terminfo is read by our own code.
+- **Plain terminals work, good terminals shine.** A vt100 or winterm
+  gets a clean, fast interface. ttrt and modern Linux terminals get true
+  colour, real line drawing, shadows, unambiguous keys and more
+  (section 3.4), without the application code knowing the difference.
 - **The framework's rules**: C++98 for MIPSpro 7.4 and
   `g++ -std=c++98 -pedantic`; no exceptions, RTTI, STL or iostreams;
   plain make; per-system code in separate files, not `#ifdef`s
   (as in `tp/`); third-party code as pinned submodules.
 
-Not in the first version: writing into archives, an internal editor
-(F4 runs `$EDITOR`), network file systems (FTP, SFTP), background file
-operations in a separate process.
+Not in the first version: the internal viewer and editor, writing into
+archives, network file systems (FTP, SFTP), background file operations
+in a separate process.
 
 ## 2. The parts
 
@@ -86,11 +93,20 @@ steps from that loop, so the screen stays live and Esc cancels them.
 
 ### 3.1 Output
 
-- **Terminfo for capabilities.** tu reads the terminal's entry with the
-  system's terminfo functions (`setupterm`, `tigetstr`, `tigetnum`,
-  `tparm`). They exist in ncurses and in IRIX's SVR4 curses. tu uses
-  nothing else from curses: no `initscr`, no windows, no `refresh`. If no
-  entry is found, a built-in vt100/xterm description is used.
+- **Terminfo, read by tu itself.** No curses library is linked. tu
+  finds the compiled entry (`$TERMINFO`, `~/.terminfo`, `$TERMINFO_DIRS`,
+  `/usr/share/terminfo`, `/usr/share/lib/terminfo` on IRIX,
+  `/usr/lib/terminfo`, `/etc/terminfo`; both the `x/xterm` and the hex
+  `78/xterm` layouts) and parses it. The format is the same everywhere
+  and little-endian on every system: checked, IRIX's files and Linux's
+  vt100 entry start with the legacy magic 0432, and ncurses' newer
+  entries (Linux xterm-256color) with 01036, which only widens numbers to
+  32 bits. The extended section (ncurses user capabilities such as
+  `RGB`, `Tc`, `Smulx`, `Ss`, `Sync`) is read too: it is how terminfo
+  describes the modern features of section 3.4. `tparm`'s small stack
+  language (`%p1%d`, `%i`, `%?...%t...%e...%;`) is implemented in tu. If
+  no entry is found, tu has built-in entries for xterm-256color, ttrt,
+  iris-ansi and vt100.
 - **A cell screen and a diff.** The application draws into a back
   buffer of cells (code point, attributes, colours). `flush()` compares
   it with what the terminal shows and sends the shortest update: cursor
@@ -123,7 +139,77 @@ steps from that loop, so the screen stays live and Esc cancels them.
 - SIGWINCH comes through the self-pipe. The screen, the panels, the
   shell's pty and the shell's screen copy all resize together.
 
-### 3.3 Widgets
+### 3.3 What the terminal can do
+
+tu sorts terminals into tiers once at startup and the drawing code asks
+for effects, not escape sequences:
+
+| Tier | Typical terminals | Colour | Lines and boxes |
+|---|---|---|---|
+| basic | vt100, VT220, serial consoles | none: bold, underline, reverse | ACS, or ASCII `+` and `-` |
+| ansi | iris-ansi (winterm, xwsh), Linux console, xterm (8/16) | 8 or 16 | ACS, or Unicode on a UTF-8 console |
+| 256 | xterm-256color, most Linux terminals | 256 | Unicode |
+| modern | ttrt, kitty, foot, WezTerm, Ghostty, recent xterm | 24-bit | Unicode, rounded and heavy corners, block elements |
+
+How tu finds out, in order: the terminfo entry (`colors`, `RGB`, `Tc`
+and the other extended capabilities), `COLORTERM=truecolor`, and, only
+when `TERM` names an xterm-like terminal, a query at startup (XTVERSION,
+`CSI > 0 q`, and DA1) with a short timeout. A terminal that does not
+answer simply stays in its terminfo tier, so serial lines and dumb
+terminals never see garbage. ttrt answers XTVERSION with its name. The
+user can force a tier in the settings.
+
+### 3.4 Using a good terminal
+
+On the modern tier, and partly on 256, tu uses:
+
+- **True colour themes.** Themes are written in 24-bit colour; tu maps
+  each colour to the nearest of 256, 16 or 8 when the terminal has fewer,
+  and to bold/reverse on basic. A theme can say how it degrades (the
+  classic NC blue maps to plain blue on 8 colours rather than to the
+  nearest grey).
+- **Real boxes and shadows.** Rounded or double frames, a heavy frame
+  for the active panel, and dialog shadows that darken the cells
+  underneath (the colours under the shadow are dimmed, text stays
+  readable), as Turbo Vision drew them. On lower tiers the shadow is a
+  plain dark band or nothing.
+- **Unambiguous keys** with the kitty keyboard protocol (`CSI > 1 u`),
+  which ttrt and tl already speak: Ctrl-Enter, Ctrl-Tab, Shift-F-keys and
+  a lone Esc without timeouts. tu turns it off before the shell gets the
+  terminal and back on when the panels return, so programs in the shell
+  always see the keyboard mode they set themselves.
+- **Synchronized output** (mode 2026) where offered, so a full redraw
+  never tears.
+- **The clipboard through OSC 52** (copy the selected file names or a
+  path), the window title through OSC 2 (the active panel's directory),
+  focus events (mode 1004) to re-read the panels when the window comes
+  back, SGR mouse with exact cells (1006), styled underlines.
+- **Later effects**, kept in mind but not built now: fading dialogs in
+  and out, smooth scrolling by half-cells with block elements, and
+  images in the viewer through sixel or the kitty graphics protocol.
+
+The application never asks which tier it runs on. It draws "a frame in
+style X", "a shadow", "the theme's colour for selected files", and tu
+decides how. Adding an effect later is a change in tu, not in ttrc.
+
+### 3.5 Ready for the viewer and the editor
+
+F3 and F4 are later milestones, but tu is built so they need no
+redesign:
+
+- The screen diff takes **scroll hints** (`scroll(top, bottom, n)`), sent
+  as scroll regions (`csr` with `ind`/`ri`) or insert and delete line,
+  so scrolling a long file costs one line of output, not a screen.
+- Text cells hold full grapheme clusters with widths from
+  `tl/unicode.h`: combining marks, double-width CJK, tabs expanded by
+  the widget.
+- A text area widget with a cursor, cursor shapes (`Ss`, DECSCUSR),
+  selection, and an input line that edits, so a find dialog and the
+  editor share code.
+- Key maps per mode (panels, viewer, editor, dialog), so each can bind
+  keys without the others seeing them.
+
+### 3.6 Widgets
 
 A small set, drawn into the cell screen: frames, a list with a cursor
 and a scroll bar, an input line with history, buttons, check boxes,
@@ -145,11 +231,12 @@ output from the pty goes through ttrc:
 
 1. It is fed to a `tl::Terminal` the size of the real terminal. This is
    ttrc's **copy of the shell's screen**, including its scrollback.
-2. If the shell is in front (section 4.2), the same bytes are written to
+2. If the shell is in front (section 4.3), the same bytes are written to
    the real terminal unchanged. Programs get exactly the terminal they
    expect, with every capability it has.
 3. tl reports OSC 7 (working directory) and OSC 133 (prompt and command
-   markers) to ttrc when a shell happens to send them (section 4.4).
+   markers) to ttrc when a shell happens to send them (sections 4.4
+   and 4.5).
 
 Because ttrc has the screen copy, it never depends on the terminal's
 alternate screen and needs no `cons.saver`. Going back to the shell
@@ -163,7 +250,26 @@ covers all of them closely enough. Where the two could still drift
 (a terminal tl does not know), the copy is only used for redrawing and
 Ctrl-O restores what tl understood.
 
-### 4.2 Three states
+### 4.2 Pass-through now, rendering later
+
+There are two ways to show the shell:
+
+- **Pass-through** (chosen for now): when the shell is in front, its
+  bytes go to the real terminal unchanged, and ttrc's copy follows along.
+  Simple, fast, and programs get every feature the terminal has.
+- **Rendered**, as screen and tmux do: the shell's bytes only go into the
+  copy, and tu draws the copy onto the terminal. Slower and limited to
+  what tl understands, but it allows a shell pane next to the panels, a
+  shell in a window over them, and several shells.
+
+The code keeps the switch open. The shell lives behind one interface,
+`ShellView` (`feed(bytes)`, `show()`, `hide()`, `resize()`, `key()`),
+with pass-through as its first implementation. Drawing the copy through
+tu is needed anyway, to restore the screen on Ctrl-O and to show the
+shell's last lines under shortened panels, so a rendered implementation
+reuses that code. Nothing else in ttrc knows which one is in use.
+
+### 4.3 Three states
 
 | State | The screen shows | Keys go to |
 |---|---|---|
@@ -178,19 +284,19 @@ Ctrl-O restores what tl understood.
 - Ctrl-O works while a full-screen program runs (vi, top). The panels
   come up; going back redraws vi's screen from the copy. mc cannot do
   this without the alternate screen.
-- After a command finishes (section 4.3), ttrc returns to the panels,
+- After a command finishes (section 4.4), ttrc returns to the panels,
   as NC and mc do. A setting keeps the shell in front instead, and
   another waits for a key first.
 - With the panels up, the shell's screen shows in every line the panels
   do not cover. Ctrl-Up and Ctrl-Down make the panels shorter or taller
   (NC's feature), so the last lines of output stay visible.
 
-### 4.3 When a command has finished
+### 4.4 When a command has finished
 
 ttrc needs to know this to come back to the panels and to re-read the
 working directory. It does not ask the shell. In order:
 
-1. **OSC 133 D**, if the shell sends it (section 4.4). Exact, with the
+1. **OSC 133 D**, if the shell sends it (section 4.5). Exact, with the
    exit code.
 2. **The pty's foreground process group** (`tcgetpgrp` on the master,
    new `tp::Pty::foreground_group()`). While a command runs, its process
@@ -203,7 +309,7 @@ working directory. It does not ask the shell. In order:
    Linux, `PIOCPSINFO` on IRIX. ttrc checks this when the pty has been
    quiet for 50 ms.
 
-### 4.4 The working directory
+### 4.5 The working directory
 
 Again without asking the shell:
 
@@ -225,7 +331,7 @@ ttrc reads the directory whenever a command finishes and when the user
 switches from the shell to the panels. If it changed, the active panel
 follows, as in mc.
 
-### 4.5 From the panels to the shell
+### 4.6 From the panels to the shell
 
 The other direction cannot be done without typing into the shell: only
 the shell can change its own directory. ttrc types as little as
@@ -246,7 +352,7 @@ possible.
 - The `cd` lines do land in the shell's history. ttrc does not change
   `HISTCONTROL` or similar to hide them; lazy sync keeps them rare.
 
-### 4.6 The command line
+### 4.7 The command line
 
 - The line under the panels is ttrc's own input line, so Up, Down, Tab
   and the F-keys keep their panel meanings. Ctrl-Enter and Alt-Enter put
@@ -266,7 +372,7 @@ possible.
   not do.
 - `exit` on the line, or F10, quits ttrc. The shell gets SIGHUP.
 
-### 4.7 Leaving ttrc in the panel's directory
+### 4.8 Leaving ttrc in the panel's directory
 
 A program cannot change its parent shell's directory. As with mc, a
 small shell function does it: ttrc writes its last directory to a file
@@ -279,20 +385,28 @@ is the `tc` command** (section 9).
 ### 5.1 Paths
 
 A `tf::Path` is a chain: a path in the local file system, then for each
-archive or compressed file entered, a layer and a path inside it.
-Written out, `#` marks the step into a file:
+archive or compressed file entered, a layer and a path inside it. The
+written form is mc's, so mc users read it at once: the file, then
+`/<scheme>://`, then the path inside.
 
 ```
-/home/me/src/ttr-1.0.tar.gz#/ttr/README.md
-/data/old.zip#/backups/home.tar#/me/.profile
-/usr/share/man/man1/ls.1.gz#/ls.1
+/home/me/src/ttr-1.0.tar.gz/utar://ttr/README.md
+/data/old.zip/uzip://backups/home.tar/utar://me/.profile
+/usr/share/man/man1/ls.1.gz/ugz://ls.1
 ```
 
-The layer type is not part of the path; it comes from the file's
-content (magic numbers), with the name as a hint. A `#` that is part of
-a file name is written `\#` in this notation only; names on disk are
-never changed. The notation is what the panel title shows and what
-`cd` on the command line accepts.
+| Scheme | Layer |
+|---|---|
+| `utar` | tar, including `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz2`, `.tar.Z`: the decompression happens underneath, as in mc |
+| `uzip` | zip |
+| `ugz`, `ubz2`, `uz` | a single gzip, bzip2 or compress file, shown as a directory holding the uncompressed file |
+
+Enter on a file picks the scheme from its content (magic numbers), with
+the name as a hint; typing a path with a scheme forces it. The notation
+is what the panel title shows and what `cd` on the command line accepts.
+A real directory whose name happens to be `utar:` followed by more of
+the path is the only case that reads ambiguously; `tf` checks the local
+file system first, so it still works.
 
 ### 5.2 The interface
 
@@ -400,7 +514,7 @@ This corrects [docs/shell.md](../docs/shell.md) section 10.1:
 - GNU bash is installed from freeware on this guest.
 
 None of this matters much for ttrc, since it hooks into no shell. It
-matters for quoting the `cd` line (section 4.5) and for knowing which
+matters for quoting the `cd` line (section 4.6) and for knowing which
 shells to test.
 
 ### 6.3 Additions to tp
@@ -414,7 +528,7 @@ shells to test.
 
 ```
  Left     File     Command     Options     Right
-+- /usr/share -------------------------++- ttr-1.0.tar.gz#/ttr ----------------+
++- /usr/share -------------------------++- ttr-1.0.tar.gz/utar://ttr ----------+
 |     Name        |   Size|  Modified  ||     Name        |   Size|  Modified  |
 |/..              | UP-DIR|Oct 21 09:14||/..              | UP-DIR|Oct 20 18:02|
 |/X11             |   4096|Jun 26  2024||/src             |   4096|Oct 20 18:02|
@@ -437,11 +551,12 @@ IRIS 3# _
   Alt-S or typing starts a quick search, Ctrl-PgUp goes up, Enter enters
   directories and archives or runs, Ctrl-\ the directory hotlist, Alt-?
   find file, Ctrl-O the shell, F9 the menu bar.
-- F3 views with ttrc's own viewer: text, hex, wrap on or off, search,
-  through the VFS, so files inside archives can be viewed without
-  extracting them first.
-- F4 runs `$VISUAL`, `$EDITOR` or `vi` on the file. A file inside an
-  archive is shown read-only for now.
+- F3 and F4 come in a later milestone: a viewer (text, hex, wrap,
+  search, through the VFS, so files inside archives open without
+  extracting) and an editor, both on tu (section 3.5). Until then F3
+  runs `$PAGER` (or `more`) and F4 runs `$VISUAL`, `$EDITOR` or `vi` in
+  the shell, on local files; for a file in an archive they work on a
+  temporary copy.
 - F2 is the user menu (`~/.config/ttrc/menu`) and Enter on a file runs
   its association (`~/.config/ttrc/assoc`). Both use mc's `%f %d %s %t`
   macros so existing habits carry over. The file formats are ours and
@@ -464,8 +579,8 @@ format), changed from Options > Configuration and kept in the same way
 `/usr/bin/tc` would conflict with iproute2. Nothing is called `tc` on
 IRIX.
 
-Proposal: the program is installed as `ttrc` everywhere. `tc` is the
-shell function from section 4.7, which is needed anyway for leaving ttrc
+Decided: the program is installed as `ttrc` everywhere. `tc` is the
+shell function from section 4.8, which is needed anyway for leaving ttrc
 in its last directory:
 
 ```sh
@@ -496,39 +611,42 @@ link, since nothing is in the way there.
 
 ## 11. Milestones
 
-1. **tu basics and browsing.** Terminfo, the cell screen and diff,
-   key input, frames and lists. tf's local layer and `Path`. Two panels
-   with navigation, sorting, the function key bar, F10. Runs on Linux
-   and IRIX.
-2. **The subshell.** pty, screen copy, Ctrl-O both ways, the command
-   line with the shell's prompt, command completion, cwd tracking (Linux
-   and IRIX), lazy `cd`, `-P` and the `tc` function.
-3. **File operations.** Selection, copy, move, delete, mkdir, rename
-   with dialogs and progress, overwrite questions, cancel.
+The first goal is the commander itself: two panels, the shell, and file
+operations. Viewer and editor come after.
+
+1. **tu basics and browsing.** The terminfo reader and `tparm`, tier
+   detection, the cell screen and diff, key input, frames, lists, the
+   function key bar. tf's local layer and `Path`. Two panels with
+   navigation, sorting, listing modes, quick search, F10. Linux and
+   IRIX, from vt100 to ttrt.
+2. **The subshell.** pty, screen copy, `ShellView` with pass-through,
+   Ctrl-O both ways, panels shortened over the shell's output, the
+   command line with the shell's prompt, command completion, cwd tracking
+   on Linux and IRIX, lazy `cd`, `-P` and the `tc` function.
+3. **File operations.** Selection, copy, move, delete, mkdir, rename,
+   symlink, attributes, with dialogs and progress, overwrite questions,
+   cancel. Menus (F9), hotlist, find file, compare directories, user
+   menu, associations, settings dialog, colour themes.
 4. **Archives.** gz, bz2, Z, tar, zip read-only through the VFS; copy
    out of archives; zlib and bzip2 submodules.
-5. **The rest of the daily set.** Viewer, F4, user menu, associations,
-   hotlist, find file, compare directories, Options dialogs, colour
-   schemes.
-6. Later: writing archives, an internal editor, FTP/SFTP layers, file
+5. **Viewer and editor** on tu (F3, F4).
+6. Later: writing archives, the rendered `ShellView` (shell panes and
+   windows), FTP/SFTP layers, effects, images in the viewer, file
    operations in a worker process.
 
-## 12. Open questions for review
+## 12. Decisions from the review (2026-10-21)
 
-1. **Name**: install as `ttrc` with `tc` as a shell function (section 9),
-   or install `tc` itself and accept the iproute2 conflict on Linux?
-2. **Pass-through plus screen copy** (section 4.1) means programs in the
-   shell talk to the real terminal and ttrc's copy follows along. The
-   alternative is a full terminal multiplexer like screen or tmux, where
-   ttrc redraws everything through tu. That is simpler to keep
-   consistent but slower, and loses terminal features tl does not have.
-   The design picks pass-through.
-3. **Lazy `cd`** (section 4.5): is a `cd` line in history, only when a
-   command is actually run in a different directory, acceptable as the
-   default?
-4. **Terminfo through the system's functions** (section 3.1), or our own
-   reader of compiled terminfo files? The system's is less code and
-   always matches the installed database. Our own avoids linking
-   libcurses at all.
-5. **Archive notation** `file#/inner/path` (section 5.1), or mc's
-   `file/utar://inner/path`?
+1. **Name**: `ttrc`, with `tc` as a shell function (section 9).
+2. **Shell display**: pass-through first, behind a `ShellView` interface
+   so the rendered (tmux-like) way can be added later (section 4.2).
+3. **Lazy `cd`**: accepted; a `cd` line in the shell's history when a
+   command runs in another directory is expected.
+4. **Terminfo**: our own reader and `tparm`, no curses library
+   (section 3.1).
+5. **Archive paths**: mc's notation, `file.tar.gz/utar://inner/path`
+   (section 5.1).
+6. **Terminals**: plan for ttrt and modern Linux terminals (true colour,
+   Unicode boxes, shadows, kitty keyboard, OSC 52, synchronized output)
+   while keeping vt100 and winterm fully usable (sections 3.3 and 3.4).
+7. **Scope**: the commander first; F3 and F4 later, but tu designed for
+   them now (section 3.5).
