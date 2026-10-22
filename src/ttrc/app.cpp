@@ -578,6 +578,19 @@ void App::handle_mouse(const tu::Event& ev)
     }
     if (ev.action != tu::MOUSE_PRESS || ev.button != 1)
         return;
+    if (ev.y == 0) {
+        /* The menu bar: the title under the click, laid out as
+         * draw_menu_bar() does. */
+        static const char* const items[] = { "Left", "File", "Command", "Options", "Right", 0 };
+        int x = 2, which = 0;
+        for (int i = 0; items[i]; i++) {
+            if (ev.x >= x - 1)
+                which = i;
+            x += (int)strlen(items[i]) + 5;
+        }
+        open_menu(which);
+        return;
+    }
     if (ev.y == screen_.rows() - 1) {
         int slot = screen_.cols() / 10;
         if (slot > 0)

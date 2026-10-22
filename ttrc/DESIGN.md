@@ -1,7 +1,8 @@
 # ttrc: To The Roots Commander
 
-Status: design reviewed 2026-10-21 (decisions in section 12). Milestone
-1 implemented the same day: tu (terminfo reader and `tparm`, tiers,
+Status: design reviewed 2026-10-21 (decisions in section 12).
+Milestones 1 to 5 are implemented; section 11 lists what is left.
+Milestone 1 implemented 2026-10-21: tu (terminfo reader and `tparm`, tiers,
 screen diff, key and mouse input; 97 checks, also run on IRIX), tf's
 local layer and paths (45 checks), and two browsable panels, run in
 ttrt and xterm on Linux and in winterm on the emulated Indy.
@@ -16,6 +17,32 @@ shortened panels over the shell's output. `make ttrc-test` drives ttrc
 on a pty through tl (`src/ttrc/test/`) under every shell present: bash,
 zsh, busybox ash on Linux; sh, ksh, jsh, csh, tcsh and bash on IRIX, all
 passing.
+
+Milestones 3 to 5 implemented 2026-10-22:
+
+- 3: tu's widgets (`tu/widgets.h`: labels, input lines with history,
+  check boxes, radio groups, buttons, lists, a progress bar, dialogs
+  with shadows, a menu bar with pull-downs); tf's jobs (`tf/ops.h`: copy,
+  move, delete in steps, with overwrite and error questions, totals
+  first); F5 to F8, `+` `-` `*`, F9 menus, chmod, chown, symlink, the
+  hotlist, find file (searching between key presses), compare
+  directories, the F2 user menu and file associations with mc's `%`
+  macros, Options > Configuration and Appearance (themes classic,
+  midnight, dark, mono), settings in `~/.config/ttrc/settings`.
+- 4: tf's VFS (`tf/vfs.h`, `tf/archive.h`): mc's path notation, a mount
+  cache, tar (GNU and pax, plain, gzip, bzip2, compress), zip (stored,
+  deflated, Zip64), single gz/bz2/Z files; names that would leave an
+  archive are dropped. zlib 1.3.1 and bzip2 1.0.8 are submodules,
+  compiled through wrappers in `tf/third/` (zlib needs one per inflate
+  source: `inftrees.h` has no include guard). The `.Z` decoder is ours.
+  Compressed and nested archives are read through a spool, an unlinked
+  temporary file.
+- 5: the viewer and editor (`src/ttrc/viewer.cpp`, `editor.cpp`) on tu,
+  reading through tf.
+
+Tests: tu 100 checks, tf 204 (with archive fixtures from
+`tools/make-tf-fixtures.sh` in `tf/test/data`), and 8 ttrc screen scripts
+under every shell on both systems.
 
 Found while testing on IRIX: a stock IRIX 6.5 X server has no
 `-dec-dectech` fonts, so xwsh and winterm show DEC line drawing as plain
@@ -649,7 +676,12 @@ operations. Viewer and editor come after.
 5. **Viewer and editor** on tu (F3, F4).
 6. Later: writing archives, the rendered `ShellView` (shell panes and
    windows), FTP/SFTP layers, effects, images in the viewer, file
-   operations in a worker process.
+   operations in a worker process, syntax colouring in the editor,
+   panelize (find results as a panel), hard links kept as hard links
+   when copying. From section 3.3 and 3.4 the tiers, true colour,
+   Unicode frames, shadows and synchronized output are in; the startup
+   query (XTVERSION), the kitty keyboard protocol, OSC 52, the window
+   title and focus-driven re-reading are not yet.
 
 ## 12. Decisions from the review (2026-10-21)
 

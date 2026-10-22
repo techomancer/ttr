@@ -469,22 +469,10 @@ work as they do in xterm. Open the menus with the mouse.
 command line and a function key bar, in the line of Norton Commander and
 Midnight Commander. It runs in any terminal: ttrt, xterm, the Linux
 console, winterm and xwsh on IRIX, a vt100 on a serial line. It does not
-need ttr or X. It is early work; copying and moving, menus and archives
-come next (see [ttrc/DESIGN.md](ttrc/DESIGN.md)).
-
-The command line under the panels runs commands in your own shell
-(`$SHELL`), which ttrc starts once and keeps: its aliases, variables and
-history stay. ttrc changes nothing in the shell (no prompt or rc file
-tricks), so any shell works, including IRIX's sh, ksh, csh and tcsh. It
-knows when a command has finished and which directory the shell is in by
-asking the system, not the shell. After a command, the panels come back;
-Ctrl+O switches between the panels and the shell at any time, also while
-a program such as vi runs in it. If you `cd` in the shell, the panel
-follows; if you move the panel elsewhere, ttrc sends the shell a `cd`
-before your next command (you will see it in the shell's history).
+need ttr or X. Its design is in [ttrc/DESIGN.md](ttrc/DESIGN.md).
 
 ```sh
-ttrc                        # both panels in the current directory
+ttrc                        # both panels where they were last time
 ttrc ~/src /usr/share       # left and right panel
 ```
 
@@ -499,22 +487,58 @@ source /usr/share/ttrc/tc.csh       # csh, tcsh (~/.cshrc)
 On Linux the function hides iproute2's `/sbin/tc` in your interactive
 shell; call that one by its full path.
 
+**The shell.** The command line under the panels runs commands in your
+own shell (`$SHELL`), which ttrc starts once and keeps: its aliases,
+variables and history stay. ttrc changes nothing in the shell (no prompt
+or rc file tricks), so any shell works, including IRIX's sh, ksh, csh and
+tcsh. It knows when a command has finished and which directory the shell
+is in by asking the system, not the shell. After a command, the panels
+come back; Ctrl+O switches between the panels and the shell at any time,
+also while a program such as vi runs in it. If you `cd` in the shell, the
+panel follows; if you move the panel elsewhere, ttrc sends the shell a
+`cd` before your next command (you will see it in the shell's history).
+
+**Archives** open like directories: Enter on a `.tar`, `.tar.gz`,
+`.tgz`, `.tar.bz2`, `.tar.Z`, `.zip` or `.jar` file goes into it, and a
+single `.gz`, `.bz2` or `.Z` file shows the file it holds. The panel's
+title uses Midnight Commander's notation, `file.tar.gz/utar://dir`, and
+`cd` on the command line accepts it. Archives are read-only: copy files
+out of them with F5, view them with F3.
+
+**Viewer and editor.** F3 shows a file in ttrc's viewer (text, wrapped
+or not, or hex; F7 or `/` searches, `n` finds the next, `q` quits); it
+also reads files inside archives. F4 edits in ttrc's editor: type as
+usual, F2 saves, Shift+F2 saves under another name, F3 starts and ends a
+selection (or Shift with the arrow keys), F5 copies it to the cursor, F6
+moves it, F8 deletes it, F7 searches, F4 replaces, Ctrl+U undoes, Ctrl+Y
+deletes a line, Esc or F10 closes. Options > Configuration switches
+either to your `$PAGER` and `$EDITOR` instead.
+
 | Key | Does |
 |---|---|
 | Up, Down, PgUp, PgDn, Home, End | move in the panel |
 | Left, Right | move between columns in the brief listing |
-| Enter | open the directory under the cursor (`..` goes up) |
+| Enter | open the directory or archive under the cursor (`..` goes up), run a program, or open a file with its association |
 | Ctrl+PgUp, Ctrl+PgDn | go up, go into |
 | Tab | switch panels |
 | Insert, Ctrl+T | mark a file and move down |
+| `+`, `-`, `*` | mark files matching a pattern, unmark them, invert the marks (on an empty command line) |
+| F1 | help |
+| F2 | the user menu |
+| F3, F4 | view, edit (Shift+F4: a new file) |
+| F5, F6 | copy, rename or move (the marked files or the one under the cursor) |
+| F7, F8 | make a directory, delete |
+| F9 | the menu bar |
+| F10, Esc then 0 | quit |
+| Ctrl+X then c, o, s, d | chmod, chown, symbolic link, compare the panels' directories |
+| Ctrl+\ | the directory hotlist |
+| Alt+? | find file |
 | Alt+T | full or brief listing |
 | Alt+. | show or hide files starting with a dot |
 | Ctrl+F3, F4, F5, F6 | sort by name, extension, time, size (again: reverse) |
 | Ctrl+S, Alt+S | search by typing the start of a name |
 | Alt+letter | jump to the next name starting with it |
 | Ctrl+O | show the shell; again: back to the panels |
-| Enter on a command | run it in the shell (`cd` is done by ttrc itself) |
-| Enter on a program | run it |
 | Alt+Enter | put the file name on the command line |
 | Alt+P, Alt+N | previous and next command |
 | Ctrl+Up, Ctrl+Down | make the panels shorter or taller, to see the shell's output |
@@ -522,17 +546,54 @@ shell; call that one by its full path.
 | Ctrl+R | read the directory again |
 | Ctrl+L | redraw the screen |
 | Ctrl+Z | suspend to the shell (`fg` comes back) |
-| F10, Esc then 0 | quit |
 
 Typing goes to the command line under the panels; `cd DIR` there changes
 the panel's directory. Esc then a digit works as the function key of that
 number on terminals without them. The mouse selects files (double-click
-opens) and scrolls. ttrc uses what the terminal offers: true colour and
-Unicode lines in ttrt and modern Linux terminals, 256 or 8 colours
-elsewhere, ASCII frames where the terminal has no line drawing (xwsh and
-winterm on a stock IRIX), and bold and reverse on a vt100.
-It reads terminfo itself, with no curses library. `TU_TIER=basic`,
-`ansi`, `256` or `modern` in the environment overrides what it detects.
+opens), scrolls, opens menus and presses buttons. Copies, moves and
+deletes show their progress and can be stopped with Esc; when a file
+exists, ttrc asks whether to overwrite it, all of them, none, or only
+older ones.
+
+ttrc uses what the terminal offers: true colour and Unicode lines in ttrt
+and modern Linux terminals, 256 or 8 colours elsewhere, ASCII frames
+where the terminal has no line drawing (xwsh and winterm on a stock
+IRIX), and bold and reverse on a vt100. It reads terminfo itself, with no
+curses library. Options > Appearance picks the theme (classic, midnight,
+dark, mono) and can override what the terminal is taken to be.
+
+ttrc keeps its files in `~/.config/ttrc/` (or `$XDG_CONFIG_HOME/ttrc/`):
+
+| File | Contents |
+|---|---|
+| `settings` | Options > Configuration and Appearance, and where the panels were |
+| `hotlist` | the directory hotlist, one directory per line |
+| `menu` | the F2 user menu (below) |
+| `assoc` | what Enter does with files (below) |
+
+The user menu has an entry per line, a key and a title, with the
+commands under it, indented. Without a `menu` file ttrc offers a few
+examples:
+
+```
+t Pack the marked files into archive.tar
+    tar cf archive.tar %s
+c Compare the current file with the other panel's
+    diff %f %F | more
+```
+
+`assoc` has lines of patterns and a command:
+
+```
+*.tar.gz *.tgz: tar tzvf %f | more
+*.html: lynx %f
+*.c *.h: vi %f
+```
+
+In both, `%f` is the file under the cursor, `%F` the other panel's, `%d`
+and `%D` the panels' directories, `%s` the marked files (or the one under
+the cursor) and `%t` only the marked ones, all quoted for your shell;
+`%%` is a percent sign.
 
 ### High-resolution screens
 

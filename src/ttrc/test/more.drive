@@ -33,4 +33,9 @@ send a
 expect Theme:
 send \e
 wait 200
+# A click on the menu bar opens that menu.
+send \e[<0;12;1M\e[<0;12;1m
+expect Make directory
+send \e
+wait 200
 send \e0
