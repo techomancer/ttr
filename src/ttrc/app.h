@@ -59,6 +59,8 @@ private:
     void handle_mouse(const tu::Event& ev);
     void shell_input(const char* data, size_t n);
     void function_key(int n);
+    /* F10 and friends: quit, after asking if so configured. */
+    void request_quit();
     void suspend();
     void message(const char* fmt, const char* arg = 0);
     Panel* active() { return panels_[active_]; }

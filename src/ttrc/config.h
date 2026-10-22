@@ -14,6 +14,7 @@ namespace ttrc {
 struct Config {
     bool confirm_delete;
     bool confirm_overwrite;     /* ask; otherwise overwrite */
+    bool confirm_exit;          /* F10 asks before quitting */
     bool auto_return;           /* back to the panels after a command */
     bool show_hidden;
     bool remember_dirs;         /* start where the panels were */

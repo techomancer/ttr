@@ -541,7 +541,7 @@ either to your `$PAGER` and `$EDITOR` instead.
 | F5, F6 | copy, rename or move (the marked files or the one under the cursor) |
 | F7, F8 | make a directory, delete |
 | F9 | the menu bar |
-| F10, Esc then 0 | quit |
+| F10, Esc then 0 | quit (after asking; Options > Configuration can turn the question off) |
 | Ctrl+X then c, o, s, d | chmod, chown, symbolic link, compare the panels' directories |
 | Ctrl+\ | the directory hotlist |
 | Alt+? | find file |

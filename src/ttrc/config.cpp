@@ -54,7 +54,8 @@ ttr::Str config_file(const char* name)
 }
 
 Config::Config()
-    : confirm_delete(true), confirm_overwrite(true), auto_return(true), show_hidden(true),
+    : confirm_delete(true), confirm_overwrite(true), confirm_exit(true), auto_return(true),
+      show_hidden(true),
       remember_dirs(true), preserve_attrs(true), internal_viewer(true), internal_editor(true),
       left_mode(0), right_mode(0), left_sort(0),
       right_sort(0)
@@ -68,6 +69,7 @@ void Config::load()
         return;
     confirm_delete = flag(f, "confirmDelete", true);
     confirm_overwrite = flag(f, "confirmOverwrite", true);
+    confirm_exit = flag(f, "confirmExit", true);
     auto_return = flag(f, "returnAfterCommand", true);
     show_hidden = flag(f, "showHidden", true);
     remember_dirs = flag(f, "rememberDirectories", true);
@@ -92,6 +94,7 @@ bool Config::save() const
     f.load(path.c_str());
     f.set("confirmDelete", confirm_delete ? "true" : "false");
     f.set("confirmOverwrite", confirm_overwrite ? "true" : "false");
+    f.set("confirmExit", confirm_exit ? "true" : "false");
     f.set("returnAfterCommand", auto_return ? "true" : "false");
     f.set("showHidden", show_hidden ? "true" : "false");
     f.set("rememberDirectories", remember_dirs ? "true" : "false");

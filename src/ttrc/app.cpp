@@ -305,7 +305,8 @@ void App::enter_pressed()
         return;
     }
     if (strcmp(c, "exit") == 0) {
-        quit_ = true;
+        cmd_.clear();
+        request_quit();
         return;
     }
     run(c);
@@ -461,9 +462,19 @@ void App::function_key(int n)
     case 7: cmd_mkdir(); break;
     case 8: cmd_delete(); break;
     case 9: open_menu(active_ == 0 ? 0 : 4); break;
-    case 10: quit_ = true; break;
+    case 10: request_quit(); break;
     default: break;
     }
+}
+
+void App::request_quit()
+{
+    if (config_.confirm_exit) {
+        static const char* const b[] = { "&Yes", "&No", 0 };
+        if (ask("Quit", "Quit ttrc?", b, false) != 1)
+            return;
+    }
+    quit_ = true;
 }
 
 bool App::handle_panel_key(const tu::Event& ev)

@@ -11,4 +11,11 @@ send \t
 send \eOB
 send \x14
 expect bytes in 1 file
-send \x1b0
+# F10 asks first: No stays, Yes quits.
+send \e0
+expect Quit ttrc?
+send n
+absent Quit ttrc?
+send \e[21~
+expect Quit ttrc?
+send y

@@ -1198,7 +1198,7 @@ void App::menu_command(int id)
     case M_SELECT: cmd_select('+'); break;
     case M_UNSELECT: cmd_select('-'); break;
     case M_INVERT: cmd_select('*'); break;
-    case M_QUIT: quit_ = true; break;
+    case M_QUIT: request_quit(); break;
     case M_USERMENU: cmd_user_menu(); break;
     case M_HOTLIST: cmd_hotlist(); break;
     case M_FIND: cmd_find(); break;
@@ -1229,9 +1229,10 @@ void App::menu_command(int id)
 
 void App::cmd_config()
 {
-    tu::Dialog d("Configuration", 56, 16);
+    tu::Dialog d("Configuration", 56, 17);
     tu::CheckBox* c1 = new tu::CheckBox("Confirm &delete", config_.confirm_delete);
     tu::CheckBox* c2 = new tu::CheckBox("Ask before &overwriting", config_.confirm_overwrite);
+    tu::CheckBox* c9 = new tu::CheckBox("Ask before &quitting", config_.confirm_exit);
     tu::CheckBox* c3 = new tu::CheckBox("&Return to the panels after a command", config_.auto_return);
     tu::CheckBox* c4 = new tu::CheckBox("Show &hidden files", config_.show_hidden);
     tu::CheckBox* c5 = new tu::CheckBox("Re&member the panels' directories", config_.remember_dirs);
@@ -1246,9 +1247,10 @@ void App::cmd_config()
     d.add(c6, 4, 7, 48);
     d.add(c7, 4, 8, 48);
     d.add(c8, 4, 9, 48);
-    d.add(new tu::Label("Saved in ~/.config/ttrc/settings"), 4, 11, 48);
+    d.add(c9, 4, 10, 48);
+    d.add(new tu::Label("Saved in ~/.config/ttrc/settings"), 4, 12, 48);
     tu::Button* b[2] = { new tu::Button("&OK", 1, true), new tu::Button("&Cancel", 2) };
-    d.add_buttons(13, b, 2);
+    d.add_buttons(14, b, 2);
     if (modal(d, theme_.dialog) != 1)
         return;
     config_.confirm_delete = c1->on;
@@ -1258,6 +1260,7 @@ void App::cmd_config()
     config_.preserve_attrs = c6->on;
     config_.internal_viewer = c7->on;
     config_.internal_editor = c8->on;
+    config_.confirm_exit = c9->on;
     if (c4->on != config_.show_hidden) {
         config_.show_hidden = c4->on;
         panels_[0]->set_hidden(c4->on);
