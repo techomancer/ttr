@@ -469,9 +469,19 @@ work as they do in xterm. Open the menus with the mouse.
 command line and a function key bar, in the line of Norton Commander and
 Midnight Commander. It runs in any terminal: ttrt, xterm, the Linux
 console, winterm and xwsh on IRIX, a vt100 on a serial line. It does not
-need ttr or X. It is early work: this first version browses. The shell,
-copying and moving, menus and archives come next (see
-[ttrc/DESIGN.md](ttrc/DESIGN.md)).
+need ttr or X. It is early work; copying and moving, menus and archives
+come next (see [ttrc/DESIGN.md](ttrc/DESIGN.md)).
+
+The command line under the panels runs commands in your own shell
+(`$SHELL`), which ttrc starts once and keeps: its aliases, variables and
+history stay. ttrc changes nothing in the shell (no prompt or rc file
+tricks), so any shell works, including IRIX's sh, ksh, csh and tcsh. It
+knows when a command has finished and which directory the shell is in by
+asking the system, not the shell. After a command, the panels come back;
+Ctrl+O switches between the panels and the shell at any time, also while
+a program such as vi runs in it. If you `cd` in the shell, the panel
+follows; if you move the panel elsewhere, ttrc sends the shell a `cd`
+before your next command (you will see it in the shell's history).
 
 ```sh
 ttrc                        # both panels in the current directory
@@ -502,6 +512,12 @@ shell; call that one by its full path.
 | Ctrl+F3, F4, F5, F6 | sort by name, extension, time, size (again: reverse) |
 | Ctrl+S, Alt+S | search by typing the start of a name |
 | Alt+letter | jump to the next name starting with it |
+| Ctrl+O | show the shell; again: back to the panels |
+| Enter on a command | run it in the shell (`cd` is done by ttrc itself) |
+| Enter on a program | run it |
+| Alt+Enter | put the file name on the command line |
+| Alt+P, Alt+N | previous and next command |
+| Ctrl+Up, Ctrl+Down | make the panels shorter or taller, to see the shell's output |
 | Ctrl+U | swap the panels |
 | Ctrl+R | read the directory again |
 | Ctrl+L | redraw the screen |

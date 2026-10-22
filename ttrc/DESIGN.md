@@ -4,8 +4,18 @@ Status: design reviewed 2026-10-21 (decisions in section 12). Milestone
 1 implemented the same day: tu (terminfo reader and `tparm`, tiers,
 screen diff, key and mouse input; 97 checks, also run on IRIX), tf's
 local layer and paths (45 checks), and two browsable panels, run in
-ttrt and xterm on Linux and in winterm on the emulated Indy. Next:
-milestone 2, the shell.
+ttrt and xterm on Linux and in winterm on the emulated Indy.
+
+Milestone 2 implemented 2026-10-22: the shell on a pty with its screen
+copy (`src/ttrc/shell.cpp`, `ShellView` with pass-through), Ctrl-O both
+ways (also around vi), command completion from the foreground process
+group and, for shells without job control, the process table; the cwd
+from `/proc` on Linux and `PIOCCKPTOPENCWD` on IRIX; lazy `cd`; the
+shell's prompt on the command line; typed text carried both ways;
+shortened panels over the shell's output. `make ttrc-test` drives ttrc
+on a pty through tl (`src/ttrc/test/`) under every shell present: bash,
+zsh, busybox ash on Linux; sh, ksh, jsh, csh, tcsh and bash on IRIX, all
+passing.
 
 Found while testing on IRIX: a stock IRIX 6.5 X server has no
 `-dec-dectech` fonts, so xwsh and winterm show DEC line drawing as plain
