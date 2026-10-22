@@ -166,7 +166,7 @@ public:
             Stream* in = open(outer, OPEN_READ, 0, err);
             if (!in)
                 return 0;
-            src = spool_stream(in, err);
+            src = spool_stream(in, st.size, err);
             delete in;
             if (!src)
                 return 0;

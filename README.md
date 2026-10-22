@@ -505,6 +505,18 @@ title uses Midnight Commander's notation, `file.tar.gz/utar://dir`, and
 `cd` on the command line accepts it. Archives are read-only: copy files
 out of them with F5, view them with F3.
 
+A plain `.tar` or `.zip` is read where it is. Compressed archives are
+unpacked when you enter them, into memory up to 8 MB and beyond that into
+a temporary file in `$TMPDIR` (or `/tmp`), which is deleted as soon as it
+is created, so nothing is left behind even if ttrc is killed. A progress
+dialog shows while this takes time; Esc stops it. ttrc checks that
+`$TMPDIR` has room first (gzip records the unpacked size; bzip2 and
+compress do not, so for those it checks as it goes) and keeps 64 MB, or a
+twentieth of a small file system, free. If there is not room, set
+`TMPDIR` to a bigger place. When F3 or F4 run your own pager or editor on
+a file in an archive, the copy they get is in `$TMPDIR/ttrc.<pid>`,
+which ttrc removes when it quits.
+
 **Viewer and editor.** F3 shows a file in ttrc's viewer (text, wrapped
 or not, or hex; F7 or `/` searches, `n` finds the next, `q` quits); it
 also reads files inside archives. F4 edits in ttrc's editor: type as

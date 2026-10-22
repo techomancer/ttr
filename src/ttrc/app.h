@@ -104,6 +104,12 @@ private:
     bool open_file(const Entry& e);
     void run_tool(FullScreen* tool, Editor* editor);
     void cmd_new_file();
+    /* Opening a big archive: a progress dialog, Esc stops it. */
+    static bool archive_progress_cb(void* ctx, const char* what, uint64_t done, uint64_t total);
+    bool archive_progress(const char* what, uint64_t done, uint64_t total);
+    /* The temporary copies F3/F4 make for external programs. */
+    ttr::Str temp_dir() const;
+    void remove_temp_dir();
     ttr::Str local_file(const Entry& e);
     ttr::Str expand(const char* command);
     ttr::Str quoted(const char* s);
@@ -140,6 +146,10 @@ private:
     int history_pos_;
     tu::StrList hist_target_, hist_mkdir_, hist_pattern_, hist_find_, hist_search_;
     FullScreen* tool_;          /* the viewer or editor on screen, or 0 */
+    tu::Dialog* progress_;      /* "Opening archive", while one opens */
+    tu::Label* progress_text_;
+    tu::ProgressBar* progress_bar_;
+    bool in_progress_;
 };
 
 } /* namespace ttrc */

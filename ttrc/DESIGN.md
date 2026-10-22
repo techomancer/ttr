@@ -35,8 +35,14 @@ Milestones 3 to 5 implemented 2026-10-22:
   archive are dropped. zlib 1.3.1 and bzip2 1.0.8 are submodules,
   compiled through wrappers in `tf/third/` (zlib needs one per inflate
   source: `inftrees.h` has no include guard). The `.Z` decoder is ours.
-  Compressed and nested archives are read through a spool, an unlinked
-  temporary file.
+  Compressed and nested archives are read through a spool: memory up to
+  8 MB, then an unlinked temporary file in `$TMPDIR`. Its free space is
+  checked before unpacking where the size is known (gzip's trailer, a
+  nested archive's member size), when the spool moves to a file, and
+  every 8 MB, keeping 64 MB (or a twentieth of a small file system)
+  free. Unpacking reports to a progress hook (`tf::set_progress`); ttrc
+  shows a dialog and Esc stops it (ECANCELED). The copies F3/F4 make for
+  external programs go to `$TMPDIR/ttrc.<pid>`, removed at exit.
 - 5: the viewer and editor (`src/ttrc/viewer.cpp`, `editor.cpp`) on tu,
   reading through tf.
 

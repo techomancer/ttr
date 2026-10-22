@@ -1,4 +1,5 @@
 /* Tests for tf: path normalization and the local file system. */
+#include "../archive.h"
 #include "../ops.h"
 #include "../vfs.h"
 #include "../path.h"
@@ -421,6 +422,86 @@ static void test_archives()
     run(cleanup);
 }
 
+static int g_reports;
+static bool stop_after_one(void*, const char*, uint64_t, uint64_t)
+{
+    return ++g_reports < 1;
+}
+static bool count_reports(void*, const char*, uint64_t, uint64_t)
+{
+    g_reports++;
+    return true;
+}
+
+/* Spools: memory, then a file; progress and stopping; no room. */
+static void test_spools()
+{
+    char cwd[1024];
+    if (!getcwd(cwd, sizeof(cwd)))
+        return;
+    tf::Path data = tf::Path::resolve(tf::Path(cwd), g_data);
+    char path[2048], buf[80000];
+    long n = 0;
+    /* A tiny memory limit: unpacking goes to a temporary file. */
+    tf::set_spool_memory(1000);
+    sprintf(path, "%s/t.tar.bz2/utar://t/big.bin", data.c_str());
+    CHECK(slurp(path, buf, sizeof(buf), &n) == 0 && n == 70000);
+    /* Progress reaches the hook; stopping fails the opening. */
+    tf::Path copy = tf::Path("/tmp").child("tfspool.tar.gz");
+    {
+        tf::Job j(tf::OP_COPY, tf::vfs(), tf::vfs());
+        j.add(data.child("t.tar.gz").c_str());
+        j.set_target(copy.c_str(), false);
+        CHECK(run(j) == tf::Job::DONE);
+    }
+    g_reports = 0;
+    tf::set_progress(stop_after_one, 0);
+    tf::Stat st;
+    int r = tf::vfs()->stat(copy.child("utar://").c_str(), &st, true);
+    CHECK(r != 0);
+    CHECK(g_reports >= 1);
+    g_reports = 0;
+    tf::set_progress(count_reports, 0);
+    sprintf(path, "%s/utar://t/hello.txt", copy.c_str());
+    CHECK(slurp(path, buf, sizeof(buf), &n) == 0 && strcmp(buf, "hello\n") == 0);
+    CHECK(g_reports >= 1);
+    tf::set_progress(0, 0);
+    /* A temporary directory that cannot be written: an error, no crash. */
+    tf::Path copy2 = tf::Path("/tmp").child("tfspool2.tar.bz2");
+    {
+        tf::Job j(tf::OP_COPY, tf::vfs(), tf::vfs());
+        j.add(data.child("t.tar.bz2").c_str());
+        j.set_target(copy2.c_str(), false);
+        CHECK(run(j) == tf::Job::DONE);
+    }
+    /* No room: gzip is refused before unpacking (its size is known),
+     * bzip2 while writing. */
+    tf::set_spool_reserve((uint64_t)1 << 60);
+    tf::Path copy3 = tf::Path("/tmp").child("tfspool3.tar.gz");
+    {
+        tf::Job j(tf::OP_COPY, tf::vfs(), tf::vfs());
+        j.add(data.child("t.tar.gz").c_str());
+        j.set_target(copy3.c_str(), false);
+        CHECK(run(j) == tf::Job::DONE);
+    }
+    g_reports = 0;
+    tf::set_progress(count_reports, 0);
+    CHECK(tf::vfs()->stat(copy3.child("utar://").c_str(), &st, true) == ENOSPC);
+    CHECK(g_reports == 0);
+    tf::set_spool_memory(70000);
+    CHECK(tf::vfs()->stat(copy2.child("utar://").c_str(), &st, true) == ENOSPC);
+    tf::set_progress(0, 0);
+    tf::set_spool_reserve(0);
+    tf::set_spool_memory(1000);
+    tf::local_fs()->remove(copy3.c_str());
+    putenv((char*)"TMPDIR=/nonexistent/dir");
+    CHECK(tf::vfs()->stat(copy2.child("utar://").c_str(), &st, true) != 0);
+    putenv((char*)"TMPDIR=/tmp");
+    tf::set_spool_memory((uint64_t)8 << 20);
+    tf::local_fs()->remove(copy.c_str());
+    tf::local_fs()->remove(copy2.c_str());
+}
+
 int main(int argc, char** argv)
 {
     if (argc > 1)
@@ -430,6 +511,7 @@ int main(int argc, char** argv)
     test_ops();
     test_archive_paths();
     test_archives();
+    test_spools();
     printf("tf tests: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

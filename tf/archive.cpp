@@ -12,6 +12,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 namespace tf {
@@ -46,14 +47,56 @@ long FdSource::read_at(uint64_t off, void* buf, size_t n)
 
 namespace {
 
-/* An unlinked temporary file: gone when its descriptor closes. */
-int make_spool(int* err)
+#ifndef ECANCELED
+#define ECANCELED EINTR
+#endif
+
+ProgressFn g_progress = 0;
+void* g_progress_ctx = 0;
+const char* g_progress_what = "";
+
+/* Report progress (at most every 100 ms); false: the user stopped it. */
+bool report(uint64_t done, uint64_t total)
+{
+    static long last = 0;
+    if (!g_progress)
+        return true;
+    struct timeval tv;
+    gettimeofday(&tv, 0);
+    long now = (long)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    if (now - last < 100 && done < total)
+        return true;
+    last = now;
+    return g_progress(g_progress_ctx, g_progress_what, done, total);
+}
+
+const char* tmp_dir()
 {
     const char* dir = getenv("TMPDIR");
     if (!dir || !*dir || strlen(dir) > 900)
         dir = "/tmp";
+    return dir;
+}
+
+/* What must stay free in the temporary directory: 64 MB, or a twentieth
+ * of a small file system. */
+uint64_t g_reserve = 0;      /* set_spool_reserve(); 0: the rule below */
+
+uint64_t reserve_of(const Space& sp)
+{
+    if (g_reserve)
+        return g_reserve;
+    uint64_t r = (uint64_t)64 << 20;
+    if (sp.total / 20 < r)
+        r = sp.total / 20;
+    return r;
+}
+
+/* An unlinked temporary file: gone when its descriptor closes. */
+int make_spool(int* err)
+{
     char path[1024];
-    sprintf(path, "%s/ttrcXXXXXX", dir);
+    sprintf(path, "%s/ttrcXXXXXX", tmp_dir());
     int fd = mkstemp(path);
     if (fd < 0) {
         *err = errno;
@@ -81,10 +124,131 @@ bool write_all(int fd, const void* data, size_t n, int* err)
     return true;
 }
 
+/* Unpacked data up to this size stays in memory. */
+uint64_t g_mem_limit = (uint64_t)8 << 20;
+
+/* Bytes kept in memory. */
+class MemSource : public Source {
+public:
+    MemSource(char* data, size_t n) : data_(data), n_(n) {}
+    ~MemSource() { free(data_); }
+    long read_at(uint64_t off, void* buf, size_t n)
+    {
+        if (off >= n_)
+            return 0;
+        if (n > n_ - off)
+            n = (size_t)(n_ - off);
+        memcpy(buf, data_ + off, n);
+        return (long)n;
+    }
+    uint64_t size() const { return n_; }
+
+private:
+    char* data_;
+    size_t n_;
+};
+
+/* Where unpacked data goes: memory while it is small, then an unlinked
+ * file in $TMPDIR, which is checked for free space as it grows. */
+class Spool {
+public:
+    Spool() : mem_(0), len_(0), cap_(0), fd_(-1), written_(0), checked_(0) {}
+    ~Spool()
+    {
+        free(mem_);
+        if (fd_ >= 0)
+            close(fd_);
+    }
+    /* Will 'expected' bytes fit? ENOSPC (and false) if not. */
+    bool expect(uint64_t expected, int* err)
+    {
+        if (expected <= g_mem_limit)
+            return true;
+        Space sp;
+        if (local_fs()->space(tmp_dir(), &sp) != 0)
+            return true;            /* cannot tell: try */
+        if (expected + reserve_of(sp) > sp.avail) {
+            *err = ENOSPC;
+            return false;
+        }
+        return true;
+    }
+    bool write(const void* data, size_t n, int* err)
+    {
+        if (fd_ < 0 && len_ + n <= g_mem_limit) {
+            if (len_ + n > cap_) {
+                size_t nc = cap_ ? cap_ * 2 : 65536;
+                while (nc < len_ + n)
+                    nc *= 2;
+                char* m = (char*)realloc(mem_, nc);
+                if (!m) {
+                    *err = ENOMEM;
+                    return false;
+                }
+                mem_ = m;
+                cap_ = nc;
+            }
+            memcpy(mem_ + len_, data, n);
+            len_ += n;
+            return true;
+        }
+        if (fd_ < 0) {
+            /* Too big for memory: on to a file, starting with what is
+             * already here. */
+            Space sp;
+            if (local_fs()->space(tmp_dir(), &sp) == 0 && sp.avail < reserve_of(sp) + len_ + n) {
+                *err = ENOSPC;
+                return false;
+            }
+            fd_ = make_spool(err);
+            if (fd_ < 0)
+                return false;
+            if (!write_all(fd_, mem_, len_, err))
+                return false;
+            written_ = len_;
+            free(mem_);
+            mem_ = 0;
+            len_ = cap_ = 0;
+        }
+        /* Every 8 MB: is there still room? */
+        if (written_ - checked_ >= ((uint64_t)8 << 20)) {
+            checked_ = written_;
+            Space sp;
+            if (local_fs()->space(tmp_dir(), &sp) == 0 && sp.avail < reserve_of(sp) + n) {
+                *err = ENOSPC;
+                return false;
+            }
+        }
+        if (!write_all(fd_, data, n, err))
+            return false;
+        written_ += n;
+        return true;
+    }
+    /* The result; the spool is empty afterwards. */
+    Source* finish()
+    {
+        if (fd_ >= 0) {
+            Source* s = new FdSource(fd_);
+            fd_ = -1;
+            return s;
+        }
+        Source* s = new MemSource(mem_, len_);
+        mem_ = 0;
+        len_ = cap_ = 0;
+        return s;
+    }
+
+private:
+    char* mem_;
+    size_t len_, cap_;
+    int fd_;
+    uint64_t written_, checked_;
+};
+
 const size_t k_buf = 65536;
 
 /* gzip, possibly several members one after another. */
-bool gunzip(Source* in, int out, int* err)
+bool gunzip(Source* in, Spool& out, int* err)
 {
     z_stream z;
     memset(&z, 0, sizeof(z));
@@ -110,12 +274,17 @@ bool gunzip(Source* in, int out, int* err)
             off += (uint64_t)n;
             z.next_in = ib;
             z.avail_in = (uInt)n;
+            if (!report(off, in->size())) {
+                *err = ECANCELED;
+                ok = false;
+                break;
+            }
         }
         z.next_out = ob;
         z.avail_out = (uInt)k_buf;
         int r = inflate(&z, Z_NO_FLUSH);
         size_t got = k_buf - z.avail_out;
-        if (got && !write_all(out, ob, got, err)) {
+        if (got && !out.write(ob, got, err)) {
             ok = false;
             break;
         }
@@ -157,7 +326,7 @@ bool gunzip(Source* in, int out, int* err)
     return ok;
 }
 
-bool bunzip(Source* in, int out, int* err)
+bool bunzip(Source* in, Spool& out, int* err)
 {
     bz_stream b;
     memset(&b, 0, sizeof(b));
@@ -182,12 +351,17 @@ bool bunzip(Source* in, int out, int* err)
             off += (uint64_t)n;
             b.next_in = ib;
             b.avail_in = (unsigned)n;
+            if (!report(off, in->size())) {
+                *err = ECANCELED;
+                ok = false;
+                break;
+            }
         }
         b.next_out = ob;
         b.avail_out = (unsigned)k_buf;
         int r = BZ2_bzDecompress(&b);
         size_t got = k_buf - b.avail_out;
-        if (got && !write_all(out, ob, got, err)) {
+        if (got && !out.write(ob, got, err)) {
             ok = false;
             break;
         }
@@ -236,7 +410,7 @@ bool bunzip(Source* in, int out, int* err)
 /* compress(1) data: LZW with codes of 9 to 16 bits, in the classic
  * layout (codes come in groups of n_bits bytes; a group is padded out
  * when the code size changes), as gzip's unlzw.c reads it. */
-bool uncompress_lzw(Source* in, int out, int* err)
+bool uncompress_lzw(Source* in, Spool& out, int* err)
 {
     unsigned char hdr[3];
     if (in->read_at(0, hdr, 3) != 3 || hdr[0] != 0x1f || hdr[1] != 0x9d) {
@@ -295,6 +469,11 @@ bool uncompress_lzw(Source* in, int out, int* err)
                 }
                 inoff += (uint64_t)rsize;
                 insize += (size_t)rsize;
+                if (!report(inoff, in->size())) {
+                    *err = ECANCELED;
+                    ok = false;
+                    break;
+                }
                 memset(inbuf + insize, 0, 64);
             }
             long inbits = rsize > 0 ? (long)(insize - insize % (size_t)n_bits) << 3
@@ -357,14 +536,14 @@ bool uncompress_lzw(Source* in, int out, int* err)
                 *--sp = (unsigned char)(finchar = suffix[code]);
                 size_t len = (size_t)(stack + (1 << 16) - sp);
                 if (outpos + len > k_buf) {
-                    if (!write_all(out, outbuf, outpos, err)) {
+                    if (!out.write(outbuf, outpos, err)) {
                         ok = false;
                         break;
                     }
                     outpos = 0;
                 }
                 if (len > k_buf) {
-                    if (!write_all(out, sp, len, err)) {
+                    if (!out.write(sp, len, err)) {
                         ok = false;
                         break;
                     }
@@ -380,7 +559,7 @@ bool uncompress_lzw(Source* in, int out, int* err)
                 oldcode = incode;
             }
         } while (ok && rsize != 0);
-        if (ok && outpos && !write_all(out, outbuf, outpos, err))
+        if (ok && outpos && !out.write(outbuf, outpos, err))
             ok = false;
     }
     free(inbuf);
@@ -393,13 +572,31 @@ bool uncompress_lzw(Source* in, int out, int* err)
 
 } /* namespace */
 
-Source* spool_stream(Stream* in, int* err)
+void set_spool_memory(uint64_t bytes)
 {
-    int fd = make_spool(err);
-    if (fd < 0)
+    g_mem_limit = bytes;
+}
+
+void set_spool_reserve(uint64_t bytes)
+{
+    g_reserve = bytes;
+}
+
+void set_progress(ProgressFn fn, void* ctx)
+{
+    g_progress = fn;
+    g_progress_ctx = ctx;
+}
+
+Source* spool_stream(Stream* in, uint64_t size, int* err)
+{
+    Spool sp;
+    if (!sp.expect(size, err))
         return 0;
+    g_progress_what = "Reading";
     char* buf = (char*)malloc(k_buf);
     bool ok = buf != 0;
+    uint64_t done = 0;
     while (ok) {
         long n = in->read(buf, k_buf);
         if (n < 0) {
@@ -409,14 +606,30 @@ Source* spool_stream(Stream* in, int* err)
         }
         if (n == 0)
             break;
-        ok = write_all(fd, buf, (size_t)n, err);
+        done += (uint64_t)n;
+        ok = sp.write(buf, (size_t)n, err);
+        if (ok && !report(done, size)) {
+            *err = ECANCELED;
+            ok = false;
+        }
     }
     free(buf);
-    if (!ok) {
-        close(fd);
+    return ok ? sp.finish() : 0;
+}
+
+/* How big gzip data is unpacked: the last member's size, modulo 4 GB,
+ * from its last four bytes, made at least as big as the packed data. */
+static uint64_t gzip_size(Source* src)
+{
+    uint64_t n = src->size();
+    unsigned char t[4];
+    if (n < 18 || src->read_at(n - 4, t, 4) != 4)
         return 0;
-    }
-    return new FdSource(fd);
+    uint64_t v = (uint64_t)t[0] | ((uint64_t)t[1] << 8) | ((uint64_t)t[2] << 16) |
+                 ((uint64_t)t[3] << 24);
+    while (v < n)
+        v += (uint64_t)1 << 32;
+    return v;
 }
 
 Source* decompress_source(Source* src, int* err)
@@ -428,16 +641,17 @@ Source* decompress_source(Source* src, int* err)
     bool lzw = m[0] == 0x1f && m[1] == 0x9d;
     if (!gz && !bz && !lzw)
         return src;
-    int fd = make_spool(err);
-    if (fd < 0)
-        return 0;
-    bool ok = gz ? gunzip(src, fd, err) : bz ? bunzip(src, fd, err) : uncompress_lzw(src, fd, err);
-    delete src;
-    if (!ok) {
-        close(fd);
+    Spool sp;
+    /* gzip says how big it gets; bzip2 and compress do not, so their
+     * space is checked as they are written. */
+    if (gz && !sp.expect(gzip_size(src), err)) {
+        delete src;
         return 0;
     }
-    return new FdSource(fd);
+    g_progress_what = "Unpacking";
+    bool ok = gz ? gunzip(src, sp, err) : bz ? bunzip(src, sp, err) : uncompress_lzw(src, sp, err);
+    delete src;
+    return ok ? sp.finish() : 0;
 }
 
 /* ------------------------------------------------------------------ */

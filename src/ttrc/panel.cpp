@@ -14,6 +14,12 @@ namespace ttrc {
 
 namespace {
 
+#ifdef ECANCELED
+const int k_cancelled = ECANCELED;
+#else
+const int k_cancelled = EINTR;
+#endif
+
 /* qsort has no context argument. */
 SortMode g_sort;
 bool g_reverse;
@@ -237,9 +243,15 @@ bool Panel::load(const tf::Path& path, const char* select)
     int err = 0;
     tf::DirReader* d = fs_->open_dir(path.c_str(), &err);
     if (!d) {
+        const char* tmp = getenv("TMPDIR");
         if (err == EINVAL && !tf::is_local_path(path.c_str()))
             sprintf(error_, "%.200s: not an archive ttrc can read, or a damaged one",
                     path.c_str());
+        else if (err == ENOSPC && !tf::is_local_path(path.c_str()))
+            sprintf(error_, "Not enough free space in %.100s to unpack this archive "
+                            "(set TMPDIR to a bigger place)", tmp && *tmp ? tmp : "/tmp");
+        else if (err == k_cancelled && !tf::is_local_path(path.c_str()))
+            sprintf(error_, "Opening the archive was stopped.");
         else
             sprintf(error_, "%.200s: %.80s", path.c_str(), strerror(err));
         return false;

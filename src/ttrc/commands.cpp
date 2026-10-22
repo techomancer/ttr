@@ -1064,9 +1064,8 @@ ttr::Str App::local_file(const Entry& e)
     tf::Path p = active_path().child(e.name.c_str());
     if (tf::is_local_path(p.c_str()))
         return ttr::Str(p.c_str());
-    char dir[200];
-    const char* tmp = getenv("TMPDIR");
-    snprintf(dir, sizeof(dir), "%.100s/ttrc.%ld", tmp && *tmp ? tmp : "/tmp", (long)getpid());
+    ttr::Str td = temp_dir();
+    const char* dir = td.c_str();
     tf::local_fs()->mkdir(dir, 0700);
     tf::Job job(tf::OP_COPY, tf::vfs(), tf::vfs());
     job.add(p.c_str());

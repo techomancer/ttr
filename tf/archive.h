@@ -48,11 +48,27 @@ enum ArchiveKind {
  * for directories the archive does not list. 0 and *err on failure. */
 Fs* open_archive(ArchiveKind kind, Source* data, const char* name, long mtime, int* err);
 
-/* Copy a stream into a new spool (an unlinked temporary file). */
-Source* spool_stream(Stream* in, int* err);
+/* Copy a stream of about 'size' bytes into a new spool: memory up to
+ * 8 MB, beyond that an unlinked file in $TMPDIR (or /tmp). ENOSPC when
+ * $TMPDIR has not room for it and a reserve (64 MB, or a twentieth of a
+ * small file system), checked first when the size is known and every
+ * 8 MB while writing. */
+Source* spool_stream(Stream* in, uint64_t size, int* err);
 /* If 'src' is gzip, bzip2 or compress data, a new spool holding it
- * decompressed (src is deleted); otherwise src itself. */
+ * decompressed (src is deleted); otherwise src itself. gzip records its
+ * size, so its space is checked before starting. */
 Source* decompress_source(Source* src, int* err);
+
+/* Long work (reading or unpacking an archive) reports its progress here:
+ * bytes done of total (0: unknown). Returning false stops it; the
+ * opening then fails with ECANCELED. One hook for the program. */
+typedef bool (*ProgressFn)(void* ctx, const char* what, uint64_t done, uint64_t total);
+void set_progress(ProgressFn fn, void* ctx);
+/* How much unpacked data stays in memory before going to a file. */
+void set_spool_memory(uint64_t bytes);
+/* What must stay free in $TMPDIR (0: 64 MB, or a twentieth of a small
+ * file system). For tests. */
+void set_spool_reserve(uint64_t bytes);
 
 } /* namespace tf */
 

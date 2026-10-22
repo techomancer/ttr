@@ -1,5 +1,6 @@
 #include "app.h"
 
+#include "../../tf/archive.h"
 #include "../../tf/vfs.h"
 
 #include <errno.h>
@@ -32,7 +33,8 @@ App::App(tu::Term& term, const tf::Path& left, const tf::Path& right, bool dirs_
     : term_(term), screen_(term), active_(0), quit_(false), quick_(false), panel_y_(1),
       panel_h_(0), shrink_(0), last_click_(0), last_click_entry_(-1), ctrl_x_(false), view_(0),
       mode_(MODE_PANELS), pending_(PEND_NONE), syncing_(false), sync_started_(0),
-      cmd_started_(0), prompt_known_(false), history_pos_(0), tool_(0)
+      cmd_started_(0), prompt_known_(false), history_pos_(0), tool_(0), progress_(0),
+      progress_text_(0), progress_bar_(0), in_progress_(false)
 {
     config_.load();
     input_.init(term.info(), term.utf8());
@@ -76,6 +78,9 @@ void App::apply_look()
 
 App::~App()
 {
+    tf::set_progress(0, 0);
+    delete progress_;
+    remove_temp_dir();
     delete view_;
     delete panels_[0];
     delete panels_[1];
@@ -893,8 +898,14 @@ int App::run()
     if (!term_.start())
         return 1;
     screen_.resize();
+    tf::set_progress(archive_progress_cb, this);
     start_shell();
     while (!quit_) {
+        /* An archive finished opening: its progress dialog goes. */
+        if (progress_) {
+            delete progress_;
+            progress_ = 0;
+        }
         if (mode_ == MODE_PANELS) {
             draw();
             screen_.flush();
@@ -914,6 +925,83 @@ int App::run()
     save_setup();
     term_.stop();
     return 0;
+}
+
+} /* namespace ttrc */
+
+namespace ttrc {
+
+bool App::archive_progress_cb(void* ctx, const char* what, uint64_t done, uint64_t total)
+{
+    return ((App*)ctx)->archive_progress(what, done, total);
+}
+
+/* Called by tf while it reads or unpacks an archive. */
+bool App::archive_progress(const char* what, uint64_t done, uint64_t total)
+{
+    if (in_progress_ || !term_.started())
+        return true;
+    in_progress_ = true;
+    if (!progress_) {
+        int w = screen_.cols() - 10;
+        if (w > 56)
+            w = 56;
+        progress_ = new tu::Dialog("Opening archive", w, 8);
+        progress_text_ = new tu::Label("");
+        progress_bar_ = new tu::ProgressBar();
+        progress_->add(progress_text_, 3, 2, w - 6);
+        progress_->add(progress_bar_, 3, 3, w - 6);
+        tu::Button* b[1] = { new tu::Button("&Stop", 1, true) };
+        progress_->add_buttons(5, b, 1);
+    }
+    char d[32], t[32], line[200];
+    size_string(done, 12, d);
+    size_string(total, 12, t);
+    if (total)
+        snprintf(line, sizeof(line), "%s: %s of %s bytes", what, d, t);
+    else
+        snprintf(line, sizeof(line), "%s: %s bytes", what, d);
+    progress_text_->set(line);
+    progress_bar_->fraction = total ? (double)done / (double)total : 0;
+    draw();
+    progress_->draw(screen_, theme_.dialog);
+    screen_.flush();
+    bool timed_out = false;
+    bool go_on = true;
+    if (!wait_input(0, &timed_out)) {
+        quit_ = true;
+        go_on = false;
+    }
+    tu::Event ev;
+    while (go_on && input_.next(&ev, timed_out)) {
+        progress_->handle(ev);
+        if (progress_->result() != tu::Dialog::RESULT_NONE)
+            go_on = false;
+    }
+    in_progress_ = false;
+    return go_on;
+}
+
+ttr::Str App::temp_dir() const
+{
+    char dir[300];
+    const char* tmp = getenv("TMPDIR");
+    snprintf(dir, sizeof(dir), "%.200s/ttrc.%ld", tmp && *tmp ? tmp : "/tmp", (long)getpid());
+    return ttr::Str(dir);
+}
+
+void App::remove_temp_dir()
+{
+    ttr::Str dir = temp_dir();
+    tf::Stat st;
+    if (tf::local_fs()->stat(dir.c_str(), &st, false) != 0 || st.type != tf::FT_DIR)
+        return;
+    tf::Job job(tf::OP_DELETE, tf::local_fs(), 0);
+    job.add(dir.c_str());
+    while (job.step(200) == tf::Job::WORKING) {
+    }
+    if (job.state() != tf::Job::DONE)
+        job.answer(tf::ANS_ABORT);
 }
 
 } /* namespace ttrc */
