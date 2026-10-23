@@ -56,7 +56,8 @@ The host implements `tt::PaneHost`:
 Menus, settings files, fonts and window size hints also belong to the
 host. The pane provides the commands (`copy`, `paste`, `select_all`,
 `clear_scrollback`, `reset`), the settings that apply at once (font,
-colours, cursor colour, bold-is-bright, backspace, bell), and the sizes
+colours, the 16-colour palette, cursor colour, bold-is-bright, backspace,
+bell), and the sizes
 (`cell_size`, `extra_size`).
 
 `tt::pick_term()`, `tt::pick_font()` and `tt::font_path()` choose

@@ -229,6 +229,8 @@ TermPane::TermPane(Widget parent, const char* name, const PaneOptions& o, PaneHo
     Display* dpy = XtDisplay(parent);
     term_.init(80, 24, (size_t)(o.scrollback > 0 ? o.scrollback : 0));
     term_.set_default_colors(to_rgb(o.foreground), to_rgb(o.background));
+    if (o.palette)
+        set_palette(o.palette);
     if (o.have_cursor_color)
         src_.set_cursor_color(o.cursor_color);
     term_.set_host(&thost_);
@@ -890,6 +892,18 @@ void TermPane::set_colors(uint32_t fg, uint32_t bg)
 {
     term_.set_default_colors(to_rgb(fg), to_rgb(bg));
     TwGridDamage(grid_);
+}
+
+void TermPane::set_palette(const uint32_t* colors16)
+{
+    static const uint32_t xterm[16] = {
+        0x000000, 0xcd0000, 0x00cd00, 0xcdcd00, 0x0000ee, 0xcd00cd, 0x00cdcd, 0xe5e5e5,
+        0x7f7f7f, 0xff0000, 0x00ff00, 0xffff00, 0x5c5cff, 0xff00ff, 0x00ffff, 0xffffff
+    };
+    for (int i = 0; i < 16; i++)
+        term_.set_palette(i, to_rgb(colors16 ? colors16[i] : xterm[i]));
+    if (grid_)
+        TwGridDamage(grid_);
 }
 
 void TermPane::set_cursor_color(bool have, uint32_t rgb)

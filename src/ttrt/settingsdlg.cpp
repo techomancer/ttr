@@ -214,7 +214,7 @@ SettingsDialog::SettingsDialog(Widget parent, SettingsHost* host)
     : parent_(parent), host_(host), dpy_(XtDisplay(parent)), dialog_(0),
       family_(0), family_w_(0), size_w_(0), preview_(0), preview_fg_(0),
       preview_bg_(0), have_preview_fg_(false), have_preview_bg_(false),
-      picker_(new ttr::ColorPicker(picked, this)), picking_(-1)
+      picker_(new ttr::ColorPicker(picked, this)), picking_(-1), scheme_w_(0)
 {
     int i;
     for (i = 0; i < C_COUNT; i++) {
@@ -256,6 +256,7 @@ void SettingsDialog::destroy()
         XtDestroyWidget(XtParent(dialog_));
     dialog_ = 0;
     preview_ = 0;
+    scheme_w_ = 0;
     free_fonts();
 }
 
@@ -426,6 +427,25 @@ void SettingsDialog::build()
 
     /* Colours */
     f = frame(page, "Colors");
+    schemes_.clear();
+    th::list_schemes(&schemes_);
+    {
+        const char** names = new const char*[schemes_.count() + 1];
+        names[0] = "None";
+        for (i = 0; i < schemes_.count(); i++)
+            names[i + 1] = schemes_[i].name;
+        r = row(f, "Scheme:");
+        scheme_w_ = drop_down(r, "scheme", names, schemes_.count() + 1,
+                              schemes_.count() + 1 < 12 ? schemes_.count() + 1 : 12, 18);
+        delete [] names;
+        label(r, "shared with ttrcode");
+        const char* cur_scheme = orig_[S_COLOR_SCHEME].c_str();
+        select_item(scheme_w_, "None");
+        for (i = 0; i < schemes_.count(); i++)
+            if (*cur_scheme && th::compare_names(schemes_[i].name, cur_scheme) == 0)
+                select_item(scheme_w_, schemes_[i].name);
+        XtAddCallback(scheme_w_, XmNselectionCallback, scheme_cb, (XtPointer)this);
+    }
     for (i = 0; i < C_COUNT; i++) {
         r = row(f, k_color_labels[i]);
         XmString l = xmstr("#000000");
@@ -897,10 +917,28 @@ void SettingsDialog::size_cb(Widget w, XtPointer closure, XtPointer call)
 /* ------------------------------------------------------------------ */
 /* Colours                                                             */
 
+bool SettingsDialog::chosen_scheme(th::Scheme* out) const
+{
+    int pos = scheme_w_ ? selected_pos(scheme_w_) : -1;
+    if (pos < 1 || pos > schemes_.count())
+        return false;
+    return th::find_scheme(schemes_[pos - 1].name, out);
+}
+
+void SettingsDialog::scheme_cb(Widget, XtPointer closure, XtPointer)
+{
+    ((SettingsDialog*)closure)->update_swatches();
+}
+
+/* A colour of its own, else the scheme's, else the default. */
 Rgb SettingsDialog::color(int i) const
 {
     if (mine_[i])
         return color_[i];
+    th::Scheme s;
+    if (chosen_scheme(&s))
+        return Rgb::hex(s.get(i == C_FG ? th::SC_FOREGROUND
+                              : i == C_BG ? th::SC_BACKGROUND : th::SC_CURSOR));
     if (i == C_CURSOR)
         return color(C_FG);
     XColor c;
@@ -989,6 +1027,8 @@ void SettingsDialog::collect(Str* v) const
             v[s] = k_settings[s].fallback ? k_settings[s].fallback : "";
         }
     }
+    int sp = selected_pos(scheme_w_);
+    v[S_COLOR_SCHEME] = sp >= 1 && sp <= schemes_.count() ? schemes_[sp - 1].name : "";
     v[S_BOLD_IS_BRIGHT] = XmToggleButtonGetState(bold_bright_) ? "true" : "false";
     v[S_LOGIN_SHELL] = XmToggleButtonGetState(login_) ? "true" : "false";
     v[S_MENU_BAR] = XmToggleButtonGetState(menu_bar_) ? "true" : "false";

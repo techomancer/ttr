@@ -477,9 +477,10 @@ $(B)/ttrt_settingsdlg.o: $(B)/.dir src/ttrt/settingsdlg.cpp $(TTRT_H) \
 TTRCODE_OBJS = $(B)/ttrcode_main.o \
 	$(B)/ttrcode_app.o \
 	$(B)/ttrcode_editsource.o \
+	$(B)/core_settings.o \
 	$(B)/core_str.o
-TTRCODE_H = src/ttrcode/app.h src/ttrcode/editsource.h $(TE_H) $(TT_H) src/core/str.h \
-	src/core/vector.h
+TTRCODE_H = src/ttrcode/app.h src/ttrcode/editsource.h $(TE_H) $(TT_H) $(TH_H) \
+	src/core/settings.h src/core/str.h src/core/vector.h
 
 ttrcode: $(B)/ttrcode
 
@@ -738,13 +739,16 @@ install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttrcode
 	chmod 755 $(DESTDIR)$(BINDIR)/ttr-session
 	cp dist/ttr.desktop $(DESTDIR)$(XSESSIONDIR)/ttr.desktop
 	chmod 644 $(DESTDIR)$(XSESSIONDIR)/ttr.desktop
-	mkdir -p $(DESTDIR)$(DATADIR)/schemes/ttr $(DESTDIR)$(DATADIR)/schemes/irix
+	mkdir -p $(DESTDIR)$(DATADIR)/schemes/ttr $(DESTDIR)$(DATADIR)/schemes/irix \
+		$(DESTDIR)$(DATADIR)/schemes/text
 	cp data/schemes/ttr/*.ad data/schemes/ttr/README.md \
 		$(DESTDIR)$(DATADIR)/schemes/ttr
 	cp data/schemes/irix/*.ad data/schemes/irix/README.md \
 		$(DESTDIR)$(DATADIR)/schemes/irix
+	cp data/schemes/text/*.scheme data/schemes/text/README.md \
+		$(DESTDIR)$(DATADIR)/schemes/text
 	chmod 644 $(DESTDIR)$(DATADIR)/schemes/ttr/* \
-		$(DESTDIR)$(DATADIR)/schemes/irix/*
+		$(DESTDIR)$(DATADIR)/schemes/irix/* $(DESTDIR)$(DATADIR)/schemes/text/*
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old \

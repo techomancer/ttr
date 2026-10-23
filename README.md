@@ -159,7 +159,7 @@ This installs:
 | `/usr/share/terminfo/t/ttrt` | ttrt's terminfo entry (`/usr/share/lib/terminfo` on IRIX; packages built with `DESTDIR` set `TERMINFO_DIR`) |
 | `/usr/bin/ttr-session` | starts a ttr session (see below) |
 | `/usr/share/xsessions/ttr.desktop` | makes display managers offer "To The Roots" |
-| `/usr/share/ttr/schemes/` | the color themes |
+| `/usr/share/ttr/schemes/` | the color themes (`ttr`, `irix`) and text color schemes (`text`) |
 
 You can install while ttr is running: the old program is renamed to
 `ttr.old` and keeps running, and Start > Restart ttr switches to the new
@@ -422,6 +422,7 @@ bell: visual
 | `boldIsBright` | `true`: bold text in the 8 basic colors uses the bright ones | `true` |
 | `backspace` | `del` or `bs`: what Backspace sends | `del` |
 | `bell` | `audible`, `visual` (flash), `off` | `audible` |
+| `colorScheme` | a text color scheme, shared with ttrcode (see "The code editor"): its text, background, cursor and 16 terminal colors; text, background and cursor colors set apart from their defaults still win | none: xterm's colors |
 
 The same names work as X resources of class `TTRt` (`TTRt*saveLines:
 5000`). The settings file wins over X resources, and the command line wins
@@ -634,9 +635,11 @@ ttrcode -fn 9x15 file.txt
 The window has the workspace tree on the left (Enter or a double click
 opens a directory or a file), tabs over the editor, a terminal running
 your shell in the workspace below, and the line, column and line ends in
-the status bar. Drag the sashes to resize the panes. Names starting with
-a dot and build output directories (`build`, `build-*`) are not shown in
-the tree.
+the status bar. The editor takes all the room the side panes leave; drag
+the dividers between them to change their size, which ttrcode remembers.
+A tab's x button (or a middle click on the tab) closes the file. Names
+starting with a dot and build output directories (`build`, `build-*`)
+are not shown in the tree.
 
 | Key | Does |
 |---|---|
@@ -658,7 +661,7 @@ the tree.
 | Ctrl+Tab, Ctrl+Shift+Tab | next, previous file |
 | Alt+0, Alt+2 | show or hide the workspace, the terminal pane |
 | Ctrl+` | to the terminal and back |
-| F11 | full screen with only the text (F11 or Esc to come back) |
+| F11 | full screen with only the text (F11 or Esc to come back); on window managers without full-screen support, such as 4Dwm and mwm, the window drops its frame and covers the screen |
 
 With the mouse: click to place the caret, drag to select (past the edge
 scrolls), double-click selects a word, triple-click or a click in the line
@@ -675,23 +678,33 @@ symbolic link is written through. Files with CRLF line ends stay that
 way. When a file changes on disk and has no unsaved changes, ttrcode
 reloads it when its window gets the focus again.
 
-Settings are X resources for now (a settings dialog comes later), for
-example in `~/.Xresources`:
+**Colors.** View > Color Scheme colors the editor and the terminal pane:
+Light (the default, black on white) and Dark are built in, and Amber,
+Classic Blue, Green Screen, Solarized Light and Solarized Dark come in
+`share/ttr/schemes/text`. ttrt can use the same schemes. To make your
+own, put a file such as `~/.config/ttr/schemes/Mine.scheme` there with
+`key: #rrggbb` lines; the keys are listed in
+[data/schemes/text/README.md](data/schemes/text/README.md), and anything
+left out is derived. View > UI Theme colors the menus, panes and dialogs
+with ttr's themes and the 30 IRIX color schemes, at once and without a
+restart. Its default, "Same as ttr", follows the theme chosen in ttr's
+Settings; any other choice is ttrcode's own.
 
-```
-TTRcode.font: -misc-fixed-medium-r-normal--15-140-75-75-c-90-iso10646-1
-TTRcode.tabWidth: 8
-TTRcode.indentWidth: 4
-TTRcode.insertSpaces: true
-TTRcode.lineNumbers: true
-TTRcode.textForeground: black
-TTRcode.textBackground: white
-TTRcode.selectForeground: white
-TTRcode.selectBackground: #000080
-TTRcode.gutterForeground: #808080
-TTRcode.gutterBackground: #f0f0f0
-TTRcode.cursorColor: black
-```
+**Settings** are saved in `~/.config/ttrcode/settings` (or
+`$XDG_CONFIG_HOME/ttrcode/`) as you change them in the View menu or drag a
+divider. The same names work as X resources (`TTRcode*tabWidth: 4`), and
+the file wins over them:
+
+| Setting | Values | Default |
+|---|---|---|
+| `colorScheme` | a scheme's name | `Light` |
+| `uiTheme` | a theme's name; left out: the same as ttr | |
+| `font` | an X font name | the best fixed-width font the server has |
+| `tabWidth` | columns a tab character shows as | `8` |
+| `indentWidth` | columns Tab indents by with spaces | `4` |
+| `insertSpaces` | `true`: Tab inserts spaces; `false`: a tab | `true` |
+| `lineNumbers` | `true`, `false` | `true` |
+| `treeWidth`, `bottomHeight` | the workspace's width, the terminal pane's height, in pixels | `220`, `220` |
 
 The plan is in [ttrcode/DESIGN.md](ttrcode/DESIGN.md).
 

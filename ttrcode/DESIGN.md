@@ -47,15 +47,16 @@ output does.
 +--------------------------------------------------------------------+
 ```
 
-- The window is an XmForm made of four parts:
-  - the menu bar;
-  - a horizontal XmPanedWindow: the workspace tree, and the editor
-    area with the bottom pane;
-  - inside that, a vertical XmPanedWindow: the editor area over the
-    bottom pane;
-  - the status bar.
-- Panes are resized with the sashes. Each pane can be hidden and shown
-  again from the View menu or its key:
+- The window is nested XmForms: the menu bar, the status bar, and
+  between them the workspace on the left and, to its right, the editor
+  over the bottom pane.
+  - The workspace keeps its width and the bottom pane its height when
+    the window grows; the editor takes the rest, as in VS6.
+    (XmPanedWindow shares extra room among its panes, and its horizontal
+    mode left part of a wide window empty in Open Motif 2.3.)
+  - Between the panes are sashes, XmSeparators that follow a dragged
+    pointer. The sizes are saved in the settings.
+- Each pane can be hidden and shown again from the View menu or its key:
   - Alt+0: the workspace.
   - Alt+2: the bottom pane.
 - **Docking** in the first version means these fixed slots, each of
@@ -63,13 +64,17 @@ output does.
   windows, and more slots, come later (section 7). The slots are
   ttrcode's own XmForm containers, so moving a pane from one slot to
   another is a reparent, not a redesign.
+- **Tabs** are toggle buttons kept as radio buttons by ttrcode, each
+  with a close button (or a middle click) beside it.
 - **Distraction-free mode** (F11):
   - Hides everything except the current editor: the menu bar, the
     tree, the tabs, the bottom pane and the status bar.
   - Asks the window manager for full screen through
-    `_NET_WM_STATE_FULLSCREEN` (ttr's window manager supports it). On
-    other window managers it covers the screen with the shell's own
-    geometry.
+    `_NET_WM_STATE_FULLSCREEN` (ttr's window manager supports it). mwm
+    and 4Dwm do not know it, but read `_MOTIF_WM_HINTS` when a window is
+    mapped: there the window is withdrawn, loses its decorations, takes
+    the screen's geometry and is mapped again, and the reverse on the
+    way back.
   - F11 or Esc brings everything back exactly as it was.
 
 ## 2. Editors
@@ -163,16 +168,21 @@ Alt+0, Alt+2, F11), which it gives up through `PaneHost::pane_key`.
 - Closing a modified document, or quitting with modified documents, asks
   Save / Discard / Cancel.
 
-## 6. Settings
+## 6. Settings and colours
 
 The settings are ttrcode's own, in the same spirit as ttrt:
-- They live in `~/.config/ttrcode/settings`.
-- They are edited in Tools > Options.
-- They are also available as X resources (`TTRcode.font`, `.tabWidth`,
-  …).
+- They live in `~/.config/ttrcode/settings`, which wins over X resources
+  of the same names (`TTRcode.font`, `.tabWidth`, …).
+- The View menu and the sashes write them as they change. Tools >
+  Options (milestone 2) will edit the rest.
 
-The first version reads only the resources: font, colours, tab width,
-spaces or tabs, and line numbers.
+Colours come from th (`th/DESIGN.md`), shared by every ttr program:
+- The **colour scheme** colours the editor and the terminal pane, and
+  changes at once. Light and Dark are built in; more are files.
+- The **UI theme** colours the Motif widgets: ttr's themes and the IRIX
+  schemes. It changes at once too (`th::recolor`). By default it is the
+  theme ttr's settings name, so ttrcode matches the desktop until the
+  user picks another.
 
 ## 7. Milestones
 
@@ -185,8 +195,7 @@ spaces or tabs, and line numbers.
    - Find, replace and go to line dialogs, and the clipboard.
    - F11.
    - Builds and runs on Linux and on IRIX.
-2. **Settings.** The settings file and the Options dialog (font,
-   colours, tabs, line numbers). Remembering open files and pane sizes
+2. **Settings.** The Options dialog (font, tabs, line numbers). Remembering open files and pane sizes
    per workspace. Recent files and workspaces.
 3. **Colours.**
    - Syntax colouring for C and C++, shell, make, Python and Markdown.

@@ -36,6 +36,7 @@ enum {
     S_BOLD_IS_BRIGHT,   /* bold text in colours 0-7 uses 8-15 */
     S_BACKSPACE,        /* del, bs */
     S_BELL,             /* audible, visual, off */
+    S_COLOR_SCHEME,     /* a text colour scheme (th/scheme.h); "": none */
     S_COUNT
 };
 
@@ -49,7 +50,8 @@ static const Setting k_settings[S_COUNT] = {
     { "menuBar", "true" },
     { "boldIsBright", "true" },
     { "backspace", "del" },
-    { "bell", "audible" }
+    { "bell", "audible" },
+    { "colorScheme", "" }
 };
 
 /* $XDG_CONFIG_HOME/ttrt/settings, or ~/.config/ttrt/settings. */

@@ -10,6 +10,7 @@
 #include "settings.h"
 
 #include "core/color.h"
+#include "../../th/scheme.h"
 #include "core/str.h"
 #include "core/vector.h"
 
@@ -92,6 +93,9 @@ private:
 
     static void family_cb(Widget w, XtPointer closure, XtPointer call);
     static void size_cb(Widget w, XtPointer closure, XtPointer call);
+    static void scheme_cb(Widget w, XtPointer closure, XtPointer call);
+    /* The colour scheme chosen in the dialog, or false for none. */
+    bool chosen_scheme(th::Scheme* out) const;
     static void change_cb(Widget w, XtPointer closure, XtPointer call);
     static void reset_cb(Widget w, XtPointer closure, XtPointer call);
     static void picked(void* closure, const ttr::Rgb& c);
@@ -125,6 +129,8 @@ private:
     ttr::ColorPicker* picker_;
     int picking_;
 
+    Widget scheme_w_;           /* "None", then th's schemes */
+    th::List schemes_;
     Widget bold_bright_;
     Widget save_lines_;
     Widget login_;

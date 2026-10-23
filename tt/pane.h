@@ -46,6 +46,7 @@ struct PaneOptions {
     const char* font;               /* XLFD; null or "": pick_font() */
     const char* fallback_fonts;     /* TwGrid's BDF font path, or null */
     uint32_t foreground, background;
+    const uint32_t* palette;        /* 16 colours (0xRRGGBB), or null: xterm's */
     bool have_cursor_color;
     uint32_t cursor_color;
     int scrollback;                 /* lines */
@@ -62,7 +63,7 @@ struct PaneOptions {
     const char* const* env;
 
     PaneOptions()
-        : font(0), fallback_fonts(0), foreground(0xe5e5e5), background(0),
+        : font(0), fallback_fonts(0), foreground(0xe5e5e5), background(0), palette(0),
           have_cursor_color(false), cursor_color(0), scrollback(1000), bold_is_bright(true),
           backspace_is_del(true), bell(BELL_AUDIBLE), scroll_bar(true), argv(0), login(false),
           cwd(0), env(0)
@@ -102,6 +103,8 @@ public:
     /* Settings that apply at once. */
     void set_font(const char* xlfd);
     void set_colors(uint32_t fg, uint32_t bg);
+    /* The 16 ANSI colours; null puts xterm's back. */
+    void set_palette(const uint32_t* colors16);
     void set_cursor_color(bool have, uint32_t rgb);
     void set_bold_is_bright(bool on);
     void set_backspace_is_del(bool on);

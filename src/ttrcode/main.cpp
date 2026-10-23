@@ -8,7 +8,9 @@
  */
 #include "app.h"
 
+#include "../../th/motif.h"
 #include "../../tt/pane.h"
+#include "core/settings.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,7 +31,8 @@ struct Resources {
     int indent_width;
     Boolean insert_spaces;
     Boolean line_numbers;
-    String text_fg, text_bg, select_fg, select_bg, gutter_fg, gutter_bg, cursor;
+    String scheme, ui_theme;
+    int tree_width, bottom_height;
 };
 
 #define ROFF(f) XtOffsetOf(Resources, f)
@@ -46,13 +49,12 @@ XtResource k_resources[] = {
       ROFF(insert_spaces), (String)XtRString, (XtPointer)"true" },
     { (String)"lineNumbers", (String)"LineNumbers", (String)XtRBoolean, sizeof(Boolean),
       ROFF(line_numbers), (String)XtRString, (XtPointer)"true" },
-    RSTR("textForeground", "TextForeground", text_fg, "black"),
-    RSTR("textBackground", "TextBackground", text_bg, "white"),
-    RSTR("selectForeground", "SelectForeground", select_fg, "white"),
-    RSTR("selectBackground", "SelectBackground", select_bg, "#000080"),
-    RSTR("gutterForeground", "GutterForeground", gutter_fg, "#808080"),
-    RSTR("gutterBackground", "GutterBackground", gutter_bg, "#f0f0f0"),
-    RSTR("cursorColor", "CursorColor", cursor, "black")
+    RSTR("colorScheme", "ColorScheme", scheme, "Light"),
+    RSTR("uiTheme", "UiTheme", ui_theme, ""),
+    { (String)"treeWidth", (String)"TreeWidth", (String)XtRInt, sizeof(int), ROFF(tree_width),
+      (String)XtRString, (XtPointer)"220" },
+    { (String)"bottomHeight", (String)"BottomHeight", (String)XtRInt, sizeof(int),
+      ROFF(bottom_height), (String)XtRString, (XtPointer)"220" }
 };
 #undef RSTR
 #undef ROFF
@@ -62,12 +64,25 @@ XrmOptionDescRec k_options[] = {
     { (char*)"-font", (char*)".font", XrmoptionSepArg, 0 }
 };
 
-uint32_t color(Display* dpy, const char* name, uint32_t dflt)
+/* The settings file's lines as the application's resources, under what
+ * the command line says. */
+void merge_settings(Widget top)
 {
-    XColor c;
-    if (!name || !XParseColor(dpy, DefaultColormap(dpy, DefaultScreen(dpy)), name, &c))
-        return dflt;
-    return ((uint32_t)(c.red >> 8) << 16) | ((uint32_t)(c.green >> 8) << 8) | (uint32_t)(c.blue >> 8);
+    ttr::SettingsFile file;
+    if (!file.load(ttrcode::settings_path().c_str()))
+        return;
+    XrmDatabase db = XtDatabase(XtDisplay(top));
+    XrmDatabase mine = 0;
+    for (int i = 0; i < file.count(); i++) {
+        char spec[200];
+        if (strlen(file.name(i)) > 100)
+            continue;
+        sprintf(spec, "TTRcode.%s", file.name(i));
+        XrmPutStringResource(&mine, spec, file.value(i));
+    }
+    /* Not over what is already there (the command line, -xrm). */
+    if (mine)
+        XrmCombineDatabase(mine, &db, False);
 }
 
 } /* namespace */
@@ -87,6 +102,8 @@ int main(int argc, char** argv)
     XtAppContext ctx;
     Widget top = XtAppInitialize(&ctx, "TTRcode", k_options, XtNumber(k_options), &argc, argv,
                                  fallbacks, 0, 0);
+    th::set_program_path(argv[0]);
+    merge_settings(top);
     Resources res;
     XtGetApplicationResources(top, &res, k_resources, XtNumber(k_resources), 0, 0);
     Display* dpy = XtDisplay(top);
@@ -124,15 +141,16 @@ int main(int argc, char** argv)
     o.indent_width = res.indent_width > 0 ? res.indent_width : 0;
     o.insert_spaces = res.insert_spaces != False;
     o.line_numbers = res.line_numbers != False;
-    o.colors.text = color(dpy, res.text_fg, 0x000000);
-    o.colors.background = color(dpy, res.text_bg, 0xffffff);
-    o.colors.selected_text = color(dpy, res.select_fg, 0xffffff);
-    o.colors.selected_background = color(dpy, res.select_bg, 0x000080);
-    o.colors.gutter_text = color(dpy, res.gutter_fg, 0x808080);
-    o.colors.gutter_background = color(dpy, res.gutter_bg, 0xf0f0f0);
-    o.colors.control = 0x800000;
-    o.colors.found_background = 0xffff80;
-    o.colors.cursor = color(dpy, res.cursor, 0x000000);
+    o.scheme = res.scheme;
+    o.ui_theme = res.ui_theme ? res.ui_theme : "";
+    o.tree_width = res.tree_width > 40 ? res.tree_width : 220;
+    o.bottom_height = res.bottom_height > 40 ? res.bottom_height : 220;
+
+    /* The UI theme, for every widget made from here on. */
+    th::Theme theme;
+    th::find_theme(o.ui_theme[0] ? o.ui_theme : ttrcode::ttr_theme(), &theme);
+    XrmDatabase db = XtDatabase(dpy);
+    th::apply_theme(&db, theme);
 
     ttrcode::App* app = new ttrcode::App(top, o);
     for (int i = first_file; i < argc; i++) {

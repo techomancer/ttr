@@ -1,7 +1,9 @@
 #include "app.h"
 
+#include "../../th/motif.h"
 #include "../../tw/grid_widget.h"
 #include "../../tw/surface.h"
+#include "core/settings.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -21,7 +23,7 @@
 #include <Xm/Label.h>
 #include <Xm/List.h>
 #include <Xm/MessageB.h>
-#include <Xm/PanedW.h>
+#include <Xm/MwmUtil.h>
 #include <Xm/Protocols.h>
 #include <Xm/PushB.h>
 #include <Xm/RowColumn.h>
@@ -120,9 +122,23 @@ void scroll_cb(Widget, XtPointer, XtPointer call)
 
 void tab_cb(Widget w, XtPointer, XtPointer call)
 {
-    if (((XmToggleButtonCallbackStruct*)call)->set)
-        g_app->tab_chosen(w);
+    g_app->tab_chosen(w, ((XmToggleButtonCallbackStruct*)call)->set != 0);
 }
+
+void tab_close_cb(Widget w, XtPointer, XtPointer)
+{
+    g_app->tab_close(w);
+}
+
+/* The middle button on a tab closes it. */
+void tab_button(Widget w, XtPointer, XEvent* ev, Boolean*)
+{
+    if (ev->type == ButtonRelease && ev->xbutton.button == 2)
+        g_app->tab_close(w);
+}
+
+/* A small x for the tabs' close buttons, 8 x 7. */
+const unsigned char k_close_bits[] = { 0xc3, 0x66, 0x3c, 0x18, 0x3c, 0x66, 0xc3 };
 
 void tree_cb(Widget, XtPointer, XtPointer call)
 {
@@ -136,6 +152,23 @@ void tree_key(Widget, XtPointer, XEvent* ev, Boolean* go_on)
     KeySym ks = XLookupKeysym(&ev->xkey, 0);
     if (g_app->global_key(ks, ev->xkey.state))
         *go_on = False;
+}
+
+void scheme_cb(Widget, XtPointer data, XtPointer call)
+{
+    if (((XmToggleButtonCallbackStruct*)call)->set)
+        g_app->scheme_chosen((int)(long)data);
+}
+
+void theme_cb(Widget, XtPointer data, XtPointer call)
+{
+    if (((XmToggleButtonCallbackStruct*)call)->set)
+        g_app->theme_chosen((int)(long)data);
+}
+
+void sash_handler(Widget w, XtPointer, XEvent* ev, Boolean*)
+{
+    g_app->sash_event(w, ev);
 }
 
 void autoscroll_timeout(XtPointer, XtIntervalId*)
@@ -236,14 +269,17 @@ void separator(Widget menu)
 /* ---- the window ---- */
 
 App::App(Widget top, const Options& o)
-    : top_(top), form_(0), bar_(0), hpane_(0), vpane_(0), tree_box_(0), tree_(0), edit_box_(0),
+    : top_(top), form_(0), bar_(0), body_(0), right_(0), tree_box_(0), tree_sash_(0),
+      bottom_sash_(0), tree_(0), edit_box_(0),
       tabs_(0), grid_(0), scroll_(0), status_(0), bottom_slot_(0), ncascades_(0), term_(0),
       opt_(o), cur_(-1), untitled_(0), fullscreen_(false), workspace_on_(true), bottom_on_(true),
-      was_workspace_(true), was_bottom_(true), tree_w_(0), bottom_h_(0), save_w_(0), save_h_(0), save_x_(0), save_y_(0),
+      was_workspace_(true), was_bottom_(true), tree_w_(o.tree_width), bottom_h_(o.bottom_height),
+      drag_start_(-1), drag_size_(0), close_pixmap_(0), save_w_(0), save_h_(0), save_x_(0), save_y_(0),
       in_scroll_update_(false), selecting_(false), last_click_(0), click_count_(0),
       last_col_(-1), last_row_(-1), autoscroll_(0), autoscroll_id_(0), match_case_(false),
       find_dlg_(0), find_what_(0), replace_with_(0), case_toggle_(0), replace_row_(0),
-      primary_(0), primary_len_(0), clipboard_(0), clipboard_len_(0), answer_(-1)
+      primary_(0), primary_len_(0), clipboard_(0), clipboard_len_(0), answer_(-1),
+      scheme_items_(0), theme_items_(0)
 {
     g_app = this;
     g_answer = &answer_;
@@ -253,8 +289,10 @@ App::App(Widget top, const Options& o)
     a_utf8_ = XInternAtom(dpy, "UTF8_STRING", False);
     a_targets_ = XInternAtom(dpy, "TARGETS", False);
     a_text_ = XInternAtom(dpy, "TEXT", False);
-    src_.set_colors(o.colors);
     src_.set_line_numbers(o.line_numbers);
+    theme_name_ = o.ui_theme ? o.ui_theme : "";
+    th::find_theme(theme_name_.empty() ? ttr_theme() : theme_name_.c_str(), &theme_);
+    set_scheme(o.scheme);
 
     form_ = XtVaCreateManagedWidget("main", xmFormWidgetClass, top, (char*)0);
     build_menus();
@@ -344,6 +382,8 @@ void App::build_menus()
     menu_item(m, "Terminal Pane", 'T', "Alt+2", CMD_VIEW_BOTTOM);
     menu_item(m, "Line Numbers", 'L', 0, CMD_VIEW_LINE_NUMBERS);
     separator(m);
+    build_color_menus(m);
+    separator(m);
     menu_item(m, "Full Screen", 'F', "F11", CMD_VIEW_FULLSCREEN);
 
     m = menus[4];
@@ -358,6 +398,10 @@ void App::build_menus()
     XtManageChild(bar_);
 }
 
+/* The window is forms all the way down, so the editor takes whatever
+ * the side panes leave: the workspace keeps its width and the bottom
+ * pane its height when the window grows, as in VS6. The sashes between
+ * them are separators that can be dragged. */
 void App::build_layout()
 {
     status_ = XtVaCreateManagedWidget("status", xmLabelWidgetClass, form_,
@@ -366,17 +410,11 @@ void App::build_layout()
                                       XmNrightAttachment, XmATTACH_FORM,
                                       XmNbottomAttachment, XmATTACH_FORM,
                                       XmNmarginWidth, 6, (char*)0);
-    hpane_ = XtVaCreateWidget("hpane", xmPanedWindowWidgetClass, form_,
-                              XmNorientation, XmHORIZONTAL,
-                              XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget, bar_,
-                              XmNbottomAttachment, XmATTACH_WIDGET, XmNbottomWidget, status_,
-                              XmNleftAttachment, XmATTACH_FORM,
-                              XmNrightAttachment, XmATTACH_FORM,
-                              XmNmarginWidth, 0, XmNmarginHeight, 0, XmNspacing, 6, (char*)0);
+    body_ = XtVaCreateWidget("body", xmFormWidgetClass, form_, (char*)0);
 
     /* The workspace. */
-    tree_box_ = XtVaCreateWidget("workspace", xmFormWidgetClass, hpane_,
-                                 XmNpaneMinimum, 60, XmNwidth, 200, (char*)0);
+    tree_box_ = XtVaCreateWidget("workspace", xmFormWidgetClass, body_,
+                                 XmNwidth, (Dimension)tree_w_, (char*)0);
     Widget title = XtVaCreateManagedWidget("Workspace", xmLabelWidgetClass, tree_box_,
                                            XmNalignment, XmALIGNMENT_BEGINNING,
                                            XmNtopAttachment, XmATTACH_FORM,
@@ -395,18 +433,28 @@ void App::build_layout()
     XtAddEventHandler(tree_, KeyPressMask, False, tree_key, 0);
     XtManageChild(tree_);
     XtManageChild(tree_box_);
+    tree_sash_ = XtVaCreateManagedWidget("treeSash", xmSeparatorWidgetClass, body_,
+                                         XmNorientation, XmVERTICAL,
+                                         XmNseparatorType, XmSHADOW_ETCHED_OUT,
+                                         XmNwidth, 7, XmNmargin, 0, (char*)0);
+    XtAddEventHandler(tree_sash_, ButtonPressMask | ButtonReleaseMask | Button1MotionMask,
+                      False, sash_handler, 0);
 
-    vpane_ = XtVaCreateManagedWidget("vpane", xmPanedWindowWidgetClass, hpane_,
-                                     XmNorientation, XmVERTICAL,
-                                     XmNmarginWidth, 0, XmNmarginHeight, 0, XmNspacing, 6,
-                                     XmNpaneMinimum, 100, (char*)0);
+    /* Right of it: the editor over the bottom pane. */
+    right_ = XtVaCreateManagedWidget("right", xmFormWidgetClass, body_, (char*)0);
+    bottom_slot_ = XtVaCreateManagedWidget("bottom", xmFormWidgetClass, right_,
+                                           XmNheight, (Dimension)bottom_h_, (char*)0);
+    bottom_sash_ = XtVaCreateManagedWidget("bottomSash", xmSeparatorWidgetClass, right_,
+                                           XmNorientation, XmHORIZONTAL,
+                                           XmNseparatorType, XmSHADOW_ETCHED_OUT,
+                                           XmNheight, 7, XmNmargin, 0, (char*)0);
+    XtAddEventHandler(bottom_sash_, ButtonPressMask | ButtonReleaseMask | Button1MotionMask,
+                      False, sash_handler, 0);
 
     /* The editor: the tabs over the grid and its scroll bar. */
-    edit_box_ = XtVaCreateWidget("editor", xmFormWidgetClass, vpane_, XmNpaneMinimum, 60,
-                                 (char*)0);
+    edit_box_ = XtVaCreateWidget("editor", xmFormWidgetClass, right_, (char*)0);
     tabs_ = XtVaCreateManagedWidget("tabs", xmRowColumnWidgetClass, edit_box_,
                                     XmNorientation, XmHORIZONTAL,
-                                    XmNradioBehavior, True,
                                     XmNpacking, XmPACK_TIGHT,
                                     XmNspacing, 0, XmNmarginHeight, 0, XmNmarginWidth, 0,
                                     XmNtopAttachment, XmATTACH_FORM,
@@ -442,14 +490,114 @@ void App::build_layout()
     XtAddCallback(grid_, TwNfocusCallback, focus_cb, 0);
     XtManageChild(grid_);
     XtManageChild(edit_box_);
-
-    bottom_slot_ = XtVaCreateManagedWidget("bottom", xmFormWidgetClass, vpane_,
-                                           XmNpaneMinimum, 40, XmNheight, 200, (char*)0);
-    XtManageChild(hpane_);
-    XtVaSetValues(form_, XmNinitialFocus, hpane_, (char*)0);
-    XtVaSetValues(hpane_, XmNinitialFocus, vpane_, (char*)0);
-    XtVaSetValues(vpane_, XmNinitialFocus, edit_box_, (char*)0);
+    layout();
+    XtManageChild(body_);
+    XtVaSetValues(form_, XmNinitialFocus, body_, (char*)0);
+    XtVaSetValues(body_, XmNinitialFocus, right_, (char*)0);
+    XtVaSetValues(right_, XmNinitialFocus, edit_box_, (char*)0);
     XtVaSetValues(edit_box_, XmNinitialFocus, grid_, (char*)0);
+}
+
+/* Attachments for what is shown: panes, sashes, and in full screen only
+ * the editor's grid. */
+void App::layout()
+{
+    bool bars = !fullscreen_;
+    bool tree = workspace_on_ && !fullscreen_;
+    bool bottom = bottom_on_ && !fullscreen_;
+    if (bars) {
+        XtManageChild(bar_);
+        XtManageChild(status_);
+        XtManageChild(tabs_);
+    } else {
+        XtUnmanageChild(bar_);
+        XtUnmanageChild(status_);
+        XtUnmanageChild(tabs_);
+    }
+    XtVaSetValues(body_, XmNtopAttachment, bars ? XmATTACH_WIDGET : XmATTACH_FORM,
+                  XmNtopWidget, bar_,
+                  XmNbottomAttachment, bars ? XmATTACH_WIDGET : XmATTACH_FORM,
+                  XmNbottomWidget, status_,
+                  XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_FORM, (char*)0);
+    XtVaSetValues(scroll_, XmNtopAttachment, bars ? XmATTACH_WIDGET : XmATTACH_FORM,
+                  XmNtopWidget, tabs_, (char*)0);
+    XtVaSetValues(grid_, XmNtopAttachment, bars ? XmATTACH_WIDGET : XmATTACH_FORM,
+                  XmNtopWidget, tabs_, (char*)0);
+
+    if (tree) {
+        XtVaSetValues(tree_box_, XmNwidth, (Dimension)tree_w_,
+                      XmNtopAttachment, XmATTACH_FORM, XmNbottomAttachment, XmATTACH_FORM,
+                      XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_NONE,
+                      (char*)0);
+        XtVaSetValues(tree_sash_, XmNtopAttachment, XmATTACH_FORM,
+                      XmNbottomAttachment, XmATTACH_FORM,
+                      XmNleftAttachment, XmATTACH_WIDGET, XmNleftWidget, tree_box_, (char*)0);
+        XtManageChild(tree_box_);
+        XtManageChild(tree_sash_);
+    } else {
+        XtUnmanageChild(tree_box_);
+        XtUnmanageChild(tree_sash_);
+    }
+    XtVaSetValues(right_, XmNtopAttachment, XmATTACH_FORM, XmNbottomAttachment, XmATTACH_FORM,
+                  XmNleftAttachment, tree ? XmATTACH_WIDGET : XmATTACH_FORM,
+                  XmNleftWidget, tree_sash_, XmNrightAttachment, XmATTACH_FORM, (char*)0);
+
+    if (bottom) {
+        XtVaSetValues(bottom_slot_, XmNheight, (Dimension)bottom_h_,
+                      XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_FORM,
+                      XmNbottomAttachment, XmATTACH_FORM, XmNtopAttachment, XmATTACH_NONE,
+                      (char*)0);
+        XtVaSetValues(bottom_sash_, XmNleftAttachment, XmATTACH_FORM,
+                      XmNrightAttachment, XmATTACH_FORM,
+                      XmNbottomAttachment, XmATTACH_WIDGET, XmNbottomWidget, bottom_slot_,
+                      (char*)0);
+        XtManageChild(bottom_slot_);
+        XtManageChild(bottom_sash_);
+    } else {
+        XtUnmanageChild(bottom_slot_);
+        XtUnmanageChild(bottom_sash_);
+    }
+    XtVaSetValues(edit_box_, XmNtopAttachment, XmATTACH_FORM,
+                  XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_FORM,
+                  XmNbottomAttachment, bottom ? XmATTACH_WIDGET : XmATTACH_FORM,
+                  XmNbottomWidget, bottom_sash_, (char*)0);
+}
+
+/* Dragging a sash: the workspace's width or the bottom pane's height
+ * follows the pointer, within reason. */
+void App::sash_event(Widget w, XEvent* ev)
+{
+    bool vertical = w == tree_sash_;
+    int pos = vertical ? (ev->type == MotionNotify ? ev->xmotion.x_root : ev->xbutton.x_root)
+                       : (ev->type == MotionNotify ? ev->xmotion.y_root : ev->xbutton.y_root);
+    if (ev->type == ButtonPress && ev->xbutton.button == 1) {
+        drag_start_ = pos;
+        drag_size_ = vertical ? tree_w_ : bottom_h_;
+        return;
+    }
+    if (ev->type != MotionNotify && ev->type != ButtonRelease)
+        return;
+    if (drag_start_ < 0)
+        return;
+    Dimension pw = 0, ph = 0;
+    XtVaGetValues(vertical ? body_ : right_, XmNwidth, &pw, XmNheight, &ph, (char*)0);
+    int limit = (vertical ? (int)pw : (int)ph) - 80;
+    int size = vertical ? drag_size_ + (pos - drag_start_) : drag_size_ - (pos - drag_start_);
+    if (size > limit)
+        size = limit;
+    if (size < 40)
+        size = 40;
+    if (vertical) {
+        tree_w_ = size;
+        XtVaSetValues(tree_box_, XmNwidth, (Dimension)size, (char*)0);
+    } else {
+        bottom_h_ = size;
+        XtVaSetValues(bottom_slot_, XmNheight, (Dimension)size, (char*)0);
+    }
+    if (ev->type == ButtonRelease) {
+        drag_start_ = -1;
+        save_settings();
+    }
 }
 
 void App::make_terminal()
@@ -458,6 +606,11 @@ void App::make_terminal()
     term_opt_.fallback_fonts = opt_.fallback_fonts;
     term_opt_.scrollback = 5000;
     term_opt_.cwd = root_.c_str();
+    term_opt_.foreground = (uint32_t)scheme_.get(th::SC_FOREGROUND);
+    term_opt_.background = (uint32_t)scheme_.get(th::SC_BACKGROUND);
+    term_opt_.have_cursor_color = true;
+    term_opt_.cursor_color = (uint32_t)scheme_.get(th::SC_CURSOR);
+    term_opt_.palette = palette_;
     term_ = new tt::TermPane(bottom_slot_, "terminal", term_opt_, this);
     XtVaSetValues(term_->widget(), XmNtopAttachment, XmATTACH_FORM,
                   XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_FORM,
@@ -470,6 +623,8 @@ void App::realized()
 {
     Display* dpy = XtDisplay(top_);
     XDefineCursor(dpy, XtWindow(grid_), XCreateFontCursor(dpy, XC_xterm));
+    XDefineCursor(dpy, XtWindow(tree_sash_), XCreateFontCursor(dpy, XC_sb_h_double_arrow));
+    XDefineCursor(dpy, XtWindow(bottom_sash_), XCreateFontCursor(dpy, XC_sb_v_double_arrow));
     if (term_)
         term_->start();
     XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
@@ -493,9 +648,28 @@ Doc* App::new_doc()
                                      XmNindicatorOn, False,
                                      XmNshadowThickness, 2,
                                      XmNfillOnSelect, True,
+                                     XmNselectColor, tab_fill(),
                                      XmNtraversalOn, False,
                                      XmNmarginWidth, 8, (char*)0);
     XtAddCallback(d->tab, XmNvalueChangedCallback, tab_cb, 0);
+    XtAddEventHandler(d->tab, ButtonReleaseMask, False, tab_button, 0);
+    if (!close_pixmap_) {
+        Pixel fg, bg;
+        int depth;
+        XtVaGetValues(tabs_, XmNforeground, &fg, XmNbackground, &bg, XmNdepth, &depth,
+                      (char*)0);
+        close_pixmap_ = XCreatePixmapFromBitmapData(
+            XtDisplay(tabs_), RootWindowOfScreen(XtScreen(tabs_)), (char*)k_close_bits, 8, 7,
+            fg, bg, (unsigned)depth);
+    }
+    d->close = XtVaCreateManagedWidget("close", xmPushButtonWidgetClass, tabs_,
+                                       XmNlabelType, XmPIXMAP,
+                                       XmNlabelPixmap, close_pixmap_,
+                                       XmNshadowThickness, 1,
+                                       XmNhighlightThickness, 0,
+                                       XmNtraversalOn, False,
+                                       XmNmarginWidth, 3, XmNmarginHeight, 3, (char*)0);
+    XtAddCallback(d->close, XmNactivateCallback, tab_close_cb, 0);
     docs_.push_back(d);
     return d;
 }
@@ -668,6 +842,7 @@ void App::close_doc(int i, bool* cancelled)
         }
     }
     XtDestroyWidget(d->tab);
+    XtDestroyWidget(d->close);
     docs_.remove_at(i);
     if (src_.view() == &d->view)
         src_.set_view(0);
@@ -1076,69 +1251,24 @@ void App::show_find(bool replace)
 
 /* ---- panes and full screen ---- */
 
-/* Panes come back at the size they had. */
 void App::show_workspace(bool on)
 {
     workspace_on_ = on;
-    if (on) {
-        if (tree_w_)
-            XtVaSetValues(tree_box_, XmNwidth, tree_w_, (char*)0);
-        XtManageChild(tree_box_);
-    } else if (XtIsManaged(tree_box_)) {
-        XtVaGetValues(tree_box_, XmNwidth, &tree_w_, (char*)0);
-        XtUnmanageChild(tree_box_);
-    }
+    layout();
 }
 
 void App::show_bottom(bool on)
 {
     bottom_on_ = on;
-    if (on) {
-        if (bottom_h_)
-            XtVaSetValues(bottom_slot_, XmNheight, bottom_h_, (char*)0);
-        XtManageChild(bottom_slot_);
-    } else if (XtIsManaged(bottom_slot_)) {
-        XtVaGetValues(bottom_slot_, XmNheight, &bottom_h_, (char*)0);
-        XtUnmanageChild(bottom_slot_);
-    }
+    layout();
 }
 
-/* F11: only the text. _NET_WM_STATE_FULLSCREEN where the window manager
- * has it (ttr does), else the whole screen by our own geometry. */
-void App::set_fullscreen(bool on)
+/* Does the window manager do _NET_WM_STATE_FULLSCREEN (ttr does)? */
+static bool wm_has_fullscreen(Display* dpy)
 {
-    if (on == fullscreen_)
-        return;
-    fullscreen_ = on;
-    Display* dpy = XtDisplay(top_);
-    if (on) {
-        was_workspace_ = workspace_on_;
-        was_bottom_ = bottom_on_;
-        show_workspace(false);
-        show_bottom(false);
-        XtUnmanageChild(bar_);
-        XtUnmanageChild(status_);
-        XtUnmanageChild(tabs_);
-        XtVaSetValues(hpane_, XmNtopAttachment, XmATTACH_FORM, XmNbottomAttachment,
-                      XmATTACH_FORM, (char*)0);
-        XtVaSetValues(scroll_, XmNtopAttachment, XmATTACH_FORM, (char*)0);
-        XtVaSetValues(grid_, XmNtopAttachment, XmATTACH_FORM, (char*)0);
-    } else {
-        XtManageChild(bar_);
-        XtManageChild(status_);
-        XtManageChild(tabs_);
-        XtVaSetValues(hpane_, XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget, bar_,
-                      XmNbottomAttachment, XmATTACH_WIDGET, XmNbottomWidget, status_, (char*)0);
-        XtVaSetValues(scroll_, XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget, tabs_, (char*)0);
-        XtVaSetValues(grid_, XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget, tabs_, (char*)0);
-        show_workspace(was_workspace_);
-        show_bottom(was_bottom_);
-    }
-    /* Does the window manager do full screen? */
     Atom net_supported = XInternAtom(dpy, "_NET_SUPPORTED", False);
-    Atom state = XInternAtom(dpy, "_NET_WM_STATE", False);
     Atom full = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
-    bool ewmh = false;
+    bool found = false;
     Atom type;
     int format;
     unsigned long count, after;
@@ -1148,30 +1278,57 @@ void App::set_fullscreen(bool on)
         Atom* atoms = (Atom*)data;
         for (unsigned long i = 0; i < count; i++)
             if (atoms[i] == full)
-                ewmh = true;
+                found = true;
         XFree(data);
     }
-    if (ewmh) {
+    return found;
+}
+
+/* F11: only the text. Window managers with EWMH get asked for full
+ * screen; mwm and 4Dwm read _MOTIF_WM_HINTS when a window is mapped, so
+ * there the window goes away for a moment and comes back without
+ * decorations, covering the screen. */
+void App::set_fullscreen(bool on)
+{
+    if (on == fullscreen_)
+        return;
+    fullscreen_ = on;
+    layout();
+    Display* dpy = XtDisplay(top_);
+    if (wm_has_fullscreen(dpy)) {
         XEvent ev;
         memset(&ev, 0, sizeof(ev));
         ev.xclient.type = ClientMessage;
         ev.xclient.window = XtWindow(top_);
-        ev.xclient.message_type = state;
+        ev.xclient.message_type = XInternAtom(dpy, "_NET_WM_STATE", False);
         ev.xclient.format = 32;
         ev.xclient.data.l[0] = on ? 1 : 0;
-        ev.xclient.data.l[1] = (long)full;
+        ev.xclient.data.l[1] = (long)XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
         ev.xclient.data.l[3] = 1;
         XSendEvent(dpy, DefaultRootWindow(dpy), False,
                    SubstructureRedirectMask | SubstructureNotifyMask, &ev);
-    } else if (on) {
-        XtVaGetValues(top_, XmNx, &save_x_, XmNy, &save_y_, XmNwidth, &save_w_, XmNheight,
-                      &save_h_, (char*)0);
+    } else {
+        Window win = XtWindow(top_);
+        if (on) {
+            /* Where the window is on the screen, frame aside. */
+            Window child;
+            int x = 0, y = 0;
+            XTranslateCoordinates(dpy, win, DefaultRootWindow(dpy), 0, 0, &x, &y, &child);
+            save_x_ = (Position)x;
+            save_y_ = (Position)y;
+            XtVaGetValues(top_, XmNwidth, &save_w_, XmNheight, &save_h_, (char*)0);
+        }
+        XWithdrawWindow(dpy, win, DefaultScreen(dpy));
+        XSync(dpy, False);
         Screen* scr = XtScreen(top_);
-        XtVaSetValues(top_, XmNx, 0, XmNy, 0, XmNwidth, (Dimension)WidthOfScreen(scr),
-                      XmNheight, (Dimension)HeightOfScreen(scr), (char*)0);
-    } else if (save_w_) {
-        XtVaSetValues(top_, XmNx, save_x_, XmNy, save_y_, XmNwidth, save_w_, XmNheight,
-                      save_h_, (char*)0);
+        if (on)
+            XtVaSetValues(top_, XmNmwmDecorations, 0, XmNx, 0, XmNy, 0,
+                          XmNwidth, (Dimension)WidthOfScreen(scr),
+                          XmNheight, (Dimension)HeightOfScreen(scr), (char*)0);
+        else
+            XtVaSetValues(top_, XmNmwmDecorations, MWM_DECOR_ALL, XmNx, save_x_, XmNy, save_y_,
+                          XmNwidth, save_w_, XmNheight, save_h_, (char*)0);
+        XMapWindow(dpy, win);
     }
     XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
 }
@@ -1649,11 +1806,29 @@ void App::scrolled(int value)
     TwGridDamage(grid_);
 }
 
-void App::tab_chosen(Widget tab)
+/* The tabs work as radio buttons, kept by hand: choosing the current
+ * tab again leaves it chosen. */
+void App::tab_chosen(Widget tab, bool set)
+{
+    for (int i = 0; i < docs_.size(); i++) {
+        if (docs_[i]->tab != tab)
+            continue;
+        if (i != cur_)
+            show_doc(i);
+        else if (!set)
+            XmToggleButtonSetState(tab, True, False);
+    }
+    XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
+}
+
+void App::tab_close(Widget w)
 {
     for (int i = 0; i < docs_.size(); i++)
-        if (docs_[i]->tab == tab && i != cur_)
-            show_doc(i);
+        if (docs_[i]->tab == w || docs_[i]->close == w) {
+            bool cancelled;
+            close_doc(i, &cancelled);
+            break;
+        }
     XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
 }
 
@@ -1793,6 +1968,178 @@ bool App::pane_key(tt::TermPane* p, TwGridCallbackStruct* cb)
 void App::pane_focus(tt::TermPane*, bool in)
 {
     set_mnemonics(!in);
+}
+
+/* ---- colours and settings ---- */
+
+ttr::Str settings_path()
+{
+    const char* xdg = getenv("XDG_CONFIG_HOME");
+    const char* home = getenv("HOME");
+    char path[1100];
+    if (xdg && *xdg && strlen(xdg) < 1000)
+        sprintf(path, "%s/ttrcode/settings", xdg);
+    else
+        sprintf(path, "%.1000s/.config/ttrcode/settings", home ? home : ".");
+    return ttr::Str(path);
+}
+
+/* The theme ttr itself uses, from its settings file. */
+const char* ttr_theme()
+{
+    static char name[128];
+    ttr::SettingsFile f;
+    name[0] = 0;
+    if (f.load(ttr::SettingsFile::default_path().c_str()) && f.get("theme"))
+        snprintf(name, sizeof(name), "%s", f.get("theme"));
+    return name;
+}
+
+void App::save_settings()
+{
+    ttr::SettingsFile f;
+    ttr::Str path = settings_path();
+    static const char* const header[] = {
+        "# ttrcode's settings: X resource names (TTRcode*name) and values.",
+        "# View > Color Scheme and View > UI Theme change the colours here.", 0
+    };
+    f.set_header(header);
+    f.load(path.c_str());
+    char v[32];
+    f.set("colorScheme", scheme_.name);
+    if (theme_name_.empty())
+        f.remove("uiTheme");
+    else
+        f.set("uiTheme", theme_name_.c_str());
+    sprintf(v, "%d", tree_w_);
+    f.set("treeWidth", v);
+    sprintf(v, "%d", bottom_h_);
+    f.set("bottomHeight", v);
+    ttr::make_parent_dirs(path.c_str());
+    f.save(path.c_str());
+}
+
+/* The editor and the terminal pane take the scheme at once. */
+void App::set_scheme(const char* name)
+{
+    th::find_scheme(name, &scheme_);
+    EditColors c;
+    c.text = scheme_.get(th::SC_FOREGROUND);
+    c.background = scheme_.get(th::SC_BACKGROUND);
+    c.selected_text = scheme_.get(th::SC_SELECTION_FG);
+    c.selected_background = scheme_.get(th::SC_SELECTION_BG);
+    c.gutter_text = scheme_.get(th::SC_GUTTER_FG);
+    c.gutter_background = scheme_.get(th::SC_GUTTER_BG);
+    c.control = scheme_.get(th::SC_CONTROL);
+    c.found_background = scheme_.get(th::SC_FIND_BG);
+    c.cursor = scheme_.get(th::SC_CURSOR);
+    src_.set_colors(c);
+    for (int i = 0; i < 16; i++)
+        palette_[i] = (uint32_t)scheme_.ansi(i);
+    if (term_) {
+        term_->set_colors((uint32_t)c.text, (uint32_t)c.background);
+        term_->set_cursor_color(true, (uint32_t)c.cursor);
+        term_->set_palette(palette_);
+    }
+    if (grid_)
+        TwGridDamage(grid_);
+    for (int i = 0; scheme_items_ && i < schemes_.count(); i++)
+        XmToggleButtonSetState(scheme_items_[i],
+                               th::compare_names(schemes_[i].name, scheme_.name) == 0, False);
+}
+
+/* Widgets change colour in place (XmChangeColor); dialogs made later get
+ * the theme through the resource database. */
+void App::set_theme(const char* name)
+{
+    theme_name_ = name ? name : "";
+    th::Theme& t = theme_;
+    const char* effective = theme_name_.empty() ? ttr_theme() : theme_name_.c_str();
+    th::find_theme(effective, &t);
+    XrmDatabase db = XtDatabase(XtDisplay(top_));
+    th::apply_theme(&db, t);
+    th::recolor(top_, t, twGridWidgetClass);
+    for (int i = 0; i < docs_.size(); i++)
+        XtVaSetValues(docs_[i]->tab, XmNselectColor, tab_fill(), (char*)0);
+    /* The tabs' close buttons have the old colours in their pixmap. */
+    if (close_pixmap_) {
+        Pixel fg, bg;
+        int depth;
+        XtVaGetValues(tabs_, XmNforeground, &fg, XmNbackground, &bg, XmNdepth, &depth,
+                      (char*)0);
+        Pixmap old = close_pixmap_;
+        close_pixmap_ = XCreatePixmapFromBitmapData(
+            XtDisplay(tabs_), RootWindowOfScreen(XtScreen(tabs_)), (char*)k_close_bits, 8, 7,
+            fg, bg, (unsigned)depth);
+        for (int i = 0; i < docs_.size(); i++)
+            XtVaSetValues(docs_[i]->close, XmNlabelPixmap, close_pixmap_, (char*)0);
+        XFreePixmap(XtDisplay(tabs_), old);
+    }
+    for (int i = 0; theme_items_ && i < themes_.count() + 1; i++) {
+        bool on = i == 0 ? theme_name_.empty()
+                         : !theme_name_.empty() &&
+                               th::compare_names(themes_[i - 1].name, theme_name_.c_str()) == 0;
+        XmToggleButtonSetState(theme_items_[i], on, False);
+    }
+}
+
+/* The chosen tab is filled with the background's select shade, which
+ * the theme's text stays readable on (a theme's toggle fill may not). */
+Pixel App::tab_fill()
+{
+    return th::pixel(tabs_, th::motif_colors(theme_.get(th::ROLE_BACKGROUND)).select);
+}
+
+void App::scheme_chosen(int i)
+{
+    if (i < 0 || i >= schemes_.count())
+        return;
+    set_scheme(schemes_[i].name);
+    save_settings();
+}
+
+void App::theme_chosen(int i)
+{
+    set_theme(i == 0 ? "" : themes_[i - 1].name);
+    save_settings();
+}
+
+/* View > Color Scheme and View > UI Theme: one radio item per scheme
+ * and theme found (th/scheme.h, th/theme.h). */
+void App::build_color_menus(Widget view)
+{
+    th::list_schemes(&schemes_);
+    th::list_themes(&themes_);
+    Arg a[2];
+    XtSetArg(a[0], XmNradioBehavior, True);
+    Widget sm = XmCreatePulldownMenu(view, (char*)"schemeMenu", a, 1);
+    XtVaCreateManagedWidget("Color Scheme", xmCascadeButtonWidgetClass, view,
+                            XmNsubMenuId, sm, XmNmnemonic, 'C', (char*)0);
+    scheme_items_ = (Widget*)XtMalloc((Cardinal)(sizeof(Widget) * (size_t)(schemes_.count() + 1)));
+    for (int i = 0; i < schemes_.count(); i++) {
+        scheme_items_[i] = XtVaCreateManagedWidget(
+            schemes_[i].name, xmToggleButtonWidgetClass, sm, XmNindicatorType, XmONE_OF_MANY,
+            XmNvisibleWhenOff, True,
+            XmNset, th::compare_names(schemes_[i].name, scheme_.name) == 0, (char*)0);
+        XtAddCallback(scheme_items_[i], XmNvalueChangedCallback, scheme_cb, (XtPointer)(long)i);
+    }
+    /* Many themes: in columns. */
+    XtSetArg(a[1], XmNpacking, XmPACK_COLUMN);
+    Widget tm = XmCreatePulldownMenu(view, (char*)"themeMenu", a, 2);
+    XtVaSetValues(tm, XmNnumColumns, (short)(themes_.count() > 18 ? 2 : 1), (char*)0);
+    XtVaCreateManagedWidget("UI Theme", xmCascadeButtonWidgetClass, view,
+                            XmNsubMenuId, tm, XmNmnemonic, 'U', (char*)0);
+    theme_items_ = (Widget*)XtMalloc((Cardinal)(sizeof(Widget) * (size_t)(themes_.count() + 1)));
+    for (int i = 0; i <= themes_.count(); i++) {
+        const char* label = i == 0 ? "Same as ttr" : themes_[i - 1].name;
+        bool on = i == 0 ? theme_name_.empty()
+                         : !theme_name_.empty() &&
+                               th::compare_names(themes_[i - 1].name, theme_name_.c_str()) == 0;
+        theme_items_[i] = XtVaCreateManagedWidget(
+            label, xmToggleButtonWidgetClass, tm, XmNindicatorType, XmONE_OF_MANY,
+            XmNvisibleWhenOff, True, XmNset, on, (char*)0);
+        XtAddCallback(theme_items_[i], XmNvalueChangedCallback, theme_cb, (XtPointer)(long)i);
+    }
 }
 
 /* ---- the workspace tree ---- */

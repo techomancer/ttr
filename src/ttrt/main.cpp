@@ -7,6 +7,7 @@
 #include "settings.h"
 #include "settingsdlg.h"
 
+#include "../../th/scheme.h"
 #include "../../tt/pane.h"
 #include "core/settings.h"
 
@@ -42,6 +43,7 @@ struct Resources {
     Boolean bold_is_bright;
     String backspace;
     String bell;
+    String color_scheme;
 };
 
 /* Names and defaults come from settings.h, the list the Settings dialog
@@ -69,7 +71,9 @@ XtResource k_resources[] = {
     { TS(S_BACKSPACE), (String)"Backspace", (String)XtRString, sizeof(String),
       ROFF(backspace), (String)XtRString, TSD(S_BACKSPACE) },
     { TS(S_BELL), (String)"Bell", (String)XtRString, sizeof(String),
-      ROFF(bell), (String)XtRString, TSD(S_BELL) }
+      ROFF(bell), (String)XtRString, TSD(S_BELL) },
+    { TS(S_COLOR_SCHEME), (String)"ColorScheme", (String)XtRString, sizeof(String),
+      ROFF(color_scheme), (String)XtRString, TSD(S_COLOR_SCHEME) }
 };
 #undef TSD
 #undef TS
@@ -135,6 +139,52 @@ uint32_t parse_color(Display* dpy, const char* name, uint32_t dflt)
     if (!name || !XParseColor(dpy, DefaultColormap(dpy, DefaultScreen(dpy)), name, &c))
         return dflt;
     return ((uint32_t)(c.red >> 8) << 16) | ((uint32_t)(c.green >> 8) << 8) | (uint32_t)(c.blue >> 8);
+}
+
+/* The terminal's colours from the settings: the colour scheme (th's
+ * text schemes, shared with ttrcode), under the text, background and
+ * cursor colours set apart from their defaults. */
+struct Colors {
+    uint32_t fg, bg, cursor;
+    bool have_cursor;
+    uint32_t palette[16];
+    bool have_palette;
+};
+
+bool set_apart(const ttr::Str* v, int setting)
+{
+    const char* d = ttrt::k_settings[setting].fallback;
+    return !v[setting].empty() && !(d && strcmp(v[setting].c_str(), d) == 0);
+}
+
+Colors colors_of(Display* dpy, const ttr::Str* v)
+{
+    using namespace ttrt;
+    Colors c;
+    th::Scheme s;
+    c.have_palette = !v[S_COLOR_SCHEME].empty() && th::find_scheme(v[S_COLOR_SCHEME].c_str(), &s);
+    if (c.have_palette) {
+        c.fg = (uint32_t)s.get(th::SC_FOREGROUND);
+        c.bg = (uint32_t)s.get(th::SC_BACKGROUND);
+        c.cursor = (uint32_t)s.get(th::SC_CURSOR);
+        c.have_cursor = true;
+        for (int i = 0; i < 16; i++)
+            c.palette[i] = (uint32_t)s.ansi(i);
+    } else {
+        c.fg = parse_color(dpy, k_settings[S_FOREGROUND].fallback, 0xe5e5e5);
+        c.bg = parse_color(dpy, k_settings[S_BACKGROUND].fallback, 0x000000);
+        c.cursor = c.fg;
+        c.have_cursor = false;
+    }
+    if (set_apart(v, S_FOREGROUND))
+        c.fg = parse_color(dpy, v[S_FOREGROUND].c_str(), c.fg);
+    if (set_apart(v, S_BACKGROUND))
+        c.bg = parse_color(dpy, v[S_BACKGROUND].c_str(), c.bg);
+    if (set_apart(v, S_CURSOR_COLOR)) {
+        c.cursor = parse_color(dpy, v[S_CURSOR_COLOR].c_str(), c.fg);
+        c.have_cursor = true;
+    }
+    return c;
 }
 
 tt::BellMode bell_mode(const char* s)
@@ -329,12 +379,13 @@ void App::apply(const ttr::Str* v, const bool* changed)
         pane->set_font(v[S_FONT].c_str());
         resize_to(cols, rows);
     }
-    if (changed[S_FOREGROUND] || changed[S_BACKGROUND])
-        pane->set_colors(parse_color(dpy, v[S_FOREGROUND].c_str(), 0xe5e5e5),
-                         parse_color(dpy, v[S_BACKGROUND].c_str(), 0x000000));
-    if (changed[S_CURSOR_COLOR])
-        pane->set_cursor_color(!v[S_CURSOR_COLOR].empty(),
-                               parse_color(dpy, v[S_CURSOR_COLOR].c_str(), 0xe5e5e5));
+    if (changed[S_FOREGROUND] || changed[S_BACKGROUND] || changed[S_CURSOR_COLOR] ||
+        changed[S_COLOR_SCHEME]) {
+        Colors c = colors_of(dpy, v);
+        pane->set_colors(c.fg, c.bg);
+        pane->set_cursor_color(c.have_cursor, c.cursor);
+        pane->set_palette(c.have_palette ? c.palette : 0);
+    }
     if (changed[S_BOLD_IS_BRIGHT])
         pane->set_bold_is_bright(strcmp(v[S_BOLD_IS_BRIGHT].c_str(), "true") == 0);
     if (changed[S_BACKSPACE])
@@ -434,6 +485,7 @@ int main(int argc, char** argv)
     int argc_copy = argc;
     a->top = XtAppInitialize(&a->ctx, "TTRt", k_options, (Cardinal)k_noptions, &argc, argv,
                              fallbacks, 0, 0);
+    th::set_program_path(argv_copy[0]);
     merge_settings(a->top, argc_copy, argv_copy);
     delete [] argv_copy;
     XtGetApplicationResources(a->top, &a->res, k_resources, XtNumber(k_resources), 0, 0);
@@ -461,6 +513,7 @@ int main(int argc, char** argv)
         a->cur[S_BOLD_IS_BRIGHT] = a->res.bold_is_bright ? "true" : "false";
         a->cur[S_BACKSPACE] = strcmp(a->res.backspace, "bs") == 0 ? "bs" : "del";
         a->cur[S_BELL] = a->res.bell ? a->res.bell : "audible";
+        a->cur[S_COLOR_SCHEME] = a->res.color_scheme ? a->res.color_scheme : "";
     }
 
     a->main_w = XtVaCreateManagedWidget("main", xmFormWidgetClass, a->top, (char*)0);
@@ -478,10 +531,12 @@ int main(int argc, char** argv)
     tt::PaneOptions o;
     o.font = a->res.font;
     o.fallback_fonts = fdirs;
-    o.foreground = parse_color(dpy, a->res.foreground, 0xe5e5e5);
-    o.background = parse_color(dpy, a->res.background, 0x000000);
-    o.have_cursor_color = a->res.cursor_color && a->res.cursor_color[0];
-    o.cursor_color = parse_color(dpy, a->res.cursor_color, o.foreground);
+    Colors colors = colors_of(dpy, a->cur);
+    o.foreground = colors.fg;
+    o.background = colors.bg;
+    o.have_cursor_color = colors.have_cursor;
+    o.cursor_color = colors.cursor;
+    o.palette = colors.have_palette ? colors.palette : 0;
     o.scrollback = a->res.scrollback;
     o.bold_is_bright = a->res.bold_is_bright != False;
     o.backspace_is_del = strcmp(a->res.backspace, "bs") != 0;

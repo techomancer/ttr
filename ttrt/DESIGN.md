@@ -293,6 +293,12 @@ Implemented 2026-10-20:
   bar. Scrollback and the login shell apply to new windows. A command-line
   value the user does not touch is never written to the file, and
   unchanged values keep their spelling ("wheat", "9x15").
+- The colour scheme (`colorScheme`) is one of th's text schemes
+  (`th/DESIGN.md`), shared with ttrcode. It gives the text, background
+  and cursor colours and the 16 terminal colours. Text, background and
+  cursor colours set apart from their defaults still win, so a scheme
+  can be adjusted without editing it. The dialog's Scheme drop-down shows
+  the scheme's colours in the swatches it does not override.
 
 Command line options follow xterm and xwsh where they overlap: `-e`,
 `-fn`, `-fg`, `-bg`, `-cr`, `-geometry`, `-title`, `-sl`, `-ls`, `-vb`,
