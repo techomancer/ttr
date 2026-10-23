@@ -520,11 +520,16 @@ which ttrc removes when it quits.
 **Viewer and editor.** F3 shows a file in ttrc's viewer (text, wrapped
 or not, or hex; F7 or `/` searches, `n` finds the next, `q` quits); it
 also reads files inside archives. F4 edits in ttrc's editor: type as
-usual, F2 saves, Shift+F2 saves under another name, F3 starts and ends a
-selection (or Shift with the arrow keys), F5 copies it to the cursor, F6
-moves it, F8 deletes it, F7 searches, F4 replaces, Ctrl+U undoes, Ctrl+Y
-deletes a line, Esc or F10 closes. Options > Configuration switches
-either to your `$PAGER` and `$EDITOR` instead.
+usual, F2 saves, Shift+F2 saves under another name. F3 starts a block and
+F3 again marks it (a Shift selection works too); the block stays put
+while you move the cursor, F5 copies it to the cursor, F6 moves it there
+and F8 deletes it. F7 searches, Shift+F7 finds the next, F4 replaces,
+Ctrl+U undoes, Alt+R redoes, Ctrl+Y deletes a line, Ctrl+arrows move by
+words, Home goes to the first non-blank and then to column 0, Tab and
+Shift+Tab indent and outdent the selected lines, Ctrl+Insert,
+Shift+Delete and Shift+Insert copy, cut and paste, and Esc or F10
+closes. Undoing back to the saved text counts as unchanged. Options >
+Configuration switches either to your `$PAGER` and `$EDITOR` instead.
 
 | Key | Does |
 |---|---|

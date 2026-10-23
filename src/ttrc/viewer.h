@@ -10,6 +10,7 @@
 
 #include "theme.h"
 
+#include "../../te/view.h"
 #include "../../tf/tf.h"
 #include "../../tu/input.h"
 #include "../../tu/screen.h"
@@ -83,6 +84,8 @@ private:
     char last_search_[256];
 };
 
+/* The editor is tu drawing and mc's keys over te, the editing core it
+ * shares with ttrcode. */
 class Editor : public FullScreen {
 public:
     Editor();
@@ -91,7 +94,7 @@ public:
     int load(tf::Fs* fs, const char* path);
     /* Save to path (null: where it came from). 0 or an errno value. */
     int save(const char* path);
-    bool modified() const { return modified_; }
+    bool modified() const { return doc_.modified(); }
     const char* path() const { return path_.c_str(); }
     void draw(tu::Screen& s, const Theme& t);
     ToolRequest handle(const tu::Event& ev);
@@ -100,55 +103,17 @@ public:
     int replace_all(const char* from, const char* to);
 
 private:
-    struct Line {
-        char* s;
-        size_t len, cap;
-    };
-    struct Pos {
-        long line;
-        size_t col;             /* byte offset */
-    };
-    struct Undo {
-        bool insert;            /* undo removes text that was inserted */
-        Pos at;
-        char* text;
-    };
-
-    void clear();
-    Line* new_line(const char* s, size_t n);
-    void line_insert(Line* l, size_t at, const char* s, size_t n);
-    void insert_text(Pos at, const char* s, size_t n, bool record);
-    void erase(Pos a, Pos b, bool record);
-    char* text_between(Pos a, Pos b, size_t* n) const;
-    Pos end_of(Pos a, const char* s, size_t n) const;
-    void push_undo(bool insert, Pos at, const char* s, size_t n);
-    void undo();
-    bool has_selection() const;
-    void selection(Pos* a, Pos* b) const;
-    void delete_selection();
+    ToolRequest function_key(int n, bool shift);
     void copy_selection();
     void paste();
-    void move_cursor(Pos p, bool select);
-    int col_of(long line, size_t byte) const;     /* screen column */
-    size_t byte_at(long line, int col) const;
-    void clamp_view();
-    bool less(Pos a, Pos b) const { return a.line < b.line || (a.line == b.line && a.col < b.col); }
 
     tf::Fs* fs_;
     ttr::Str path_;
-    ttr::Vector<Line*> lines_;
-    Pos cur_;
-    int want_col_;              /* the column Up and Down keep */
-    long top_;
-    int left_;
-    int rows_, width_;
-    bool modified_;
-    bool marking_;              /* F3 started a selection */
-    Pos anchor_;
-    bool selected_;
+    te::Document doc_;
+    te::View view_;
+    bool marking_;              /* F3 started a block; the next F3 ends it */
     char* clip_;
     size_t clip_len_;
-    ttr::Vector<Undo> undo_;
     char last_search_[256];
 };
 

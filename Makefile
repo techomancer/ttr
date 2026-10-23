@@ -272,6 +272,30 @@ tu-test: $(B)/tu_test
 $(B)/tu_test_tu.o: $(B)/.dir tu/test/test_tu.cpp $(TU_H) $(TL_TERMINAL_H)
 	$(COMPILE) -c tu/test/test_tu.cpp -o $@
 
+# te, the text editing core shared by ttrc's editor and ttrcode
+# (te/DESIGN.md): libte.a and its tests. "make te-test" runs them.
+TE_OBJS = $(B)/te_document.o \
+	$(B)/te_view.o
+TE_H = te/document.h te/view.h tl/port.h
+
+$(B)/libte.a: $(TE_OBJS)
+	rm -f $@
+	$(AR) rc $@ $(TE_OBJS)
+
+$(B)/te_document.o: $(B)/.dir te/document.cpp $(TE_H)
+	$(COMPILE) -c te/document.cpp -o $@
+$(B)/te_view.o: $(B)/.dir te/view.cpp $(TE_H) tl/unicode.h
+	$(COMPILE) -c te/view.cpp -o $@
+
+$(B)/te_test: $(B)/te_test_te.o $(B)/libte.a $(B)/libtl.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/te_test_te.o $(B)/libte.a $(B)/libtl.a
+
+te-test: $(B)/te_test
+	$(B)/te_test
+
+$(B)/te_test_te.o: $(B)/.dir te/test/test_te.cpp $(TE_H)
+	$(COMPILE) -c te/test/test_te.cpp -o $@
+
 # tf, ttrc's file systems (ttrc/DESIGN.md section 5): libtf.a and its
 # tests. TF_SYS is the per-system part: tf_sys_linux.o or tf_sys_irix.o
 # (IRIX: make TF_SYS=$(B)/tf_sys_irix.o).
@@ -342,14 +366,14 @@ TTRC_OBJS = $(B)/ttrc_main.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
 TTRC_H = src/ttrc/app.h src/ttrc/cmdline.h src/ttrc/config.h src/ttrc/panel.h src/ttrc/shell.h \
-	src/ttrc/theme.h src/ttrc/viewer.h $(TU_H) $(TF_H) $(TL_TERMINAL_H) tp/tp.h src/core/str.h \
-	src/core/vector.h
+	src/ttrc/theme.h src/ttrc/viewer.h $(TU_H) $(TF_H) $(TE_H) $(TL_TERMINAL_H) tp/tp.h \
+	src/core/str.h src/core/vector.h
 
 ttrc: $(B)/ttrc
 
-$(B)/ttrc: $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a $(B)/libtl.a $(B)/libtp.a
+$(B)/ttrc: $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a $(B)/libte.a $(B)/libtl.a $(B)/libtp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a \
-		$(B)/libtl.a $(B)/libtp.a
+		$(B)/libte.a $(B)/libtl.a $(B)/libtp.a
 
 $(B)/ttrc_main.o: $(B)/.dir src/ttrc/main.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/main.cpp -o $@

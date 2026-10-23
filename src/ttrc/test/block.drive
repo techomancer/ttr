@@ -1,0 +1,43 @@
+# The editor's blocks (te): F3 marks a block that stays while the cursor
+# moves, F6 moves it, F5 copies it, F8 deletes it; Enter keeps the indent.
+expect Menu
+send \x13note
+send \r
+send \e[14~
+expect line one
+send \eOR
+send \e[B
+send \eOR
+send \e[1;5F
+send \e[17~
+expect line 2 of 3
+send A
+expect Aline one
+send \e[1;5H
+expect line 1 of 3
+send \eOR
+send \e[1;5C
+send \eOR
+send \e[1;5F
+send \e[15~
+expect line 3 of 3
+send B
+expect Bline
+send \e[1;5H
+send \eOR
+send \e[C
+send \e[C
+send \e[C
+send \eOR
+send \e[19~
+expect e two
+absent line two
+send \e[1;5F
+send \r  ind\r
+expect line 5 of 5, column 3
+send \e
+send \e
+expect The file has changed
+send d
+expect Menu
+send \e0

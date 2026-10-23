@@ -1,4 +1,5 @@
 # F4: ttrc's editor: type, save, undo, quit with changes, a new file.
+# Undoing back to the saved text counts as unchanged, hence the Z.
 expect Menu
 send \x13note
 send \r
@@ -16,6 +17,8 @@ send Y
 expect YXline one
 send \x15
 absent YXline
+send Z
+expect ZXline one
 send \e
 expect The file has changed
 send d
