@@ -355,6 +355,7 @@ void App::build_menus()
     Widget m = menus[0];
     menu_item(m, "New", 'N', "Ctrl+N", CMD_NEW);
     menu_item(m, "Open...", 'O', "Ctrl+O", CMD_OPEN);
+    menu_item(m, "Open Workspace...", 'W', 0, CMD_OPEN_WORKSPACE);
     menu_item(m, "Close", 'C', "Ctrl+F4", CMD_CLOSE);
     separator(m);
     menu_item(m, "Save", 'S', "Ctrl+S", CMD_SAVE);
@@ -726,6 +727,40 @@ void App::open_file(const char* path)
             show_doc(i);
 }
 
+void App::open_workspace(const char* dir)
+{
+    root_ = dir;
+    for (int i = 0; i < rows_.size(); i++) {
+        free(rows_[i]->path);
+        free(rows_[i]->name);
+        delete rows_[i];
+    }
+    rows_.clear();
+    tree_read(-1, root_.c_str(), 0);
+    XtVaSetValues(tree_, XmNtopItemPosition, 1, (char*)0);
+    tree_fill();
+    /* A shell at its prompt follows; a running command is not disturbed
+     * (a new shell starts in the workspace anyway). */
+    if (term_ && term_->at_prompt()) {
+        char cmd[2200];
+        size_t n = 0;
+        cmd[n++] = 0x15;            /* Ctrl+U: whatever was typed goes */
+        n += (size_t)sprintf(cmd + n, "cd '");
+        for (const char* p = dir; *p && n < sizeof(cmd) - 8; p++) {
+            if (*p == '\'') {
+                memcpy(cmd + n, "'\\''", 4);
+                n += 4;
+            } else {
+                cmd[n++] = *p;
+            }
+        }
+        cmd[n++] = '\'';
+        cmd[n++] = '\r';
+        term_->send(cmd, n);
+    }
+    update_ui();
+}
+
 int App::load(Doc* d, const char* path)
 {
     d->path = path;
@@ -1076,6 +1111,81 @@ bool App::ask_file(const char* title, const char* start, ttr::Str* out)
     return ok;
 }
 
+/* An absolute path without ".", ".." and doubled or trailing slashes. */
+static void normalize_path(char* path)
+{
+    char out[2048];
+    size_t o = 0;
+    const char* p = path;
+    while (*p) {
+        while (*p == '/')
+            p++;
+        const char* e = p;
+        while (*e && *e != '/')
+            e++;
+        size_t n = (size_t)(e - p);
+        if (n == 0 || (n == 1 && p[0] == '.')) {
+            /* nothing */
+        } else if (n == 2 && p[0] == '.' && p[1] == '.') {
+            while (o > 0 && out[o - 1] != '/')
+                o--;
+            if (o > 0)
+                o--;
+        } else if (o + n + 2 < sizeof(out)) {
+            out[o++] = '/';
+            memcpy(out + o, p, n);
+            o += n;
+        }
+        p = e;
+    }
+    if (o == 0)
+        out[o++] = '/';
+    out[o] = 0;
+    strcpy(path, out);
+}
+
+/* A directory: the file selection box showing directories only. */
+bool App::ask_dir(const char* title, const char* start, ttr::Str* out)
+{
+    Arg a[1];
+    XtSetArg(a[0], XmNfileTypeMask, XmFILE_DIRECTORY);
+    Widget dlg = XmCreateFileSelectionDialog(top_, (char*)"dirDialog", a, 1);
+    XtVaSetValues(XtParent(dlg), XmNtitle, title, (char*)0);
+    XtVaSetValues(dlg, XmNdialogStyle, XmDIALOG_FULL_APPLICATION_MODAL, (char*)0);
+    XtUnmanageChild(child(dlg, "Help"));
+    /* In the current workspace: its "." entry, selected as the box
+     * opens, is the workspace itself; a subdirectory is a click away. */
+    char mask[2100];
+    snprintf(mask, sizeof(mask), "%s/*", strcmp(start, "/") == 0 ? "" : start);
+    XmString m = XmStringCreateLocalized(mask);
+    XtVaSetValues(dlg, XmNdirMask, m, (char*)0);
+    XmStringFree(m);
+    XmFileSelectionDoSearch(dlg, 0);
+    XtAddCallback(dlg, XmNokCallback, answer_cb, (XtPointer)0);
+    XtAddCallback(dlg, XmNcancelCallback, answer_cb, (XtPointer)2);
+    answer_ = -1;
+    XtManageChild(dlg);
+    XtAppContext ctx = XtWidgetToApplicationContext(top_);
+    while (answer_ < 0 && XtIsManaged(dlg))
+        XtAppProcessEvent(ctx, XtIMAll);
+    bool ok = false;
+    if (answer_ == 0) {
+        char* v = XmTextFieldGetString(child(dlg, "Text"));
+        char path[2048];
+        snprintf(path, sizeof(path), "%s", v ? v : "");
+        XtFree(v);
+        normalize_path(path);
+        struct stat st;
+        ok = path[0] == '/' && stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+        if (ok)
+            *out = path;
+        else
+            error("%s is not a directory.", path, 0);
+    }
+    XtDestroyWidget(XtParent(dlg));
+    return ok;
+}
+
 bool App::ask_text(const char* title, const char* label, ttr::Str* out)
 {
     Widget dlg = XmCreatePromptDialog(top_, (char*)"prompt", 0, 0);
@@ -1370,6 +1480,12 @@ void App::command(int cmd)
         ttr::Str p;
         if (ask_file("Open", d && !d->path.empty() ? d->path.c_str() : root_.c_str(), &p))
             open_file(p.c_str());
+        break;
+    }
+    case CMD_OPEN_WORKSPACE: {
+        ttr::Str p;
+        if (ask_dir("Open Workspace", root_.c_str(), &p))
+            open_workspace(p.c_str());
         break;
     }
     case CMD_SAVE:

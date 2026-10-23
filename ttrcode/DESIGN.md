@@ -133,7 +133,11 @@ The mouse:
 ## 3. The workspace tree
 
 - The workspace is a directory: the command-line argument, or the
-  current directory.
+  current directory. File > Open Workspace... changes it (a file
+  selection box showing directories). Open documents stay open. The
+  terminal's shell gets a `cd` only when it is at its prompt (the pty's
+  foreground process group is the shell's own, `TermPane::at_prompt`), so
+  a running command never receives typed text.
 - The tree is an XmList with indented names:
   - Directories come first and open or close with Enter or a double
     click.

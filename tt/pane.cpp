@@ -398,6 +398,11 @@ void TermPane::spawn(int cols, int rows)
                            (XtPointer)XtInputReadMask, in_ready, (XtPointer)this);
 }
 
+bool TermPane::at_prompt() const
+{
+    return running_ && pty_.foreground_group() == proc_.pid();
+}
+
 void TermPane::hangup(int ms)
 {
     if (!running_)

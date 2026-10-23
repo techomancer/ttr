@@ -89,6 +89,11 @@ public:
      * realizing, in case the first resize came too early). */
     void start();
     bool running() const { return running_; }
+    /* The program itself is in the foreground (for a shell: at its
+     * prompt, not running a command). */
+    bool at_prompt() const;
+    /* Bytes to the program, as if typed. */
+    void send(const char* s, size_t n) { write_pty((const uint8_t*)s, n); }
     /* SIGHUP to the program's process group, waiting up to ms for it. */
     void hangup(int ms);
     void focus();

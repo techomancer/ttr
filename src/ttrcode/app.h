@@ -62,7 +62,7 @@ ttr::Str settings_path();
 const char* ttr_theme();
 
 enum Command {
-    CMD_NEW, CMD_OPEN, CMD_SAVE, CMD_SAVE_AS, CMD_SAVE_ALL, CMD_CLOSE, CMD_EXIT,
+    CMD_NEW, CMD_OPEN, CMD_OPEN_WORKSPACE, CMD_SAVE, CMD_SAVE_AS, CMD_SAVE_ALL, CMD_CLOSE, CMD_EXIT,
     CMD_UNDO, CMD_REDO, CMD_CUT, CMD_COPY, CMD_PASTE, CMD_DELETE, CMD_SELECT_ALL,
     CMD_FIND, CMD_FIND_NEXT, CMD_FIND_PREV, CMD_REPLACE, CMD_GOTO,
     CMD_VIEW_WORKSPACE, CMD_VIEW_BOTTOM, CMD_VIEW_FULLSCREEN, CMD_VIEW_LINE_NUMBERS,
@@ -77,6 +77,9 @@ public:
     /* After XtRealizeWidget: start the terminal, focus the editor. */
     void realized();
     void open_file(const char* path);
+    /* The tree shows 'dir', and the terminal goes there if its shell is
+     * at the prompt. */
+    void open_workspace(const char* dir);
     void command(int cmd);
     void quit();
 
@@ -128,6 +131,7 @@ private:
     int ask_save(Doc* d);           /* 0 save, 1 discard, 2 cancel */
     bool ask_file(const char* title, const char* start, ttr::Str* out);
     bool ask_text(const char* title, const char* label, ttr::Str* out);
+    bool ask_dir(const char* title, const char* start, ttr::Str* out);
     void find(bool forward);
     void show_find(bool replace);
     void set_fullscreen(bool on);

@@ -637,7 +637,11 @@ opens a directory or a file), tabs over the editor, a terminal running
 your shell in the workspace below, and the line, column and line ends in
 the status bar. The editor takes all the room the side panes leave; drag
 the dividers between them to change their size, which ttrcode remembers.
-A tab's x button (or a middle click on the tab) closes the file. Names
+A tab's x button (or a middle click on the tab) closes the file. File >
+Open Workspace... switches the tree to another directory (the box opens in
+the current workspace: OK keeps it, a directory in the list goes there);
+open files stay open, and the terminal's shell changes to the new
+directory too if it is at its prompt, not when a command is running. Names
 starting with a dot and build output directories (`build`, `build-*`)
 are not shown in the tree.
 
