@@ -41,7 +41,11 @@ A view is one window onto a document. A document can have several views
 - Commands: typing (replaces the selection), Enter with auto-indent,
   Backspace, Delete, Tab (with several lines selected, Tab indents them
   and Shift+Tab outdents them), delete line, copy, cut, paste, find,
-  replace all, go to line, undo and redo.
+  replace all, go to line, undo and redo, and selecting the word at a
+  position (a double click).
+- Settings: `tab_width` (the columns a tab character shows as),
+  `indent_width` (how far Tab indents with spaces; 0 means the tab
+  width), `insert_spaces` and `auto_indent`.
 - mc's blocks: `mark_block()` turns the selection into a block that stays
   where it is while the cursor moves. F5 and F6 copy or move the block to
   the cursor, and the copy becomes the new block. Any other edit drops

@@ -103,7 +103,7 @@ OBJS = $(B)/main.o \
 	$(B)/x11_wm.o \
 	$(B)/x11_xpainter.o
 
-all: $(B)/ttr $(B)/ttrt $(B)/ttrc
+all: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttrcode
 
 $(B)/ttr: $(OBJS)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
@@ -442,6 +442,28 @@ $(B)/ttrt_settingsdlg.o: $(B)/.dir src/ttrt/settingsdlg.cpp $(TTRT_H) \
 		src/shell/colorpicker.h $(CORE_H)
 	$(COMPILE) -c src/ttrt/settingsdlg.cpp -o $@
 
+# ttrcode, the code editor (ttrcode/DESIGN.md): te + tw + tt in Motif.
+TTRCODE_OBJS = $(B)/ttrcode_main.o \
+	$(B)/ttrcode_app.o \
+	$(B)/ttrcode_editsource.o \
+	$(B)/core_str.o
+TTRCODE_H = src/ttrcode/app.h src/ttrcode/editsource.h $(TE_H) $(TT_H) src/core/str.h \
+	src/core/vector.h
+
+ttrcode: $(B)/ttrcode
+
+$(B)/ttrcode: $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a \
+		$(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(LIBS)
+
+$(B)/ttrcode_main.o: $(B)/.dir src/ttrcode/main.cpp $(TTRCODE_H)
+	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrcode/main.cpp -o $@
+$(B)/ttrcode_app.o: $(B)/.dir src/ttrcode/app.cpp $(TTRCODE_H)
+	$(COMPILE) -c src/ttrcode/app.cpp -o $@
+$(B)/ttrcode_editsource.o: $(B)/.dir src/ttrcode/editsource.cpp src/ttrcode/editsource.h \
+		$(TE_H) tw/tw.h
+	$(COMPILE) -c src/ttrcode/editsource.cpp -o $@
+
 $(B)/tl_charset.o: $(B)/.dir tl/charset.cpp tl/charset.h tl/port.h
 	$(COMPILE) -c tl/charset.cpp -o $@
 $(B)/tl_grid.o: $(B)/.dir tl/grid.cpp tl/grid.h tl/port.h
@@ -650,7 +672,7 @@ asan:
 # A running ttr cannot be overwritten ("Text file busy"), but it can be
 # renamed: the old one becomes ttr.old and keeps running, and Restart ttr
 # starts the new one.
-install: $(B)/ttr $(B)/ttrt $(B)/ttrc
+install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttrcode
 	mkdir -p $(DESTDIR)$(BINDIR) $(DESTDIR)$(XSESSIONDIR)
 	if [ -f $(DESTDIR)$(BINDIR)/ttr ]; then \
 		mv -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old; fi
@@ -662,6 +684,9 @@ install: $(B)/ttr $(B)/ttrt $(B)/ttrc
 	rm -f $(DESTDIR)$(BINDIR)/ttrc
 	cp $(B)/ttrc $(DESTDIR)$(BINDIR)/ttrc
 	chmod 755 $(DESTDIR)$(BINDIR)/ttrc
+	rm -f $(DESTDIR)$(BINDIR)/ttrcode
+	cp $(B)/ttrcode $(DESTDIR)$(BINDIR)/ttrcode
+	chmod 755 $(DESTDIR)$(BINDIR)/ttrcode
 	mkdir -p $(DESTDIR)$(TTRC_DATADIR)
 	cp data/ttrc/tc.sh data/ttrc/tc.csh $(DESTDIR)$(TTRC_DATADIR)
 	chmod 644 $(DESTDIR)$(TTRC_DATADIR)/tc.sh $(DESTDIR)$(TTRC_DATADIR)/tc.csh
@@ -692,7 +717,7 @@ install: $(B)/ttr $(B)/ttrt $(B)/ttrc
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old \
 		$(DESTDIR)$(BINDIR)/ttrt $(DESTDIR)$(BINDIR)/ttr-session \
-		$(DESTDIR)$(BINDIR)/ttrc \
+		$(DESTDIR)$(BINDIR)/ttrc $(DESTDIR)$(BINDIR)/ttrcode \
 		$(DESTDIR)$(TERMINFO_DIR)/t/ttrt \
 		$(DESTDIR)/usr/share/terminfo/t/ttrt \
 		$(DESTDIR)/usr/share/lib/terminfo/t/ttrt \

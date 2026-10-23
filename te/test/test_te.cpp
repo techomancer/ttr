@@ -262,6 +262,18 @@ static void test_editing()
     v.tab_width = 4;
     v.tab(false);
     CHECK_TEXT(d, "\t    a\nb\nc");     /* the tab is 4 columns now: 4 to 8 */
+    /* Tabs shown 8 wide, indenting by 4 spaces. */
+    load(d, "x");
+    v.tab_width = 8;
+    v.indent_width = 4;
+    v.set_cursor(te::Pos(0, 0), false);
+    v.tab(false);
+    CHECK_TEXT(d, "    x");
+    v.tab(false);
+    CHECK_TEXT(d, "        x");
+    v.tab(true);
+    CHECK_TEXT(d, "    x");
+    v.indent_width = 0;
     v.insert_spaces = false;
     v.tab_width = 8;
     load(d, "a\nb\nc");
@@ -441,6 +453,21 @@ static void test_layout()
     CHECK(row[x - 1].cp == 'z');
 }
 
+static void test_select_word()
+{
+    te::Document d;
+    load(d, "int foo_bar = 1;\n");
+    te::View v(d);
+    v.select_word(te::Pos(0, 6));
+    CHECK_POS(v.anchor(), 0, 4);
+    CHECK_POS(v.cursor(), 0, 11);
+    v.select_word(te::Pos(0, 12));
+    CHECK_POS(v.anchor(), 0, 12);
+    CHECK_POS(v.cursor(), 0, 13);
+    v.select_word(te::Pos(0, 16));      /* the line end: nothing */
+    CHECK(!v.has_selection());
+}
+
 static void test_view_find()
 {
     te::Document d;
@@ -472,6 +499,7 @@ int main()
     test_editing();
     test_blocks();
     test_layout();
+    test_select_word();
     test_view_find();
     printf("te: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

@@ -50,6 +50,7 @@ public:
 
     /* Settings */
     int tab_width;          /* columns per tab stop (8) */
+    int indent_width;       /* columns per indent with spaces (0: tab_width) */
     bool insert_spaces;     /* Tab inserts spaces instead of a tab */
     bool auto_indent;       /* Enter keeps the line's indentation */
 
@@ -68,6 +69,9 @@ public:
     void set_cursor(Pos p, bool extend);
     void set_anchor(Pos p) { anchor_ = doc_.clamp(p); }
     void select_all();
+    /* The word at p (a double click); a single character if p is not in
+     * a word. */
+    void select_word(Pos p);
     void clear_selection() { anchor_ = cur_; }
 
     /* Commands */
@@ -118,6 +122,7 @@ public:
     bool screen_cursor(int* x, int* y) const;
 
 private:
+    int indent() const { return indent_width > 0 ? indent_width : tab_width > 0 ? tab_width : 8; }
     Pos next_char(Pos p) const;
     Pos prev_char(Pos p) const;
     void erase_selection();

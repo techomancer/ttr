@@ -62,7 +62,7 @@ bool is_word(uint32_t cp)
 } /* namespace */
 
 View::View(Document& doc)
-    : tab_width(8), insert_spaces(false), auto_indent(true), doc_(doc), want_col_(0), top_(0),
+    : tab_width(8), indent_width(0), insert_spaces(false), auto_indent(true), doc_(doc), want_col_(0), top_(0),
       left_(0), cols_(80), rows_(24), found_(false), block_(false), block_version_(0)
 {
 }
@@ -138,6 +138,39 @@ void View::select_all()
     anchor_ = Pos(0, 0);
     cur_ = doc_.end();
     want_col_ = column_of(cur_);
+}
+
+void View::select_word(Pos p)
+{
+    p = doc_.clamp(p);
+    const char* s = doc_.line(p.line);
+    size_t len = doc_.length(p.line);
+    uint32_t cp = ' ';
+    if (p.col < len)
+        decode(s + p.col, len - p.col, &cp);
+    if (!is_word(cp)) {
+        move_to(p, false, false);
+        move_to(next_char(p), true, false);
+        if (cur_.line != p.line)
+            move_to(p, false, false);
+        return;
+    }
+    Pos a = p, b = p;
+    while (a.col > 0) {
+        Pos q = prev_char(a);
+        decode(s + q.col, len - q.col, &cp);
+        if (!is_word(cp))
+            break;
+        a = q;
+    }
+    while (b.col < len) {
+        decode(s + b.col, len - b.col, &cp);
+        if (!is_word(cp))
+            break;
+        b = next_char(b);
+    }
+    move_to(a, false, false);
+    move_to(b, true, false);
 }
 
 void View::move(Move m, bool extend)
@@ -323,7 +356,7 @@ void View::tab(bool shift)
                     continue;
                 if (insert_spaces) {
                     char sp[64];
-                    int n = tab_width < 64 ? tab_width : 63;
+                    int n = indent() < 64 ? indent() : 63;
                     memset(sp, ' ', (size_t)n);
                     doc_.insert(Pos(l, 0), sp, (size_t)n);
                 } else {
@@ -335,7 +368,7 @@ void View::tab(bool shift)
                 if (doc_.length(l) > 0 && s[0] == '\t')
                     n = 1;
                 else
-                    while (n < doc_.length(l) && (int)n < tab_width && s[n] == ' ')
+                    while (n < doc_.length(l) && (int)n < indent() && s[n] == ' ')
                         n++;
                 if (n)
                     doc_.erase(Pos(l, 0), Pos(l, n));
@@ -362,7 +395,7 @@ void View::tab(bool shift)
             if (doc_.length(keep.line) > 0 && s[0] == '\t')
                 n = 1;
             else
-                while (n < doc_.length(keep.line) && (int)n < tab_width && s[n] == ' ')
+                while (n < doc_.length(keep.line) && (int)n < indent() && s[n] == ' ')
                     n++;
             if (n)
                 doc_.erase(Pos(keep.line, 0), Pos(keep.line, n));
@@ -375,7 +408,7 @@ void View::tab(bool shift)
     }
     if (insert_spaces) {
         int col = column_of(cur_);
-        int n = tab_width - col % tab_width;
+        int n = indent() - col % indent();
         char sp[64];
         if (n > 63)
             n = 63;

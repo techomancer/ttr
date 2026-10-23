@@ -52,6 +52,9 @@ run as a window manager there yet. A Wayland mode is planned for later
 - **ttrc**, To The Roots Commander, a two-panel file manager for any
   terminal in the Norton Commander tradition (early; see "The file
   manager" below).
+- **ttrcode**, a Motif code editor in the spirit of Visual Studio 6:
+  a workspace tree, tabs, a terminal pane and full screen with F11
+  (early; see "The code editor" below).
 
 ## Building
 
@@ -84,8 +87,9 @@ make
 
 In a checkout made without `--recursive`, run
 `git submodule update --init` first (the submodules bring nanosvg and
-ttrt's Unicode fonts). The programs are `build/ttr` and
-`build/ttrt`, the terminal.
+ttrt's Unicode fonts). The programs are `build/ttr`,
+`build/ttrt` (the terminal), `build/ttrc` (the file manager) and
+`build/ttrcode` (the code editor).
 
 Other build options:
 
@@ -149,6 +153,7 @@ This installs:
 | `/usr/bin/ttr` | the window manager and desktop |
 | `/usr/bin/ttrt` | the terminal |
 | `/usr/bin/ttrc` | the file manager |
+| `/usr/bin/ttrcode` | the code editor |
 | `/usr/share/ttrc/tc.sh`, `tc.csh` | the `tc` command for your shell (see "The file manager") |
 | `/usr/share/ttr/fonts/` | ttrt's Unicode fonts (public domain misc-fixed BDF) |
 | `/usr/share/terminfo/t/ttrt` | ttrt's terminfo entry (`/usr/share/lib/terminfo` on IRIX; packages built with `DESTDIR` set `TERMINFO_DIR`) |
@@ -611,6 +616,84 @@ In both, `%f` is the file under the cursor, `%F` the other panel's, `%d`
 and `%D` the panels' directories, `%s` the marked files (or the one under
 the cursor) and `%t` only the marked ones, all quoted for your shell;
 `%%` is a percent sign.
+
+### The code editor (ttrcode)
+
+ttrcode is a code editor for X in the manner of Visual Studio 6.0: it
+starts at once, never makes you wait while typing, and every key always
+does the same thing. Its text is drawn by ttrt's renderer, its editing is
+the same core (te) as ttrc's editor, and its terminal pane is a ttrt
+terminal.
+
+```sh
+ttrcode                     # the current directory as the workspace
+ttrcode ~/src/project main.c util.c
+ttrcode -fn 9x15 file.txt
+```
+
+The window has the workspace tree on the left (Enter or a double click
+opens a directory or a file), tabs over the editor, a terminal running
+your shell in the workspace below, and the line, column and line ends in
+the status bar. Drag the sashes to resize the panes. Names starting with
+a dot and build output directories (`build`, `build-*`) are not shown in
+the tree.
+
+| Key | Does |
+|---|---|
+| arrows, Home, End, PgUp, PgDn | move (Shift selects); Home goes to the first non-blank, then column 0 |
+| Ctrl+Left, Ctrl+Right | a word left or right |
+| Ctrl+Home, Ctrl+End | start, end of the file |
+| Ctrl+Up, Ctrl+Down | scroll without moving the caret |
+| Tab, Shift+Tab | indent; with lines selected, indent or outdent them |
+| Ctrl+Z, Ctrl+Y | undo, redo (also Alt+Backspace and Ctrl+Shift+Z) |
+| Ctrl+X, Ctrl+C, Ctrl+V | cut, copy, paste (also Shift+Del, Ctrl+Ins, Shift+Ins) |
+| Ctrl+A | select all |
+| Ctrl+L, Ctrl+Shift+L | cut the line, delete the line |
+| Ctrl+Backspace, Ctrl+Del | delete a word left, right |
+| Ctrl+F, F3, Shift+F3 | find, find next, find previous |
+| Ctrl+H | replace |
+| Ctrl+G | go to line |
+| Ctrl+N, Ctrl+O, Ctrl+S | new, open, save |
+| Ctrl+F4 | close the file (asks about unsaved changes) |
+| Ctrl+Tab, Ctrl+Shift+Tab | next, previous file |
+| Alt+0, Alt+2 | show or hide the workspace, the terminal pane |
+| Ctrl+` | to the terminal and back |
+| F11 | full screen with only the text (F11 or Esc to come back) |
+
+With the mouse: click to place the caret, drag to select (past the edge
+scrolls), double-click selects a word, triple-click or a click in the line
+numbers selects the line, Shift+click extends, the middle button pastes
+the X selection, and the wheel scrolls.
+
+In the terminal pane every key goes to the shell except F11, Alt+0,
+Alt+2, Ctrl+` and Ctrl+Tab; the menus' Alt+letter keys are off while it
+has the focus. When the shell ends, Enter starts a new one.
+
+Files are saved through a new file that replaces the old one, so a full
+disk never leaves half a file; the file's permissions are kept, and a
+symbolic link is written through. Files with CRLF line ends stay that
+way. When a file changes on disk and has no unsaved changes, ttrcode
+reloads it when its window gets the focus again.
+
+Settings are X resources for now (a settings dialog comes later), for
+example in `~/.Xresources`:
+
+```
+TTRcode.font: -misc-fixed-medium-r-normal--15-140-75-75-c-90-iso10646-1
+TTRcode.tabWidth: 8
+TTRcode.indentWidth: 4
+TTRcode.insertSpaces: true
+TTRcode.lineNumbers: true
+TTRcode.textForeground: black
+TTRcode.textBackground: white
+TTRcode.selectForeground: white
+TTRcode.selectBackground: #000080
+TTRcode.gutterForeground: #808080
+TTRcode.gutterBackground: #f0f0f0
+TTRcode.cursorColor: black
+```
+
+The plan is in [ttrcode/DESIGN.md](ttrcode/DESIGN.md).
 
 ### High-resolution screens
 
