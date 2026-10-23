@@ -295,7 +295,18 @@ TermPane::~TermPane()
         XtRemoveTimeOut(bell_id_);
     if (autoscroll_id_)
         XtRemoveTimeOut(autoscroll_id_);
+    /* Xt destroys widgets at the end of the event: until then nothing in
+     * them may reach this pane or its source. */
     XtVaSetValues(grid_, XmNuserData, (XtPointer)0, (char*)0);
+    TwGridSetSource(grid_, 0);
+    XtRemoveAllCallbacks(grid_, TwNinputCallback);
+    XtRemoveAllCallbacks(grid_, TwNpointerCallback);
+    XtRemoveAllCallbacks(grid_, TwNresizeCallback);
+    XtRemoveAllCallbacks(grid_, TwNfocusCallback);
+    if (scroll_) {
+        XtRemoveAllCallbacks(scroll_, XmNvalueChangedCallback);
+        XtRemoveAllCallbacks(scroll_, XmNdragCallback);
+    }
     XtDestroyWidget(form_);
     pty_.close();
     free_list(argv_);

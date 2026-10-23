@@ -166,6 +166,11 @@ void theme_cb(Widget, XtPointer data, XtPointer call)
         g_app->theme_chosen((int)(long)data);
 }
 
+void restart_terminal_cb(XtPointer, XtIntervalId*)
+{
+    g_app->restart_terminal();
+}
+
 void sash_handler(Widget w, XtPointer, XEvent* ev, Boolean*)
 {
     g_app->sash_event(w, ev);
@@ -414,7 +419,8 @@ void App::build_layout()
 
     /* The workspace. */
     tree_box_ = XtVaCreateWidget("workspace", xmFormWidgetClass, body_,
-                                 XmNwidth, (Dimension)tree_w_, (char*)0);
+                                 XmNwidth, (Dimension)tree_w_,
+                                 XmNresizePolicy, XmRESIZE_NONE, (char*)0);
     Widget title = XtVaCreateManagedWidget("Workspace", xmLabelWidgetClass, tree_box_,
                                            XmNalignment, XmALIGNMENT_BEGINNING,
                                            XmNtopAttachment, XmATTACH_FORM,
@@ -442,8 +448,11 @@ void App::build_layout()
 
     /* Right of it: the editor over the bottom pane. */
     right_ = XtVaCreateManagedWidget("right", xmFormWidgetClass, body_, (char*)0);
+    /* The slots' sizes are ours (the sashes'), not their children's: a
+     * terminal pane being replaced must not shrink its slot to nothing. */
     bottom_slot_ = XtVaCreateManagedWidget("bottom", xmFormWidgetClass, right_,
-                                           XmNheight, (Dimension)bottom_h_, (char*)0);
+                                           XmNheight, (Dimension)bottom_h_,
+                                           XmNresizePolicy, XmRESIZE_NONE, (char*)0);
     bottom_sash_ = XtVaCreateManagedWidget("bottomSash", xmSeparatorWidgetClass, right_,
                                            XmNorientation, XmHORIZONTAL,
                                            XmNseparatorType, XmSHADOW_ETCHED_OUT,
@@ -1956,13 +1965,23 @@ bool App::pane_key(tt::TermPane* p, TwGridCallbackStruct* cb)
     if (global_key(cb->keysym, cb->state))
         return true;
     if (!p->running() && (cb->keysym == XK_Return || cb->keysym == XK_KP_Enter)) {
-        delete term_;
-        term_ = 0;
-        make_terminal();
-        term_->focus();
+        /* Not from inside the pane's own key callback: it would be
+         * deleted under it. */
+        XtAppAddTimeOut(XtWidgetToApplicationContext(top_), 0, restart_terminal_cb, 0);
         return true;
     }
     return false;
+}
+
+void App::restart_terminal()
+{
+    if (!term_ || term_->running())
+        return;
+    delete term_;
+    term_ = 0;
+    make_terminal();
+    layout();
+    term_->focus();
 }
 
 void App::pane_focus(tt::TermPane*, bool in)

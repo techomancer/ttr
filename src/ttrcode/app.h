@@ -100,6 +100,7 @@ public:
                    int format, bool second_try);
     void focus_changed_window();
     void scheme_chosen(int i);
+    void restart_terminal();
     void theme_chosen(int i);
 
     /* tt::PaneHost */
