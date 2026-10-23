@@ -22,6 +22,11 @@
 
 namespace ttrc {
 
+/* argv[0], to find the ttre next to this ttrc (an uninstalled build). */
+void set_program_path(const char* argv0);
+/* ttre: next to ttrc if there is one, else found in $PATH. */
+ttr::Str ttre_path();
+
 class App {
 public:
     App(tu::Term& term, const tf::Path& left, const tf::Path& right, bool dirs_given);
@@ -104,7 +109,9 @@ private:
     void cmd_appearance();
     void save_setup();
     bool open_file(const Entry& e);
-    void run_tool(FullScreen* tool, Editor* editor);
+    void run_tool(FullScreen* tool);
+    /* The command F4 runs for a file: ttre or $EDITOR. */
+    ttr::Str editor_command(const char* file);
     void cmd_new_file();
     /* Opening a big archive: a progress dialog, Esc stops it. */
     static bool archive_progress_cb(void* ctx, const char* what, uint64_t done, uint64_t total);
@@ -142,6 +149,7 @@ private:
     bool syncing_;
     long sync_started_, cmd_started_;
     ttr::Str pending_cmd_;
+    ttr::Str queued_cmd_;       /* asked for before the shell was ready */
     ttr::Str prompt_;           /* the shell's prompt, when last idle */
     bool prompt_known_;
     ttr::Vector<ttr::Str> history_;

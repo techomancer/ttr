@@ -62,8 +62,10 @@ A view is one window onto a document. A document can have several views
   The host picks the colours for each kind.
 - `follow()` scrolls the cursor into view. Hosts call it after commands.
 
-The host owns everything else: files (ttrc reads and writes them through
-tf), the clipboard, key bindings, dialogs and drawing.
+The host owns everything else: the clipboard, key bindings, dialogs and
+drawing. `te/file.h` loads a document from a file and saves it through a
+new file renamed over the old one, for the hosts that edit local files:
+ttre and ttrcode.
 
 ## Syntax (`te/syntax.h`)
 

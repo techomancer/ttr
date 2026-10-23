@@ -7,12 +7,13 @@
  * The workspace is searched in this process, file by file. Open documents
  * are searched as they are in the editor, unsaved changes included, and
  * replaced there (undoably). Other files are read, and written back
- * through save_text when something was replaced. Hidden files, build
+ * through te::save_file when something was replaced. Hidden files, build
  * directories, binary files (a NUL in the first 8 KB) and files over 16 MB
  * are skipped.
  */
 #include "app.h"
 
+#include "../../te/file.h"
 #include "../../tw/grid_widget.h"
 
 #include <ctype.h>
@@ -658,7 +659,7 @@ void App::replace_in_files(const char* what, const char* with, const char* dir,
         text.set_text(data, len);
         free(data);
         int k = text.replace_all(what, with, match_case, whole);
-        if (k > 0 && save_text(text, path, 0) != 0)
+        if (k > 0 && te::save_file(text, path, 0) != 0)
             failed++;
         else
             replaced += k;

@@ -173,7 +173,8 @@ Term::Term()
     : in_fd_(-1), out_fd_(-1), have_saved_(false), started_(false), cols_(80), rows_(24),
       tier_(TIER_BASIC), colors_(0), utf8_(false), am_(false), xenl_(false), bce_(false),
       xterm_like_(false), truecolor_(false), acs_on_(false), cx_(-1), cy_(-1),
-      pen_known_(false), cursor_shown_(true), buf_(0), len_(0), cap_(0)
+      pen_known_(false), cursor_shown_(true), cursor_style_(0), cursor_color_(-1), buf_(0),
+      len_(0), cap_(0)
 {
     memset(acs_, 0, sizeof(acs_));
 }
@@ -353,6 +354,15 @@ void Term::resume_ui(bool enter_alt)
     }
     cursor_shown_ = true;
     show_cursor(false);
+    /* What set_cursor_* chose, again. */
+    int st = cursor_style_;
+    long co = cursor_color_;
+    cursor_style_ = 0;
+    cursor_color_ = -1;
+    if (st)
+        set_cursor_shape((CursorShape)((st + 1) / 2), st % 2 == 1);
+    if (co >= 0)
+        set_cursor_color(co);
     acs_on_ = false;
     pen_known_ = false;
     cx_ = cy_ = -1;
@@ -367,6 +377,17 @@ void Term::suspend_ui(bool leave_alt)
     if (xterm_like_)
         out("\033[?2004l\033[?1006l\033[?1000l");
     show_cursor(true);
+    /* The terminal's own cursor back, but remember ours for resume_ui. */
+    int st = cursor_style_;
+    long co = cursor_color_;
+    if (st) {
+        set_cursor_shape(CURSOR_DEFAULT, true);
+        cursor_style_ = st;
+    }
+    if (co >= 0) {
+        set_cursor_color(-1);
+        cursor_color_ = co;
+    }
     cap("rmkx");
     if (leave_alt)
         cap("rmcup");
@@ -660,6 +681,44 @@ void Term::show_cursor(bool on)
         return;
     cap(on ? "cnorm" : "civis");
     cursor_shown_ = on;
+}
+
+void Term::set_cursor_shape(CursorShape shape, bool blink)
+{
+    /* DECSCUSR: 1 blinking block, 2 block, 3/4 underline, 5/6 bar; 0 the
+     * terminal's default. */
+    int n = shape == CURSOR_BLOCK ? 1 : shape == CURSOR_UNDERLINE ? 3 : shape == CURSOR_BAR ? 5 : 0;
+    if (n && !blink)
+        n++;
+    if (n == cursor_style_)
+        return;
+    const char* ss = ti_.str("Ss");
+    const char* se = ti_.str("Se");
+    char b[64];
+    if (n == 0 && se)
+        cap_str(se);
+    else if (ss && tparm1(b, sizeof(b), ss, n) > 0)
+        out(b);
+    else if (xterm_like_) {
+        sprintf(b, "\033[%d q", n);
+        out(b);
+    } else {
+        return;                 /* the terminal cannot */
+    }
+    cursor_style_ = n;
+}
+
+void Term::set_cursor_color(long rgb)
+{
+    if (!xterm_like_ || rgb == cursor_color_)
+        return;
+    char b[64];
+    if (rgb < 0)
+        strcpy(b, "\033]112\007");
+    else
+        sprintf(b, "\033]12;#%06lx\007", rgb & 0xffffffL);
+    out(b);
+    cursor_color_ = rgb;
 }
 
 void Term::begin_sync()

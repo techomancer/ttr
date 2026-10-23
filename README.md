@@ -52,6 +52,8 @@ run as a window manager there yet. A Wayland mode is planned for later
 - **ttrc**, To The Roots Commander, a two-panel file manager for any
   terminal in the Norton Commander tradition (early; see "The file
   manager" below).
+- **ttre**, a text editor for any terminal: ttrc's F4, and usable as your
+  `$EDITOR` (see "The editor" below).
 - **ttrcode**, a Motif code editor in the spirit of Visual Studio 6:
   a workspace tree, tabs, a terminal pane and full screen with F11
   (early; see "The code editor" below).
@@ -88,8 +90,8 @@ make
 In a checkout made without `--recursive`, run
 `git submodule update --init` first (the submodules bring nanosvg and
 ttrt's Unicode fonts). The programs are `build/ttr`,
-`build/ttrt` (the terminal), `build/ttrc` (the file manager) and
-`build/ttrcode` (the code editor).
+`build/ttrt` (the terminal), `build/ttrc` (the file manager), `build/ttre`
+(the text editor) and `build/ttrcode` (the code editor).
 
 Other build options:
 
@@ -153,6 +155,7 @@ This installs:
 | `/usr/bin/ttr` | the window manager and desktop |
 | `/usr/bin/ttrt` | the terminal |
 | `/usr/bin/ttrc` | the file manager |
+| `/usr/bin/ttre` | the text editor (ttrc's F4) |
 | `/usr/bin/ttrcode` | the code editor |
 | `/usr/share/ttrc/tc.sh`, `tc.csh` | the `tc` command for your shell (see "The file manager") |
 | `/usr/share/ttr/fonts/` | ttrt's Unicode fonts (public domain misc-fixed BDF) |
@@ -529,18 +532,11 @@ which ttrc removes when it quits.
 
 **Viewer and editor.** F3 shows a file in ttrc's viewer (text, wrapped
 or not, or hex; F7 or `/` searches, `n` finds the next, `q` quits); it
-also reads files inside archives. F4 edits in ttrc's editor: type as
-usual, F2 saves, Shift+F2 saves under another name. F3 starts a block and
-F3 again marks it (a Shift selection works too); the block stays put
-while you move the cursor, F5 copies it to the cursor, F6 moves it there
-and F8 deletes it. F7 searches, Shift+F7 finds the next, F4 replaces,
-Ctrl+U undoes, Alt+R redoes, Ctrl+Y deletes a line, Ctrl+arrows move by
-words, Home goes to the first non-blank and then to column 0, Tab and
-Shift+Tab indent and outdent the selected lines (or the marked block,
-which stays marked), Ctrl+Insert,
-Shift+Delete and Shift+Insert copy, cut and paste, and Esc or F10
-closes. Undoing back to the saved text counts as unchanged. Options >
-Configuration switches either to your `$PAGER` and `$EDITOR` instead.
+also reads files inside archives. F4 edits the file in ttre, ttr's editor
+(see "The editor (ttre)" below), and Shift+F4 asks for the name of a new
+file to edit. A file in an archive is edited as a temporary copy. Options
+> Configuration switches F3 and F4 to your `$PAGER` and `$EDITOR` (or
+`$VISUAL`, or `vi`) instead.
 
 | Key | Does |
 |---|---|
@@ -622,6 +618,52 @@ In both, `%f` is the file under the cursor, `%F` the other panel's, `%d`
 and `%D` the panels' directories, `%s` the marked files (or the one under
 the cursor) and `%t` only the marked ones, all quoted for your shell;
 `%%` is a percent sign.
+
+### The editor (ttre)
+
+ttre edits one file in a terminal, with the editing, syntax colors and
+options of ttrcode's editor and the keys of mc's. ttrc's F4 runs it,
+and you can make it your `$EDITOR`:
+
+```sh
+ttre notes.txt
+ttre +120 src/main.c        # at line 120
+export EDITOR=ttre VISUAL=ttre
+```
+
+| Key | Does |
+|---|---|
+| F2, Shift+F2 (Ctrl+S) | save, save under another name |
+| F3 | start a block; F3 again marks it (Shift+arrows select too); it stays put while you move |
+| F5, F6, F8 | copy the block to the cursor, move it there, delete it |
+| Tab, Shift+Tab | indent; with a block or selected lines, indent or outdent them |
+| F7, Shift+F7, F4 | search (Match case, Whole words, Backwards), search again, replace all |
+| Alt+L (Ctrl+L) | go to a line |
+| Ctrl+U (Ctrl+Z), Alt+R | undo, redo |
+| Ctrl+Y | delete the line |
+| Ctrl+arrows, Home, End | word left or right; Home goes to the first non-blank, then column 0 |
+| Ctrl+Insert, Shift+Delete, Shift+Insert | copy, cut, paste |
+| F9 | the menu: File, Edit, Search, Options |
+| F1 | the keys |
+| F10, Esc | quit (asks about unsaved changes) |
+
+The mouse places the cursor, selects by dragging, selects a word with a
+double click, and scrolls with the wheel. Undoing back to the saved text
+counts as unchanged.
+
+F9 > Options > Editor sets:
+- the tab width, how far Tab indents, and whether it inserts spaces;
+- whether Enter keeps the indentation;
+- line numbers, the current line, and visible spaces and tabs;
+- the column marker (80; 0 for none);
+- the cursor's shape, blinking and color;
+- the colors: ttrc's themes for the bars and dialogs, and the text
+  either in the theme's colors or in one of the color schemes ttrcode
+  and ttrt use.
+
+They are saved in `~/.config/ttre/settings` (or
+`$XDG_CONFIG_HOME/ttre/`). C, C++, Python, shell scripts and makefiles get
+syntax colors, as in ttrcode.
 
 ### The code editor (ttrcode)
 

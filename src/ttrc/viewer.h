@@ -1,6 +1,6 @@
 /*
- * ttrc's viewer (F3) and editor (F4), full-screen on tu (ttrc/DESIGN.md
- * section 3.5). Both read through tf, so files inside archives open
+ * ttrc's viewer (F3), full-screen on tu (ttrc/DESIGN.md section 3.5).
+ * The editor (F4) is ttre, a program of its own. Both read through tf, so files inside archives open
  * without being extracted first. The host (the App) runs the loop: it
  * draws them, feeds them events, and answers their requests for a
  * dialog (search, go to line, save as, quit without saving?).
@@ -10,7 +10,6 @@
 
 #include "theme.h"
 
-#include "../../te/view.h"
 #include "../../tf/tf.h"
 #include "../../tu/input.h"
 #include "../../tu/screen.h"
@@ -24,11 +23,7 @@ enum ToolRequest {
     REQ_NONE,
     REQ_CLOSE,
     REQ_SEARCH,         /* ask for text, call search() */
-    REQ_GOTO,           /* ask for a line number, call goto_line() */
-    REQ_REPLACE,        /* editor: ask for two texts, call replace_all() */
-    REQ_SAVE,           /* editor: save where it came from */
-    REQ_SAVE_AS,        /* editor: ask for a path, call save() */
-    REQ_ASK_QUIT        /* editor: modified; ask save / discard / cancel */
+    REQ_GOTO            /* ask for a line number, call goto_line() */
 };
 
 class FullScreen {
@@ -81,39 +76,6 @@ private:
     long hex_top_;              /* first hex row */
     int rows_, width_, bpr_;    /* from the last draw */
     size_t hit_, hit_len_;
-    char last_search_[256];
-};
-
-/* The editor is tu drawing and mc's keys over te, the editing core it
- * shares with ttrcode. */
-class Editor : public FullScreen {
-public:
-    Editor();
-    ~Editor();
-    /* A new, empty file if it does not exist. 0 or an errno value. */
-    int load(tf::Fs* fs, const char* path);
-    /* Save to path (null: where it came from). 0 or an errno value. */
-    int save(const char* path);
-    bool modified() const { return doc_.modified(); }
-    const char* path() const { return path_.c_str(); }
-    void draw(tu::Screen& s, const Theme& t);
-    ToolRequest handle(const tu::Event& ev);
-    void search(const char* text);
-    void goto_line(long line);
-    int replace_all(const char* from, const char* to);
-
-private:
-    ToolRequest function_key(int n, bool shift);
-    void copy_selection();
-    void paste();
-
-    tf::Fs* fs_;
-    ttr::Str path_;
-    te::Document doc_;
-    te::View view_;
-    bool marking_;              /* F3 started a block; the next F3 ends it */
-    char* clip_;
-    size_t clip_len_;
     char last_search_[256];
 };
 

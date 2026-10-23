@@ -1,0 +1,13 @@
+# F9 opens the menu; Options > Editor shows the options; the syntax of
+# a C file is recognised.
+expect line one
+send \e[20~
+expect File
+send \e[C\e[C\e[C
+expect Editor...
+send \r
+expect Editor options
+send \e
+wait 300
+absent Editor options
+send \e[21~

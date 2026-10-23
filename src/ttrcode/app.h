@@ -88,9 +88,6 @@ struct Result {
     size_t col, len;
 };
 
-/* Write a document to path through a new file renamed over it (a
- * symbolic link is written through); 0 or an errno value. */
-int save_text(te::Document& text, const char* path, time_t* mtime);
 
 enum Command {
     CMD_NEW, CMD_OPEN, CMD_OPEN_WORKSPACE, CMD_SAVE, CMD_SAVE_AS, CMD_SAVE_ALL, CMD_CLOSE, CMD_EXIT,

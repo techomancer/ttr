@@ -2,10 +2,8 @@
 
 #include <string.h>
 
-namespace ttrc {
+namespace tu {
 
-using tu::Style;
-using tu::COLOR_DEFAULT;
 
 namespace {
 
@@ -215,4 +213,4 @@ Theme theme_for(tu::Tier tier, const char* name)
     return classic();
 }
 
-} /* namespace ttrc */
+} /* namespace tu */

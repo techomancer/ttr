@@ -20,6 +20,14 @@
 
 namespace tu {
 
+/* The cursor's look (DECSCUSR); CURSOR_DEFAULT is the terminal's own. */
+enum CursorShape {
+    CURSOR_DEFAULT,
+    CURSOR_BLOCK,
+    CURSOR_UNDERLINE,
+    CURSOR_BAR
+};
+
 class Term {
 public:
     Term();
@@ -85,6 +93,12 @@ public:
     bool clear_eol();
     void clear_screen();
     void show_cursor(bool on);
+    /* The cursor's shape and blinking, through terminfo's Ss or DECSCUSR
+     * on xterm-like terminals; its colour (0xRRGGBB, or -1 for the
+     * terminal's) through OSC 12. Both are put back when the screen is
+     * handed back (suspend_ui, stop). */
+    void set_cursor_shape(CursorShape shape, bool blink);
+    void set_cursor_color(long rgb);
     /* Wrap a frame's output so modern terminals show it at once. */
     void begin_sync();
     void end_sync();
@@ -118,6 +132,8 @@ private:
     Style pen_;
     bool pen_known_;
     bool cursor_shown_;
+    int cursor_style_;          /* the DECSCUSR number we set, 0: none */
+    long cursor_color_;         /* -1: the terminal's */
 
     char* buf_;
     size_t len_, cap_;

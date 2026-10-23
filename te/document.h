@@ -75,7 +75,11 @@ public:
     /* Modified since set_text() or the last mark_saved(); undoing back to
      * the saved state counts as unmodified. */
     bool modified() const { return saved_ != state(); }
-    void mark_saved() { saved_ = state(); }
+    void mark_saved()
+    {
+        saved_ = state();
+        merge_ok_ = false;      /* typing after a save is a new undo step */
+    }
     /* Changes with every edit, undo and redo (for renderers). */
     unsigned long version() const { return version_; }
     /* The first line changed since the last call, or -1 (for one

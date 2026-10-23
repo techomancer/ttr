@@ -1,0 +1,34 @@
+# Blocks: F3 marks one that stays while the cursor moves, F6 moves it,
+# F5 copies it, F8 deletes it; Tab indents the marked block; Enter keeps
+# the indentation.
+expect line one
+send \eOR
+send \e[B
+send \eOR
+send \e[1;5F
+send \e[17~
+expect line 2 of 3
+send A
+expect Aline one
+send \e[1;5H
+send \eOR
+send \e[C
+send \e[C
+send \e[C
+send \eOR
+send \e[19~
+expect e two
+send \e[1;5F
+send \r  ind\r
+expect line 5 of 5, column 3
+send \eOQ
+expect Saved.
+send \e[1;5H
+send \eOR
+send \e[B
+send \eOR
+send \t
+expect     e two
+send \eOQ
+expect Saved.
+send \e[21~

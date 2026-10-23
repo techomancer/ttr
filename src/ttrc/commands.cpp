@@ -1076,8 +1076,8 @@ ttr::Str App::local_file(const Entry& e)
     return ttr::Str(tf::Path(dir).child(e.name.c_str()).c_str());
 }
 
-/* F3 and F4 run the pager and editor until ttrc has its own. Files in
- * archives are seen (and edited) as a temporary copy. */
+/* F3: ttrc's viewer, which reads through tf (archives too), or $PAGER on
+ * a local copy. */
 void App::cmd_view()
 {
     const Entry* e = active()->current();
@@ -1092,7 +1092,7 @@ void App::cmd_view()
             show_error(m);
             return;
         }
-        run_tool(&v, 0);
+        run_tool(&v);
         return;
     }
     ttr::Str f = local_file(*e);
@@ -1104,36 +1104,35 @@ void App::cmd_view()
     run(c);
 }
 
+/* ttre, or $VISUAL / $EDITOR (vi) when the configuration says so, on the
+ * file in the shell. A file in an archive is edited as a temporary copy. */
+ttr::Str App::editor_command(const char* file)
+{
+    ttr::Str prog("");
+    if (config_.internal_editor) {
+        prog = quoted(ttre_path().c_str());
+    } else {
+        const char* ed = getenv("VISUAL");
+        if (!ed || !*ed)
+            ed = getenv("EDITOR");
+        prog = ed && *ed ? ed : "vi";
+    }
+    char c[4400];
+    snprintf(c, sizeof(c), "%s %s", prog.c_str(), quoted(file).c_str());
+    return ttr::Str(c);
+}
+
 void App::cmd_edit()
 {
     const Entry* e = active()->current();
     if (!e || e->up || e->st.type == tf::FT_DIR)
         return;
-    if (config_.internal_editor) {
-        Editor ed;
-        int err = ed.load(tf::vfs(), active_path().child(e->name.c_str()).c_str());
-        if (err) {
-            char m[600];
-            snprintf(m, sizeof(m), "Cannot read %.400s:\n%s", e->name.c_str(), strerror(err));
-            show_error(m);
-            return;
-        }
-        if (!tf::is_local_path(active_path().c_str()))
-            ed.set_note("In an archive: save a copy elsewhere with Shift-F2.");
-        run_tool(&ed, &ed);
-        return;
-    }
     ttr::Str f = local_file(*e);
     if (f.empty())
         return;
     if (!tf::is_local_path(active_path().c_str()))
         message("%s", "Changes to a file in an archive stay in the temporary copy.");
-    const char* ed = getenv("VISUAL");
-    if (!ed || !*ed)
-        ed = getenv("EDITOR");
-    char c[4400];
-    snprintf(c, sizeof(c), "%s %s", ed && *ed ? ed : "vi", quoted(f.c_str()).c_str());
-    run(c);
+    run(editor_command(f.c_str()).c_str());
 }
 
 /* ------------------------------------------------------------------ */
@@ -1238,7 +1237,7 @@ void App::cmd_config()
     tu::CheckBox* c5 = new tu::CheckBox("Re&member the panels' directories", config_.remember_dirs);
     tu::CheckBox* c6 = new tu::CheckBox("Copies keep modes and &times", config_.preserve_attrs);
     tu::CheckBox* c7 = new tu::CheckBox("F3: ttrc's own &viewer ($PAGER if off)", config_.internal_viewer);
-    tu::CheckBox* c8 = new tu::CheckBox("F4: ttrc's own &editor ($EDITOR if off)", config_.internal_editor);
+    tu::CheckBox* c8 = new tu::CheckBox("F4: tt&re, ttr's editor ($EDITOR if off)", config_.internal_editor);
     d.add(c1, 4, 2, 48);
     d.add(c2, 4, 3, 48);
     d.add(c3, 4, 4, 48);
@@ -1329,9 +1328,9 @@ void App::save_setup()
 
 namespace ttrc {
 
-/* The viewer or editor full-screen, until it closes; its requests for a
+/* The viewer full-screen, until it closes; its requests for a
  * dialog are answered here. */
-void App::run_tool(FullScreen* tool, Editor* editor)
+void App::run_tool(FullScreen* tool)
 {
     tool_ = tool;
     screen_.invalidate();
@@ -1365,67 +1364,6 @@ void App::run_tool(FullScreen* tool, Editor* editor)
                     tool->goto_line(atol(v.c_str()));
                 break;
             }
-            case REQ_REPLACE: {
-                if (!editor)
-                    break;
-                int w = screen_.cols() - 10;
-                if (w > 60)
-                    w = 60;
-                tu::Dialog d("Replace all", w, 10);
-                d.add(new tu::Label("Find:"), 3, 2, w - 6);
-                tu::InputLine* a = new tu::InputLine("");
-                a->set_history(&hist_search_);
-                d.add(a, 3, 3, w - 6);
-                d.add(new tu::Label("Replace with:"), 3, 4, w - 6);
-                tu::InputLine* b = new tu::InputLine("");
-                d.add(b, 3, 5, w - 6);
-                tu::Button* bt[2] = { new tu::Button("&Replace", 1, true),
-                                      new tu::Button("&Cancel", 2) };
-                d.add_buttons(7, bt, 2);
-                d.focus(a);
-                if (modal(d, theme_.dialog) == 1 && *a->text())
-                    editor->replace_all(a->text(), b->text());
-                break;
-            }
-            case REQ_SAVE: case REQ_SAVE_AS: {
-                if (!editor)
-                    break;
-                const char* where = 0;
-                ttr::Str v(editor->path());
-                if (r == REQ_SAVE_AS) {
-                    if (!ask_text("Save as", "File name:", &v, 0) || v.empty())
-                        break;
-                    v = tf::Path::resolve(active_path(), v.c_str()).c_str();
-                    where = v.c_str();
-                }
-                int err = editor->save(where);
-                if (err) {
-                    char m[700];
-                    snprintf(m, sizeof(m), "Cannot save %.400s:\n%s%s", where ? where : editor->path(),
-                             strerror(err), err == EROFS ? "\n\nSave a copy elsewhere with Shift-F2." : "");
-                    show_error(m);
-                } else {
-                    editor->set_note("Saved.");
-                }
-                break;
-            }
-            case REQ_ASK_QUIT: {
-                static const char* const b[] = { "&Save", "&Discard", "&Cancel", 0 };
-                int a = ask("Quit", "The file has changed. Save it?", b, false);
-                if (a == 1) {
-                    int err = editor ? editor->save(0) : 0;
-                    if (err) {
-                        char m[600];
-                        snprintf(m, sizeof(m), "Cannot save:\n%s", strerror(err));
-                        show_error(m);
-                    } else {
-                        done = true;
-                    }
-                } else if (a == 2) {
-                    done = true;
-                }
-                break;
-            }
             default:
                 break;
             }
@@ -1443,18 +1381,12 @@ void App::cmd_new_file()
     ttr::Str name("");
     if (!ask_text("New file", "Name of the file to edit:", &name, 0) || name.empty())
         return;
-    Editor ed;
-    tf::Path p = tf::Path::resolve(active_path(), name.c_str());
-    int err = ed.load(tf::vfs(), p.c_str());
-    if (err) {
-        char m[600];
-        snprintf(m, sizeof(m), "Cannot read %.400s:\n%s", p.c_str(), strerror(err));
-        show_error(m);
+    if (!tf::is_local_path(active_path().c_str())) {
+        show_error("A new file cannot go into an archive.");
         return;
     }
-    run_tool(&ed, &ed);
-    if (strcmp(p.parent().c_str(), active_path().c_str()) == 0)
-        active()->select_name(p.name());
+    tf::Path p = tf::Path::resolve(active_path(), name.c_str());
+    run(editor_command(p.c_str()).c_str());
 }
 
 } /* namespace ttrc */

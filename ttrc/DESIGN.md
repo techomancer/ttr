@@ -43,9 +43,12 @@ Milestones 3 to 5 implemented 2026-10-22:
   free. Unpacking reports to a progress hook (`tf::set_progress`); ttrc
   shows a dialog and Esc stops it (ECANCELED). The copies F3/F4 make for
   external programs go to `$TMPDIR/ttrc.<pid>`, removed at exit.
-- 5: the viewer and editor (`src/ttrc/viewer.cpp`, `editor.cpp`) on tu,
-  reading through tf. The editor is a tu frontend over te, the text
-  editing core it shares with ttrcode (`te/DESIGN.md`).
+- 5: the viewer (`src/ttrc/viewer.cpp`) on tu, reading through tf. The
+  editor began inside ttrc and is now ttre, a program of its own
+  (`ttre/DESIGN.md`). F4 runs it in the shell, like any `$EDITOR`. A
+  command asked for while the shell is still starting is queued until
+  its prompt appears. The themes moved into tu (`tu/theme.h`) for ttre
+  to share.
 
 Tests: tu 100 checks, tf 204 (with archive fixtures from
 `tools/make-tf-fixtures.sh` in `tf/test/data`), and 8 ttrc screen scripts

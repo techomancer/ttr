@@ -119,7 +119,7 @@ CORE_H = $(TH_H) src/core/port.h src/core/vector.h src/core/str.h src/core/geom.
 	src/core/theme.h \
 	src/core/audio.h src/core/net.h src/core/storage.h src/core/notify.h
 
-all: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttrcode
+all: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode
 
 $(B)/ttr: $(OBJS) $(B)/libth.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(B)/libth.a $(LIBS)
@@ -269,9 +269,10 @@ TU_OBJS = $(B)/tu_capnames.o \
 	$(B)/tu_screen.o \
 	$(B)/tu_term.o \
 	$(B)/tu_terminfo.o \
+	$(B)/tu_theme.o \
 	$(B)/tu_tparm.o
 TU_H = tu/tu.h tu/capnames.h tu/input.h tu/screen.h tu/term.h tu/terminfo.h \
-	tu/tparm.h tu/widgets.h tl/port.h
+	tu/tparm.h tu/widgets.h tu/theme.h tl/port.h
 
 $(B)/libtu.a: $(TU_OBJS)
 	rm -f $@
@@ -289,6 +290,8 @@ $(B)/tu_term.o: $(B)/.dir tu/term.cpp $(TU_H)
 	$(COMPILE) -c tu/term.cpp -o $@
 $(B)/tu_terminfo.o: $(B)/.dir tu/terminfo.cpp $(TU_H)
 	$(COMPILE) -c tu/terminfo.cpp -o $@
+$(B)/tu_theme.o: $(B)/.dir tu/theme.cpp $(TU_H)
+	$(COMPILE) -c tu/theme.cpp -o $@
 $(B)/tu_tparm.o: $(B)/.dir tu/tparm.cpp tu/tparm.h
 	$(COMPILE) -c tu/tparm.cpp -o $@
 
@@ -304,9 +307,10 @@ $(B)/tu_test_tu.o: $(B)/.dir tu/test/test_tu.cpp $(TU_H) $(TL_TERMINAL_H)
 # te, the text editing core shared by ttrc's editor and ttrcode
 # (te/DESIGN.md): libte.a and its tests. "make te-test" runs them.
 TE_OBJS = $(B)/te_document.o \
+	$(B)/te_file.o \
 	$(B)/te_syntax.o \
 	$(B)/te_view.o
-TE_H = te/document.h te/syntax.h te/view.h tl/port.h
+TE_H = te/document.h te/file.h te/syntax.h te/view.h tl/port.h
 
 $(B)/libte.a: $(TE_OBJS)
 	rm -f $@
@@ -314,6 +318,8 @@ $(B)/libte.a: $(TE_OBJS)
 
 $(B)/te_document.o: $(B)/.dir te/document.cpp $(TE_H)
 	$(COMPILE) -c te/document.cpp -o $@
+$(B)/te_file.o: $(B)/.dir te/file.cpp $(TE_H)
+	$(COMPILE) -c te/file.cpp -o $@
 $(B)/te_syntax.o: $(B)/.dir te/syntax.cpp $(TE_H)
 	$(COMPILE) -c te/syntax.cpp -o $@
 $(B)/te_view.o: $(B)/.dir te/view.cpp $(TE_H) tl/unicode.h
@@ -423,20 +429,18 @@ TTRC_OBJS = $(B)/ttrc_main.o \
 	$(B)/ttrc_config.o \
 	$(B)/ttrc_panel.o \
 	$(B)/ttrc_shell.o \
-	$(B)/ttrc_theme.o \
 	$(B)/ttrc_viewer.o \
-	$(B)/ttrc_editor.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
 TTRC_H = src/ttrc/app.h src/ttrc/cmdline.h src/ttrc/config.h src/ttrc/panel.h src/ttrc/shell.h \
-	src/ttrc/theme.h src/ttrc/viewer.h $(TU_H) $(TF_H) $(TE_H) $(TL_TERMINAL_H) tp/tp.h \
+	src/ttrc/theme.h src/ttrc/viewer.h $(TU_H) $(TF_H) $(TL_TERMINAL_H) tp/tp.h \
 	src/core/str.h src/core/vector.h
 
 ttrc: $(B)/ttrc
 
-$(B)/ttrc: $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a $(B)/libte.a $(B)/libtl.a $(B)/libtp.a
+$(B)/ttrc: $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a $(B)/libtl.a $(B)/libtp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a \
-		$(B)/libte.a $(B)/libtl.a $(B)/libtp.a
+		$(B)/libtl.a $(B)/libtp.a
 
 $(B)/ttrc_main.o: $(B)/.dir src/ttrc/main.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/main.cpp -o $@
@@ -447,8 +451,34 @@ $(B)/ttrc_drive: $(B)/ttrc_test_drive.o $(B)/libtl.a $(B)/libtp.a
 $(B)/ttrc_test_drive.o: $(B)/.dir src/ttrc/test/drive.cpp $(TL_TERMINAL_H) tp/tp.h
 	$(COMPILE) -c src/ttrc/test/drive.cpp -o $@
 
-ttrc-test: $(B)/ttrc $(B)/ttrc_drive
+ttrc-test: $(B)/ttrc $(B)/ttre $(B)/ttrc_drive
 	sh src/ttrc/test/run.sh $(B)
+
+# ttre, the editor (ttre/DESIGN.md): te + tu, standalone; ttrc's F4 runs
+# it. "make ttre-test" drives it on a pty with ttrc_drive.
+TTRE_OBJS = $(B)/ttre_main.o \
+	$(B)/ttre_editor.o \
+	$(B)/ttre_settings.o \
+	$(B)/core_settings.o \
+	$(B)/core_str.o
+TTRE_H = src/ttre/editor.h src/ttre/settings.h $(TU_H) $(TE_H) $(TH_H) src/core/str.h \
+	src/core/settings.h
+
+ttre: $(B)/ttre
+
+$(B)/ttre: $(TTRE_OBJS) $(B)/libtu.a $(B)/libte.a $(B)/libth.a $(B)/libtl.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRE_OBJS) $(B)/libtu.a $(B)/libte.a \
+		$(B)/libth.a $(B)/libtl.a
+
+$(B)/ttre_main.o: $(B)/.dir src/ttre/main.cpp $(TTRE_H)
+	$(COMPILE) -c src/ttre/main.cpp -o $@
+$(B)/ttre_editor.o: $(B)/.dir src/ttre/editor.cpp $(TTRE_H)
+	$(COMPILE) -c src/ttre/editor.cpp -o $@
+$(B)/ttre_settings.o: $(B)/.dir src/ttre/settings.cpp $(TTRE_H)
+	$(COMPILE) -c src/ttre/settings.cpp -o $@
+
+ttre-test: $(B)/ttre $(B)/ttrc_drive
+	sh src/ttre/test/run.sh $(B)
 
 $(B)/ttrc_app.o: $(B)/.dir src/ttrc/app.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/app.cpp -o $@
@@ -462,10 +492,6 @@ $(B)/ttrc_panel.o: $(B)/.dir src/ttrc/panel.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/panel.cpp -o $@
 $(B)/ttrc_viewer.o: $(B)/.dir src/ttrc/viewer.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/viewer.cpp -o $@
-$(B)/ttrc_editor.o: $(B)/.dir src/ttrc/editor.cpp $(TTRC_H)
-	$(COMPILE) -c src/ttrc/editor.cpp -o $@
-$(B)/ttrc_theme.o: $(B)/.dir src/ttrc/theme.cpp $(TTRC_H)
-	$(COMPILE) -c src/ttrc/theme.cpp -o $@
 
 # tt, the terminal pane (tt/DESIGN.md): a tl::Terminal in a TwGrid with
 # its scroll bar, running a program on a tp::Pty. ttrt and ttrcode use it.
@@ -736,7 +762,7 @@ asan:
 # A running ttr cannot be overwritten ("Text file busy"), but it can be
 # renamed: the old one becomes ttr.old and keeps running, and Restart ttr
 # starts the new one.
-install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttrcode
+install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode
 	mkdir -p $(DESTDIR)$(BINDIR) $(DESTDIR)$(XSESSIONDIR)
 	if [ -f $(DESTDIR)$(BINDIR)/ttr ]; then \
 		mv -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old; fi
@@ -751,6 +777,9 @@ install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttrcode
 	rm -f $(DESTDIR)$(BINDIR)/ttrcode
 	cp $(B)/ttrcode $(DESTDIR)$(BINDIR)/ttrcode
 	chmod 755 $(DESTDIR)$(BINDIR)/ttrcode
+	rm -f $(DESTDIR)$(BINDIR)/ttre
+	cp $(B)/ttre $(DESTDIR)$(BINDIR)/ttre
+	chmod 755 $(DESTDIR)$(BINDIR)/ttre
 	mkdir -p $(DESTDIR)$(TTRC_DATADIR)
 	cp data/ttrc/tc.sh data/ttrc/tc.csh $(DESTDIR)$(TTRC_DATADIR)
 	chmod 644 $(DESTDIR)$(TTRC_DATADIR)/tc.sh $(DESTDIR)$(TTRC_DATADIR)/tc.csh
@@ -784,7 +813,7 @@ install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttrcode
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old \
 		$(DESTDIR)$(BINDIR)/ttrt $(DESTDIR)$(BINDIR)/ttr-session \
-		$(DESTDIR)$(BINDIR)/ttrc $(DESTDIR)$(BINDIR)/ttrcode \
+		$(DESTDIR)$(BINDIR)/ttrc $(DESTDIR)$(BINDIR)/ttrcode $(DESTDIR)$(BINDIR)/ttre \
 		$(DESTDIR)$(TERMINFO_DIR)/t/ttrt \
 		$(DESTDIR)/usr/share/terminfo/t/ttrt \
 		$(DESTDIR)/usr/share/lib/terminfo/t/ttrt \

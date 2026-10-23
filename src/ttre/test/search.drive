@@ -1,0 +1,19 @@
+# Search with whole words, and replace all with match case.
+expect line one
+send \e[18~
+expect Search
+send ne
+send \ew
+send \r
+expect Not found: ne
+send \e[14~
+expect Replace
+send line
+send \t
+send row
+send \r
+expect 2 replaced.
+expect row one
+send \eOQ
+expect Saved.
+send \e[21~

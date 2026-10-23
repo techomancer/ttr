@@ -34,6 +34,7 @@ int main(int argc, char** argv)
         fprintf(stderr, "ttrc: needs a terminal\n");
         return 1;
     }
+    ttrc::set_program_path(argv[0]);
     tu::Term term;
     if (!term.open(0, 1)) {
         fprintf(stderr, "ttrc: no terminal description for TERM\n");

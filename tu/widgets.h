@@ -90,6 +90,9 @@ class InputLine : public Widget {
 public:
     InputLine(const char* text = "");
     void set(const char* text);
+    /* The first character typed replaces the text (a suggestion, such
+     * as the last search); moving first keeps it. */
+    void replace_on_type() { fresh_ = len_ > 0; }
     const char* text() const { return buf_; }
     bool focusable() const { return true; }
     void draw(Screen& s, const DialogStyle& st, int sx, int sy, bool focused);

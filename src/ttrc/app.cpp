@@ -29,6 +29,40 @@ const char k_ctrl_u = 0x15;
 
 } /* namespace */
 
+namespace {
+char g_program_dir[1024];
+}
+
+void set_program_path(const char* argv0)
+{
+    const char* slash = argv0 ? strrchr(argv0, '/') : 0;
+    if (!slash || slash - argv0 >= (long)sizeof(g_program_dir))
+        return;
+    memcpy(g_program_dir, argv0, (size_t)(slash - argv0));
+    g_program_dir[slash - argv0] = 0;
+}
+
+ttr::Str ttre_path()
+{
+    if (g_program_dir[0]) {
+        char p[1100];
+        snprintf(p, sizeof(p), "%s/ttre", g_program_dir);
+        if (access(p, X_OK) == 0) {
+            /* An absolute path: the shell may be somewhere else. */
+            if (p[0] != '/') {
+                char cwd[900];
+                if (getcwd(cwd, sizeof(cwd))) {
+                    char abs[2000];
+                    snprintf(abs, sizeof(abs), "%s/%s", cwd, p);
+                    return ttr::Str(abs);
+                }
+            }
+            return ttr::Str(p);
+        }
+    }
+    return ttr::Str("ttre");
+}
+
 App::App(tu::Term& term, const tf::Path& left, const tf::Path& right, bool dirs_given)
     : term_(term), screen_(term), active_(0), quit_(false), quick_(false), panel_y_(1),
       panel_h_(0), shrink_(0), last_click_(0), last_click_entry_(-1), ctrl_x_(false), view_(0),
@@ -320,6 +354,12 @@ void App::run(const char* command)
         return;
     }
     if (!shell_.idle(now_ms())) {
+        /* Still starting (F4 right after ttrc came up): run it as soon
+         * as the shell has its prompt. */
+        if (!prompt_known_ && mode_ == MODE_PANELS) {
+            queued_cmd_ = command;
+            return;
+        }
         message("%s", "The shell is still busy. Ctrl-O shows it.");
         return;
     }
@@ -401,6 +441,11 @@ void App::tick(long now)
         shell_.mark_prompt();
         prompt_ = shell_.prompt();
         prompt_known_ = true;
+    }
+    if (mode_ == MODE_PANELS && prompt_known_ && !queued_cmd_.empty()) {
+        ttr::Str c = queued_cmd_;
+        queued_cmd_ = "";
+        run(c.c_str());
     }
 }
 

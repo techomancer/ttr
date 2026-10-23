@@ -1,0 +1,16 @@
+# Type, save, undo back to the saved text, quit with changes asks.
+expect line one
+send X
+expect Xline one
+send \eOQ
+expect Saved.
+send \e[H
+send Y
+expect YXline one
+send \x15
+absent YXline
+send Z
+expect ZXline one
+send \e
+expect The file has changed
+send d

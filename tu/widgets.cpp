@@ -251,6 +251,10 @@ void InputLine::click(int rx, int, bool)
 
 bool InputLine::key(const Event& ev)
 {
+    bool typed = ev.key == KEY_CHAR && !(ev.mods & (MOD_CTRL | MOD_ALT));
+    if (fresh_ && typed)
+        set("");
+    fresh_ = false;
     switch (ev.key) {
     case KEY_LEFT: pos_ = prev(pos_); return true;
     case KEY_RIGHT: pos_ = next(pos_); return true;

@@ -1,31 +1,34 @@
-# F4: ttrc's editor: type, save, undo, quit with changes, a new file.
+# F4 runs ttre in the shell: type, save, undo, quit with changes; Shift-F4
+# a new file. (ttre's own tests are in src/ttre/test.)
 # Undoing back to the saved text counts as unchanged, hence the Z.
 expect Menu
 send \x13note
 send \r
 send \e[14~
-expect line one
+expect line 1 of 3
 send X
 expect Xline one
 send \eOQ
 expect Saved.
 send \e
-expect Menu
+expect PullDn
 send \e[14~
-expect Xline one
+expect line 1 of 3
 send Y
 expect YXline one
 send \x15
+wait 300
 absent YXline
 send Z
 expect ZXline one
 send \e
 expect The file has changed
 send d
-expect Menu
+expect PullDn
 send \e[1;2S
 expect Name of the file to edit
 send made.txt\r
+expect line 1 of 1
 send hello\r
 send \eOQ
 send \e
