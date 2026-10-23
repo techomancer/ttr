@@ -1,11 +1,11 @@
-/* ttrt: a tl::Terminal seen as a tw::Source. */
-#ifndef TTRT_SOURCE_H
-#define TTRT_SOURCE_H
+/* tt/source.h - a tl::Terminal seen as a tw::Source. */
+#ifndef TT_SOURCE_H
+#define TT_SOURCE_H
 
-#include "../../tl/terminal.h"
-#include "../../tw/tw.h"
+#include "../tl/terminal.h"
+#include "../tw/tw.h"
 
-namespace ttrt {
+namespace tt {
 
 class TermSource : public tw::Source {
 public:
@@ -42,6 +42,6 @@ private:
     bool have_cursor_;
 };
 
-} /* namespace ttrt */
+} /* namespace tt */
 
 #endif

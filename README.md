@@ -742,8 +742,10 @@ The notification area uses common tools when they are installed:
   never edited in place.
 - `tl/` is the terminal emulation library for the coming `ttrt` terminal
   emulator ([tl/DESIGN.md](tl/DESIGN.md)), `tp/` its pty and process
-  layer and `tw/` its drawing engine ([tw/DESIGN.md](tw/DESIGN.md)); the
-  application, `src/ttrt/`, is described in [ttrt/DESIGN.md](ttrt/DESIGN.md). `make
+  layer and `tw/` its drawing engine ([tw/DESIGN.md](tw/DESIGN.md)); `tt/`
+  puts the three together as a terminal pane any Motif program can embed
+  ([tt/DESIGN.md](tt/DESIGN.md)). The application, `src/ttrt/`, is
+  described in [ttrt/DESIGN.md](ttrt/DESIGN.md). `make
   tl-test tp-test` builds and runs their tests; `tools/irix-test.sh` does
   the same on the IRIX guest. tp has one implementation file per system:
   Linux and BSD use the default, IRIX builds with

@@ -404,32 +404,43 @@ $(B)/ttrc_editor.o: $(B)/.dir src/ttrc/editor.cpp $(TTRC_H)
 $(B)/ttrc_theme.o: $(B)/.dir src/ttrc/theme.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/theme.cpp -o $@
 
-# ttrt, the terminal (ttrt/DESIGN.md): tl + tp + tw and a Motif window.
+# tt, the terminal pane (tt/DESIGN.md): a tl::Terminal in a TwGrid with
+# its scroll bar, running a program on a tp::Pty. ttrt and ttrcode use it.
+TT_OBJS = $(B)/tt_pane.o \
+	$(B)/tt_source.o
+TT_H = tt/pane.h tt/source.h tw/grid_widget.h $(TW_H) $(TL_TERMINAL_H) tp/tp.h
+
+$(B)/libtt.a: $(TT_OBJS)
+	rm -f $@
+	$(AR) rc $@ $(TT_OBJS)
+
+$(B)/tt_pane.o: $(B)/.dir tt/pane.cpp $(TT_H)
+	$(COMPILE) -c tt/pane.cpp -o $@
+$(B)/tt_source.o: $(B)/.dir tt/source.cpp tt/source.h tw/tw.h $(TL_TERMINAL_H)
+	$(COMPILE) -c tt/source.cpp -o $@
+
+# ttrt, the terminal (ttrt/DESIGN.md): one tt pane in a Motif window.
 TTRT_OBJS = $(B)/ttrt_main.o \
 	$(B)/ttrt_settingsdlg.o \
-	$(B)/ttrt_source.o \
 	$(B)/core_color.o \
 	$(B)/core_scale.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o \
 	$(B)/core_theme.o \
 	$(B)/shell_colorpicker.o
-TTRT_H = src/ttrt/source.h src/ttrt/settings.h src/ttrt/settingsdlg.h
+TTRT_H = src/ttrt/settings.h src/ttrt/settingsdlg.h $(TT_H)
 
 ttrt: $(B)/ttrt
 
-$(B)/ttrt: $(TTRT_OBJS) $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRT_OBJS) $(B)/libtw.a $(B)/libtl.a \
-		$(B)/libtp.a $(LIBS)
+$(B)/ttrt: $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a \
+		$(B)/libtl.a $(B)/libtp.a $(LIBS)
 
-$(B)/ttrt_main.o: $(B)/.dir src/ttrt/main.cpp $(TTRT_H) tw/grid_widget.h $(TW_H) \
-		$(TL_TERMINAL_H) tp/tp.h $(CORE_H)
+$(B)/ttrt_main.o: $(B)/.dir src/ttrt/main.cpp $(TTRT_H) $(CORE_H)
 	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrt/main.cpp -o $@
 $(B)/ttrt_settingsdlg.o: $(B)/.dir src/ttrt/settingsdlg.cpp $(TTRT_H) \
 		src/shell/colorpicker.h $(CORE_H)
 	$(COMPILE) -c src/ttrt/settingsdlg.cpp -o $@
-$(B)/ttrt_source.o: $(B)/.dir src/ttrt/source.cpp src/ttrt/source.h tw/tw.h $(TL_TERMINAL_H)
-	$(COMPILE) -c src/ttrt/source.cpp -o $@
 
 $(B)/tl_charset.o: $(B)/.dir tl/charset.cpp tl/charset.h tl/port.h
 	$(COMPILE) -c tl/charset.cpp -o $@

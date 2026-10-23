@@ -1,5 +1,7 @@
 #include "settingsdlg.h"
 
+#include "../../tt/pane.h"
+
 #include "core/scale.h"
 #include "core/settings.h"
 #include "core/theme.h"
@@ -834,16 +836,7 @@ Str SettingsDialog::preview_font() const
     Str f = chosen_font();
     if (!f.empty())
         return f;
-    int i;
-    for (i = 0; k_auto_fonts[i]; i++) {
-        int n = 0;
-        char** names = XListFonts(dpy_, k_auto_fonts[i], 1, &n);
-        if (names)
-            XFreeFontNames(names);
-        if (n > 0)
-            return Str(k_auto_fonts[i]);
-    }
-    return Str("fixed");
+    return Str(tt::pick_font(dpy_));
 }
 
 void SettingsDialog::update_preview()

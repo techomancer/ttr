@@ -1,6 +1,6 @@
 #include "source.h"
 
-namespace ttrt {
+namespace tt {
 
 static uint32_t rgb(tl::Rgb c)
 {
@@ -102,4 +102,4 @@ uint32_t TermSource::cursor_color() const
     return rgb(t_.modes().reverse ? t_.default_bg() : t_.default_fg());
 }
 
-} /* namespace ttrt */
+} /* namespace tt */

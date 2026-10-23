@@ -52,17 +52,6 @@ static const Setting k_settings[S_COUNT] = {
     { "bell", "audible" }
 };
 
-/* The fonts ttrt tries in order when no font is set: the ISO 10646 ones
- * cover Unicode on Linux; IRIX servers have only Latin-1 fonts. */
-static const char* const k_auto_fonts[] = {
-    "-misc-fixed-medium-r-normal--15-140-75-75-c-90-iso10646-1",
-    "-misc-fixed-medium-r-normal--13-120-75-75-c-80-iso10646-1",
-    "-sgi-screen-medium-r-normal--15-150-72-72-m-90-iso8859-1",
-    "9x15",
-    "fixed",
-    0
-};
-
 /* $XDG_CONFIG_HOME/ttrt/settings, or ~/.config/ttrt/settings. */
 inline ttr::Str settings_path()
 {

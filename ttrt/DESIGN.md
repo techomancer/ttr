@@ -6,14 +6,15 @@ milestone 3 plus key, paste and focus encoding, `tp/`, `tw/` milestones
 dialog. Next: the soft and GL renderers (milestone 5).
 
 ttrt is a Motif terminal emulator for IRIX and Linux. It is assembled
-from three reusable modules plus a thin application:
+from four reusable modules plus a thin application:
 
 | Module | What | Knows about |
 |---|---|---|
 | [`tl/`](../tl/DESIGN.md) | terminal emulation: bytes to screen state, input encoding | nothing outside itself |
 | [`tw/`](../tw/DESIGN.md) | cell-grid drawing engine and the `TwGrid` Motif widget | X11, Motif; not terminals |
 | [`tp/`](#4-tp-pty-and-process) | pseudo-terminals and child processes, one implementation file per system | the operating system |
-| `src/ttrt/` | the application: window, menus, settings, glue | all of the above and ttr's `core/` |
+| [`tt/`](../tt/DESIGN.md) | the terminal pane: a `tl::Terminal` in a `TwGrid` with its scroll bar, on a `tp::Pty`; keys, mouse, selections | tl, tw, tp, Motif |
+| `src/ttrt/` | the application: window, menus, settings | tt and ttr's `core/` |
 
 The decisions below come from taking apart IRIX's own terminal, xwsh,
 and from our libtsm-based dash; both are written up in
@@ -29,8 +30,8 @@ and from our libtsm-based dash; both are written up in
 2. The same program on Linux under ttr, with truecolor and good fonts.
 3. No setuid, no ifdef forests: system differences live in `tp`'s
    per-system files, display differences in `tw`'s renderers.
-4. Reusable pieces: another program can embed a terminal with `tl` +
-   `tp` + `TwGrid` and a page of glue.
+4. Reusable pieces: another program embeds a terminal as a
+   `tt::TermPane` (ttrcode's terminal pane is one).
 
 Non-goals for the first version: tabs (the window manager manages
 windows; `ttrt` starts fast enough to open more), session restore,
@@ -43,8 +44,11 @@ utmp entries (section 4.5).
 ```
           +-----------------------------------------------------+
           | ttrt application (src/ttrt/)                         |
-          |  XmMainWindow: menu bar, TwGrid, XmScrollBar          |
+          |  XmForm: menu bar over one tt::TermPane               |
           |  own settings file + dialog, resources, command line  |
+          +-----------------------------------------------------+
+          | tt::TermPane (tt/): TwGrid + XmScrollBar, pty I/O,    |
+          |  keys, mouse, PRIMARY and CLIPBOARD, bell             |
           +----+----------------+------------------+--------------+
                |                |                  |
      pty bytes |  tl::Terminal  |  tw::Source      |  keys, mouse,
