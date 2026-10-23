@@ -11,7 +11,7 @@ namespace {
 const char* const k_keys[SC_ANSI0] = {
     "foreground", "background", "cursor", "selectionForeground", "selectionBackground",
     "gutterForeground", "gutterBackground", "findBackground", "control", "comment",
-    "keyword", "string", "number", "preprocessor"
+    "keyword", "string", "number", "preprocessor", "currentLine", "ruler", "whitespace"
 };
 
 /* xterm's 16 colours. */
@@ -116,6 +116,12 @@ Color Scheme::get(SchemeColor c) const
         return dark ? 0xb5cea8 : 0x098658;
     case SC_PREPROCESSOR:
         return dark ? 0xc586c0 : 0x0000ff;
+    case SC_CURRENT_LINE:
+        return mix(bg, fg, dark ? 7 : 5);
+    case SC_RULER:
+        return mix(bg, fg, 20);
+    case SC_WHITESPACE:
+        return mix(bg, fg, 35);
     default:
         return k_xterm[c - SC_ANSI0];
     }

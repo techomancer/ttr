@@ -41,6 +41,9 @@ EditSource::EditSource()
     colors_.cursor = 0x000000;
     for (int i = 0; i < te::SYN_COUNT; i++)
         colors_.syntax[i] = colors_.text;
+    colors_.current_line = 0xf2f2f2;
+    colors_.ruler = 0xd0d0d0;
+    colors_.whitespace = 0xb0b0b0;
 }
 
 EditSource::~EditSource()
@@ -63,6 +66,12 @@ void EditSource::set_view(te::View* v)
 void EditSource::set_colors(const EditColors& c)
 {
     colors_ = c;
+    full_ = true;
+}
+
+void EditSource::set_look(const EditLook& l)
+{
+    look_ = l;
     full_ = true;
 }
 
@@ -118,9 +127,15 @@ void EditSource::layout()
     tw::CellStyle found = style(colors_.text, colors_.found_background);
     tw::CellStyle gut = style(colors_.gutter_text, colors_.gutter_background);
     int tcols = cols_ - gutter_;
+    long caret_row = v_ && look_.highlight_line ? v_->cursor().line - v_->top() : -1;
+    int ruler_x = look_.ruler > 0 && v_ ? look_.ruler - v_->left() : -1;
     for (int y = 0; y < rows_; y++) {
         tw::CellData* row = cur_ + (size_t)y * (size_t)cols_;
         bool have = v_ && v_->row(y, line_);
+        /* The caret's line, unless a selection covers it. */
+        tw::CellStyle base = text;
+        if (have && y == caret_row && !v_->has_selection())
+            base.bg = colors_.current_line;
         /* The gutter: the line number, right-aligned. */
         char num[24];
         num[0] = 0;
@@ -141,6 +156,10 @@ void EditSource::layout()
                 c.cp = ' ';
                 c.width = 1;
                 c.style = text;
+                if (x == ruler_x) {
+                    c.style.flags |= tw::S_LEFT_LINE;
+                    c.style.deco = colors_.ruler;
+                }
                 continue;
             }
             const te::Cell& e = line_[x];
@@ -153,17 +172,24 @@ void EditSource::layout()
                 break;
             case te::CELL_CONTROL:
                 c.style = ctrl;
+                c.style.bg = base.bg;
                 break;
             case te::CELL_FOUND:
                 c.style = found;
                 break;
             default:
-                c.style = text;
+                c.style = base;
                 if (e.syn > 0 && e.syn < te::SYN_COUNT) {
                     c.style.fg = colors_.syntax[e.syn];
                     c.style.deco = c.style.fg;
                 }
                 break;
+            }
+            if (e.ws && e.kind == te::CELL_TEXT)
+                c.style.fg = colors_.whitespace;
+            if (x == ruler_x) {
+                c.style.flags |= tw::S_LEFT_LINE;
+                c.style.deco = colors_.ruler;
             }
         }
     }
@@ -249,9 +275,9 @@ tw::Cursor EditSource::cursor() const
     tw::Cursor c;
     c.x = c.y = 0;
     c.visible = false;
-    c.blink = true;
+    c.blink = look_.blink;
     c.wide = false;
-    c.shape = tw::CURSOR_BAR;
+    c.shape = look_.cursor;
     int x, y;
     if (v_ && v_->screen_cursor(&x, &y) && x + gutter_ < cols_) {
         c.x = x + gutter_;

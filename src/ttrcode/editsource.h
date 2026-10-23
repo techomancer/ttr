@@ -22,6 +22,19 @@ struct EditColors {
     uint32_t found_background;      /* the last search hit */
     uint32_t cursor;
     uint32_t syntax[te::SYN_COUNT];     /* text colour per class; [0] unused */
+    uint32_t current_line;              /* background of the caret's line */
+    uint32_t ruler;                     /* the column marker */
+    uint32_t whitespace;                /* visible spaces and tabs */
+};
+
+/* How the editor looks beyond its colours (Tools > Options). */
+struct EditLook {
+    bool highlight_line;        /* the caret's line in current_line */
+    int ruler;                  /* a line left of this column (from 0); <= 0: none */
+    tw::CursorStyle cursor;     /* bar, block, underline */
+    bool blink;
+
+    EditLook() : highlight_line(true), ruler(80), cursor(tw::CURSOR_BAR), blink(true) {}
 };
 
 class EditSource : public tw::Source {
@@ -34,6 +47,7 @@ public:
     te::View* view() const { return v_; }
     void set_colors(const EditColors& c);
     void set_line_numbers(bool on);
+    void set_look(const EditLook& l);
     /* The grid is cols x rows cells; the view gets what the gutter leaves. */
     void set_size(int cols, int rows);
     int gutter() const { return gutter_; }
@@ -62,6 +76,7 @@ private:
 
     te::View* v_;
     EditColors colors_;
+    EditLook look_;
     bool numbers_;
     int cols_, rows_, gutter_;
     tw::CellData* cur_;         /* this frame, rows_ x cols_ */

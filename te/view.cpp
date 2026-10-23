@@ -63,7 +63,8 @@ bool is_word(uint32_t cp)
 } /* namespace */
 
 View::View(Document& doc)
-    : tab_width(8), indent_width(0), insert_spaces(false), auto_indent(true), doc_(doc), want_col_(0), top_(0),
+    : tab_width(8), indent_width(0), insert_spaces(false), auto_indent(true),
+      show_whitespace(false), doc_(doc), want_col_(0), top_(0),
       left_(0), cols_(80), rows_(24), found_(false), block_(false), block_version_(0),
       syntax_(0), syn_buf_(0), syn_cap_(0)
 {
@@ -349,39 +350,59 @@ void View::del()
     want_col_ = column_of(cur_);
 }
 
+/* Lines first..last one indent in (or out), as one undo step; empty
+ * lines stay empty. */
+void View::indent_lines(long first, long last, bool out)
+{
+    doc_.begin_group();
+    for (long l = first; l <= last && l < doc_.lines(); l++) {
+        if (!out) {
+            if (doc_.length(l) == 0)
+                continue;
+            if (insert_spaces) {
+                char sp[64];
+                int n = indent() < 64 ? indent() : 63;
+                memset(sp, ' ', (size_t)n);
+                doc_.insert(Pos(l, 0), sp, (size_t)n);
+            } else {
+                doc_.insert(Pos(l, 0), "\t", 1);
+            }
+        } else {
+            const char* s = doc_.line(l);
+            size_t n = 0;
+            if (doc_.length(l) > 0 && s[0] == '\t')
+                n = 1;
+            else
+                while (n < doc_.length(l) && (int)n < indent() && s[n] == ' ')
+                    n++;
+            if (n)
+                doc_.erase(Pos(l, 0), Pos(l, n));
+        }
+    }
+    doc_.end_group();
+}
+
 void View::tab(bool shift)
 {
     Pos a, b;
     selection(&a, &b);
+    if (!has_selection() && has_block()) {
+        /* mc: Tab indents the marked block's lines; it stays marked. */
+        Pos ba = block_a_, bb = block_b_;
+        long last = bb.col == 0 && bb.line > ba.line ? bb.line - 1 : bb.line;
+        indent_lines(ba.line, last, shift);
+        block_a_ = Pos(ba.line, 0);
+        block_b_ = last + 1 < doc_.lines() ? Pos(last + 1, 0) : Pos(last, doc_.length(last));
+        block_ = true;
+        block_version_ = doc_.version();
+        cur_ = anchor_ = doc_.clamp(cur_);
+        want_col_ = column_of(cur_);
+        return;
+    }
     if (has_selection() && a.line != b.line) {
         /* Indent or outdent the selected lines. */
         long last = b.col == 0 ? b.line - 1 : b.line;
-        doc_.begin_group();
-        for (long l = a.line; l <= last; l++) {
-            if (!shift) {
-                if (doc_.length(l) == 0)
-                    continue;
-                if (insert_spaces) {
-                    char sp[64];
-                    int n = indent() < 64 ? indent() : 63;
-                    memset(sp, ' ', (size_t)n);
-                    doc_.insert(Pos(l, 0), sp, (size_t)n);
-                } else {
-                    doc_.insert(Pos(l, 0), "\t", 1);
-                }
-            } else {
-                const char* s = doc_.line(l);
-                size_t n = 0;
-                if (doc_.length(l) > 0 && s[0] == '\t')
-                    n = 1;
-                else
-                    while (n < doc_.length(l) && (int)n < indent() && s[n] == ' ')
-                        n++;
-                if (n)
-                    doc_.erase(Pos(l, 0), Pos(l, n));
-            }
-        }
-        doc_.end_group();
+        indent_lines(a.line, last, shift);
         anchor_ = Pos(a.line, 0);
         cur_ = last + 1 < doc_.lines() ? Pos(last + 1, 0) : Pos(last, doc_.length(last));
         return;
@@ -574,13 +595,13 @@ bool View::redo()
     return true;
 }
 
-bool View::find(const char* text, bool forward, bool match_case, bool* wrapped)
+bool View::find(const char* text, bool forward, bool match_case, bool* wrapped, bool whole_word)
 {
     Pos a, b;
     selection(&a, &b);
     Pos from = forward ? (has_selection() ? b : cur_) : a;
     Pos ha, hb;
-    if (!doc_.find(text, from, forward, match_case, &ha, &hb, wrapped)) {
+    if (!doc_.find(text, from, forward, match_case, &ha, &hb, wrapped, whole_word)) {
         found_ = false;
         return false;
     }
@@ -594,9 +615,9 @@ bool View::find(const char* text, bool forward, bool match_case, bool* wrapped)
     return true;
 }
 
-int View::replace_all(const char* from, const char* to, bool match_case)
+int View::replace_all(const char* from, const char* to, bool match_case, bool whole_word)
 {
-    int n = doc_.replace_all(from, to, match_case);
+    int n = doc_.replace_all(from, to, match_case, whole_word);
     cur_ = anchor_ = doc_.clamp(cur_);
     found_ = false;
     return n;
@@ -680,6 +701,7 @@ bool View::row(int y, Cell* out) const
         out[x].width = 1;
         out[x].kind = CELL_TEXT;
         out[x].syn = 0;
+        out[x].ws = 0;
     }
     long line = top_ + y;
     if (line < 0 || line >= doc_.lines())
@@ -727,6 +749,10 @@ bool View::row(int y, Cell* out) const
                     out[x + k].kind = kind;
                     out[x + k].syn = sc;
                 }
+            if (show_whitespace && x >= 0 && x < cols_) {
+                out[x].cp = 0xbb;   /* >> */
+                out[x].ws = 1;
+            }
         } else if (is_control(cp)) {
             uint32_t shown[2] = { '^', cp == 0x7f ? (uint32_t)'?' : cp + '@' };
             for (int k = 0; k < 2; k++)
@@ -751,6 +777,10 @@ bool View::row(int y, Cell* out) const
             out[x].cp = cp;
             out[x].kind = kind;
             out[x].syn = sc;
+            if (cp == ' ' && show_whitespace) {
+                out[x].cp = 0xb7;   /* middle dot */
+                out[x].ws = 1;
+            }
         }
         col += w;
         i += n;

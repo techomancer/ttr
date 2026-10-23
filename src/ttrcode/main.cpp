@@ -35,6 +35,9 @@ struct Resources {
     String scheme, ui_theme;
     int tree_width, bottom_height;
     String renderer, terminal_background;
+    Boolean auto_indent, show_whitespace, highlight_line, cursor_blink;
+    int ruler;
+    String cursor_shape, cursor_color;
 };
 
 #define ROFF(f) XtOffsetOf(Resources, f)
@@ -58,6 +61,18 @@ XtResource k_resources[] = {
     { (String)"bottomHeight", (String)"BottomHeight", (String)XtRInt, sizeof(int),
       ROFF(bottom_height), (String)XtRString, (XtPointer)"220" },
     RSTR("renderer", "Renderer", renderer, "auto"),
+    { (String)"autoIndent", (String)"AutoIndent", (String)XtRBoolean, sizeof(Boolean),
+      ROFF(auto_indent), (String)XtRString, (XtPointer)"true" },
+    { (String)"showWhitespace", (String)"ShowWhitespace", (String)XtRBoolean, sizeof(Boolean),
+      ROFF(show_whitespace), (String)XtRString, (XtPointer)"false" },
+    { (String)"highlightLine", (String)"HighlightLine", (String)XtRBoolean, sizeof(Boolean),
+      ROFF(highlight_line), (String)XtRString, (XtPointer)"true" },
+    { (String)"cursorBlink", (String)"CursorBlink", (String)XtRBoolean, sizeof(Boolean),
+      ROFF(cursor_blink), (String)XtRString, (XtPointer)"true" },
+    { (String)"rulerColumn", (String)"RulerColumn", (String)XtRInt, sizeof(int), ROFF(ruler),
+      (String)XtRString, (XtPointer)"80" },
+    RSTR("cursorShape", "CursorShape", cursor_shape, "bar"),
+    RSTR("cursorColor", "CursorColor", cursor_color, ""),
     RSTR("terminalBackground", "TerminalBackground", terminal_background, "")
 };
 #undef RSTR
@@ -153,6 +168,13 @@ int main(int argc, char** argv)
     o.tree_width = res.tree_width > 40 ? res.tree_width : 220;
     o.bottom_height = res.bottom_height > 40 ? res.bottom_height : 220;
     o.renderer = res.renderer;
+    o.auto_indent = res.auto_indent != False;
+    o.show_whitespace = res.show_whitespace != False;
+    o.highlight_line = res.highlight_line != False;
+    o.cursor_blink = res.cursor_blink != False;
+    o.ruler = res.ruler >= 0 ? res.ruler : 0;
+    o.cursor_shape = res.cursor_shape ? res.cursor_shape : "bar";
+    o.cursor_color = res.cursor_color ? res.cursor_color : "";
     o.terminal_background = res.terminal_background;
 
     /* The UI theme, for every widget made from here on. */

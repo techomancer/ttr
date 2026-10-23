@@ -536,7 +536,8 @@ while you move the cursor, F5 copies it to the cursor, F6 moves it there
 and F8 deletes it. F7 searches, Shift+F7 finds the next, F4 replaces,
 Ctrl+U undoes, Alt+R redoes, Ctrl+Y deletes a line, Ctrl+arrows move by
 words, Home goes to the first non-blank and then to column 0, Tab and
-Shift+Tab indent and outdent the selected lines, Ctrl+Insert,
+Shift+Tab indent and outdent the selected lines (or the marked block,
+which stays marked), Ctrl+Insert,
 Shift+Delete and Shift+Insert copy, cut and paste, and Esc or F10
 closes. Undoing back to the saved text counts as unchanged. Options >
 Configuration switches either to your `$PAGER` and `$EDITOR` instead.
@@ -662,8 +663,10 @@ are not shown in the tree.
 | Ctrl+A | select all |
 | Ctrl+L, Ctrl+Shift+L | cut the line, delete the line |
 | Ctrl+Backspace, Ctrl+Del | delete a word left, right |
-| Ctrl+F, F3, Shift+F3 | find, find next, find previous |
+| Ctrl+F, F3, Shift+F3 | find, find next, find previous (Match case, Whole words) |
 | Ctrl+H | replace |
+| Ctrl+Shift+F, Ctrl+Shift+H | find, replace in all the workspace's files |
+| F4, Shift+F4 | the next, previous Find in Files result |
 | Ctrl+G | go to line |
 | Ctrl+N, Ctrl+O, Ctrl+S | new, open, save |
 | Ctrl+F4 | close the file (asks about unsaved changes) |
@@ -704,9 +707,31 @@ with ttr's themes and the 30 IRIX color schemes, at once and without a
 restart. Its default, "Same as ttr", follows the theme chosen in ttr's
 Settings; any other choice is ttrcode's own.
 
+**Find and replace in files.** Search > Find in Files (Ctrl+Shift+F)
+searches every text file of the workspace, or of another folder, for a
+text, with Match case, Whole words and file types such as `*.c *.h`.
+Hidden files, build directories, binary files and files over 16 MB are
+left out. The matches fill the Find Results page of the bottom pane as
+`file(line): text`; Enter or a double click opens one with the match
+selected, and F4 and Shift+F4 step through them. Replace in Files
+(Ctrl+Shift+H) shows how many matches it will replace in how many files
+and asks first. Open files are changed in the editor, unsaved changes
+included, and Ctrl+Z takes it back. Other files are saved at once,
+through a new file that replaces the old one.
+
+**Options.** Tools > Options... sets:
+- the font;
+- the tab width, how far Tab indents, and whether it inserts spaces;
+- whether Enter keeps the indentation of the line above;
+- whether to show line numbers, the current line, and spaces and tabs
+  (as `·` and `»`);
+- a column marker line (column 80 unless you change it; 0 for none);
+- the cursor's shape (bar, block or underline), its blinking and its
+  color.
+
 **Settings** are saved in `~/.config/ttrcode/settings` (or
-`$XDG_CONFIG_HOME/ttrcode/`) as you change them in the View menu or drag a
-divider. The same names work as X resources (`TTRcode*tabWidth: 4`), and
+`$XDG_CONFIG_HOME/ttrcode/`) as you change them in Tools > Options, the View
+menu or by dragging a divider. The same names work as X resources (`TTRcode*tabWidth: 4`), and
 the file wins over them:
 
 | Setting | Values | Default |
@@ -717,7 +742,12 @@ the file wins over them:
 | `tabWidth` | columns a tab character shows as | `8` |
 | `indentWidth` | columns Tab indents by with spaces | `4` |
 | `insertSpaces` | `true`: Tab inserts spaces; `false`: a tab | `true` |
-| `lineNumbers` | `true`, `false` | `true` |
+| `autoIndent` | `true`: Enter keeps the indentation of the line above | `true` |
+| `lineNumbers`, `highlightLine`, `showWhitespace` | `true`, `false` | `true`, `true`, `false` |
+| `rulerColumn` | the column marker's column; `0`: none | `80` |
+| `cursorShape` | `bar`, `block`, `underline` | `bar` |
+| `cursorBlink` | `true`, `false` | `true` |
+| `cursorColor` | `#rrggbb`; left out: the color scheme's | |
 | `treeWidth`, `bottomHeight` | the workspace's width, the terminal pane's height, in pixels | `220`, `220` |
 | `renderer` | `auto`, `core`, `soft`, `gl`, as for ttrt (`-renderer`) | `auto` |
 | `terminalBackground` | an animated background for the terminal pane, as ttrt's (`-dynbg`) | none |

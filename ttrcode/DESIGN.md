@@ -199,14 +199,18 @@ Colours come from th (`th/DESIGN.md`), shared by every ttr program:
    - Find, replace and go to line dialogs, and the clipboard.
    - F11.
    - Builds and runs on Linux and on IRIX.
-2. **Settings.** The Options dialog (font, tabs, line numbers). Remembering open files and pane sizes
+2. **Settings.** Done: Tools > Options (font, tabs, indentation, line
+   numbers, current line, whitespace, column marker, cursor). Still to
+   do: remembering the open files per workspace, recent files and
+   workspaces. Remembering open files and pane sizes
    per workspace. Recent files and workspaces.
 3. **Colours.**
-   - Syntax colouring for C and C++, shell, make, Python and Markdown.
-     It is a per-line lexer state that te feeds into `View::row()`, so
-     an edit relexes only until the state settles.
+   - Done: syntax colouring for C and C++, shell, make and Python
+     (`te/syntax.h`: a per-line lexer state that te feeds into
+     `View::row()`, so an edit relexes only from the edited line).
+     Markdown is still to come.
    - Matching braces (Ctrl+]).
-   - Visible whitespace, as an option.
+   - Done: visible whitespace, the current line and a column marker.
 4. **Build.**
    - F7 runs the build command (`make` by default) in an Output pane,
      not in the terminal.
@@ -214,8 +218,10 @@ Colours come from th (`th/DESIGN.md`), shared by every ttr program:
      and previous error, as in VS6.
    - Ctrl+Break stops the build.
 5. **Finding.**
-   - Find in files (Ctrl+Shift+F) runs in a child process, with
-     results in the bottom pane.
+   - Done: Find and Replace in Files (Ctrl+Shift+F, Ctrl+Shift+H) with
+     a Find Results page in the bottom pane and F4 / Shift+F4. The search
+     runs in the process for now; a child process comes when workspaces
+     get big enough to need one.
    - Quick open by name.
    - Bookmarks: Ctrl+F2 sets one, F2 and Shift+F2 go to the next and
      previous.

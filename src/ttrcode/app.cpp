@@ -284,8 +284,14 @@ App::App(Widget top, const Options& o)
       last_col_(-1), last_row_(-1), autoscroll_(0), autoscroll_id_(0), match_case_(false),
       find_dlg_(0), find_what_(0), replace_with_(0), case_toggle_(0), replace_row_(0),
       primary_(0), primary_len_(0), clipboard_(0), clipboard_len_(0), answer_(-1),
-      scheme_items_(0), theme_items_(0)
+      scheme_items_(0), theme_items_(0), font_(0), opt_dlg_(0), fif_dlg_(0), fif_replace_(false),
+      bottom_tabs_(0), results_box_(0), results_(0), bottom_page_(0), cur_result_(-1),
+      scanned_(0), result_files_(0), fif_case_on_(false), fif_word_on_(false)
 {
+    cursor_shape_ = o.cursor_shape ? o.cursor_shape : "bar";
+    cursor_color_ = o.cursor_color ? o.cursor_color : "";
+    opt_.cursor_shape = cursor_shape_.c_str();
+    opt_.cursor_color = cursor_color_.c_str();
     g_app = this;
     g_answer = &answer_;
     root_ = o.workspace;
@@ -302,6 +308,8 @@ App::App(Widget top, const Options& o)
     form_ = XtVaCreateManagedWidget("main", xmFormWidgetClass, top, (char*)0);
     build_menus();
     build_layout();
+    build_bottom();
+    apply_look();
     tree_read(-1, root_.c_str(), 0);
     tree_fill();
     make_terminal();
@@ -339,18 +347,19 @@ void App::build_menus()
     static const Title titles[] = {
         { "fileMenu", "File", 'F' }, { "editMenu", "Edit", 'E' },
         { "searchMenu", "Search", 'S' }, { "viewMenu", "View", 'V' },
-        { "windowMenu", "Window", 'W' }, { "helpMenu", "Help", 'H' }
+        { "toolsMenu", "Tools", 'T' }, { "windowMenu", "Window", 'W' },
+        { "helpMenu", "Help", 'H' }
     };
-    Widget menus[6];
-    for (int i = 0; i < 6; i++) {
+    Widget menus[7];
+    for (int i = 0; i < 7; i++) {
         menus[i] = XmCreatePulldownMenu(bar_, (char*)titles[i].name, 0, 0);
         cascades_[i] = XtVaCreateManagedWidget(titles[i].label, xmCascadeButtonWidgetClass, bar_,
                                                XmNsubMenuId, menus[i], XmNmnemonic,
                                                titles[i].mnemonic, (char*)0);
         mnemonics_[i] = titles[i].mnemonic;
     }
-    ncascades_ = 6;
-    XtVaSetValues(bar_, XmNmenuHelpWidget, cascades_[5], (char*)0);
+    ncascades_ = 7;
+    XtVaSetValues(bar_, XmNmenuHelpWidget, cascades_[6], (char*)0);
 
     Widget m = menus[0];
     menu_item(m, "New", 'N', "Ctrl+N", CMD_NEW);
@@ -382,6 +391,11 @@ void App::build_menus()
     menu_item(m, "Replace...", 'R', "Ctrl+H", CMD_REPLACE);
     separator(m);
     menu_item(m, "Go To Line...", 'G', "Ctrl+G", CMD_GOTO);
+    separator(m);
+    menu_item(m, "Find in Files...", 'i', "Ctrl+Shift+F", CMD_FIND_IN_FILES);
+    menu_item(m, "Replace in Files...", 'e', "Ctrl+Shift+H", CMD_REPLACE_IN_FILES);
+    menu_item(m, "Next Result", 'x', "F4", CMD_NEXT_RESULT);
+    menu_item(m, "Previous Result", 'v', "Shift+F4", CMD_PREV_RESULT);
 
     m = menus[3];
     menu_item(m, "Workspace", 'W', "Alt+0", CMD_VIEW_WORKSPACE);
@@ -393,13 +407,16 @@ void App::build_menus()
     menu_item(m, "Full Screen", 'F', "F11", CMD_VIEW_FULLSCREEN);
 
     m = menus[4];
+    menu_item(m, "Options...", 'O', 0, CMD_OPTIONS);
+
+    m = menus[5];
     menu_item(m, "Next Document", 'N', "Ctrl+Tab", CMD_NEXT_DOC);
     menu_item(m, "Previous Document", 'P', "Ctrl+Shift+Tab", CMD_PREV_DOC);
     menu_item(m, "Terminal", 'T', "Ctrl+`", CMD_TERMINAL);
     separator(m);
     menu_item(m, "Close", 'C', "Ctrl+F4", CMD_CLOSE);
 
-    m = menus[5];
+    m = menus[6];
     menu_item(m, "About ttrcode", 'A', 0, CMD_ABOUT);
     XtManageChild(bar_);
 }
@@ -627,9 +644,12 @@ void App::make_terminal()
     term_opt_.renderer = opt_.renderer;
     term_opt_.dynamic_background = opt_.terminal_background;
     term_ = new tt::TermPane(bottom_slot_, "terminal", term_opt_, this);
-    XtVaSetValues(term_->widget(), XmNtopAttachment, XmATTACH_FORM,
+    XtVaSetValues(term_->widget(), XmNtopAttachment, XmATTACH_WIDGET,
+                  XmNtopWidget, bottom_tabs_,
                   XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_FORM,
                   XmNbottomAttachment, XmATTACH_FORM, (char*)0);
+    if (bottom_page_ != 0)
+        XtUnmanageChild(term_->widget());
     if (XtIsRealized(bottom_slot_))
         term_->start();
 }
@@ -659,6 +679,8 @@ Doc* App::new_doc()
     d->view.tab_width = opt_.tab_width;
     d->view.indent_width = opt_.indent_width;
     d->view.insert_spaces = opt_.insert_spaces;
+    d->view.auto_indent = opt_.auto_indent;
+    d->view.show_whitespace = opt_.show_whitespace;
     d->tab = XtVaCreateManagedWidget("tab", xmToggleButtonWidgetClass, tabs_,
                                      XmNindicatorOn, False,
                                      XmNshadowThickness, 2,
@@ -811,10 +833,10 @@ int App::load(Doc* d, const char* path)
 
 /* Into a new file next to the old one, then renamed over it, so a full
  * disk never leaves half a file. A symbolic link is written through. */
-int App::write_file(Doc* d, const char* path)
+int save_text(te::Document& text, const char* path, time_t* mtime)
 {
     size_t n;
-    char* t = d->text.text(&n);
+    char* t = text.text(&n);
     if (!t)
         return ENOMEM;
     struct stat st, lst;
@@ -852,10 +874,16 @@ int App::write_file(Doc* d, const char* path)
             unlink(tmp);
     }
     if (!err) {
-        d->mtime = stat(path, &st) == 0 ? st.st_mtime : 0;
-        d->text.mark_saved();
+        if (mtime)
+            *mtime = stat(path, &st) == 0 ? st.st_mtime : 0;
+        text.mark_saved();
     }
     return err;
+}
+
+int App::write_file(Doc* d, const char* path)
+{
+    return save_text(d->text, path, &d->mtime);
 }
 
 bool App::save_doc(Doc* d, bool ask_name)
@@ -1593,6 +1621,24 @@ void App::command(int cmd)
         opt_.line_numbers = !opt_.line_numbers;
         src_.set_line_numbers(opt_.line_numbers);
         after_edit(true);
+        save_settings();
+        break;
+    case CMD_FIND_IN_FILES:
+        show_find_in_files(false);
+        break;
+    case CMD_REPLACE_IN_FILES:
+        show_find_in_files(true);
+        break;
+    case CMD_NEXT_RESULT:
+    case CMD_PREV_RESULT:
+        if (results_list_.size() > 0) {
+            int n = results_list_.size();
+            int i = cmd == CMD_NEXT_RESULT ? cur_result_ + 1 : cur_result_ - 1;
+            goto_result(i < 0 ? n - 1 : i >= n ? 0 : i);
+        }
+        break;
+    case CMD_OPTIONS:
+        show_options();
         break;
     case CMD_VIEW_FULLSCREEN:
         set_fullscreen(!fullscreen_);
@@ -1606,6 +1652,7 @@ void App::command(int cmd)
                 set_fullscreen(false);
             if (!bottom_on_)
                 show_bottom(true);
+            show_bottom_page(0);
             term_->focus();
         }
         break;
@@ -1675,6 +1722,14 @@ void App::editor_key(TwGridCallbackStruct* cb)
     bool ctrl = (state & ControlMask) != 0, shift = (state & ShiftMask) != 0;
     bool alt = (state & Mod1Mask) != 0;
     /* Commands with or without a document. */
+    if (ctrl && shift && !alt && (ks == XK_f || ks == XK_F || ks == XK_h || ks == XK_H)) {
+        command(ks == XK_f || ks == XK_F ? CMD_FIND_IN_FILES : CMD_REPLACE_IN_FILES);
+        return;
+    }
+    if (ks == XK_F4 && !ctrl && !alt) {
+        command(shift ? CMD_PREV_RESULT : CMD_NEXT_RESULT);
+        return;
+    }
     if (ctrl && !alt) {
         switch (ks) {
         case XK_n: case XK_N: command(CMD_NEW); return;
@@ -2158,6 +2213,25 @@ void App::save_settings()
     f.set("treeWidth", v);
     sprintf(v, "%d", bottom_h_);
     f.set("bottomHeight", v);
+    sprintf(v, "%d", opt_.tab_width);
+    f.set("tabWidth", v);
+    sprintf(v, "%d", opt_.indent_width);
+    f.set("indentWidth", v);
+    f.set("insertSpaces", opt_.insert_spaces ? "true" : "false");
+    f.set("autoIndent", opt_.auto_indent ? "true" : "false");
+    f.set("showWhitespace", opt_.show_whitespace ? "true" : "false");
+    f.set("highlightLine", opt_.highlight_line ? "true" : "false");
+    f.set("lineNumbers", opt_.line_numbers ? "true" : "false");
+    sprintf(v, "%d", opt_.ruler);
+    f.set("rulerColumn", v);
+    f.set("cursorShape", opt_.cursor_shape);
+    f.set("cursorBlink", opt_.cursor_blink ? "true" : "false");
+    if (*opt_.cursor_color)
+        f.set("cursorColor", opt_.cursor_color);
+    else
+        f.remove("cursorColor");
+    if (font_ && *font_)
+        f.set("font", font_);
     ttr::make_parent_dirs(path.c_str());
     f.save(path.c_str());
 }
@@ -2183,6 +2257,12 @@ void App::set_scheme(const char* name)
     c.syntax[te::SYN_STRING] = scheme_.get(th::SC_STRING);
     c.syntax[te::SYN_NUMBER] = scheme_.get(th::SC_NUMBER);
     c.syntax[te::SYN_PREPROC] = scheme_.get(th::SC_PREPROCESSOR);
+    c.current_line = scheme_.get(th::SC_CURRENT_LINE);
+    c.ruler = scheme_.get(th::SC_RULER);
+    c.whitespace = scheme_.get(th::SC_WHITESPACE);
+    th::Color own;
+    if (opt_.cursor_color && *opt_.cursor_color && th::parse_hex(opt_.cursor_color, &own))
+        c.cursor = own;
     src_.set_colors(c);
     for (int i = 0; i < 16; i++)
         palette_[i] = (uint32_t)scheme_.ansi(i);

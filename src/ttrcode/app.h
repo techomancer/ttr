@@ -32,6 +32,13 @@ struct Options {
     const char* scheme;         /* text colour scheme (th/scheme.h) */
     const char* ui_theme;       /* UI theme; "" follows ttr's */
     int tree_width, bottom_height;
+    bool auto_indent;           /* Enter keeps the previous line's indentation */
+    bool show_whitespace;
+    bool highlight_line;
+    int ruler;                  /* column marker; 0: none */
+    const char* cursor_shape;   /* bar, block, underline */
+    bool cursor_blink;
+    const char* cursor_color;   /* "" : the scheme's */
     const char* renderer;       /* TwGrid's for every grid: auto, core, soft, gl */
     const char* terminal_background;    /* an animated background (GL) */
 };
@@ -74,10 +81,22 @@ ttr::Str settings_path();
 /* The UI theme ttr uses (its settings file), or "". */
 const char* ttr_theme();
 
+/* A match of Find in Files. */
+struct Result {
+    char* path;
+    long line;
+    size_t col, len;
+};
+
+/* Write a document to path through a new file renamed over it (a
+ * symbolic link is written through); 0 or an errno value. */
+int save_text(te::Document& text, const char* path, time_t* mtime);
+
 enum Command {
     CMD_NEW, CMD_OPEN, CMD_OPEN_WORKSPACE, CMD_SAVE, CMD_SAVE_AS, CMD_SAVE_ALL, CMD_CLOSE, CMD_EXIT,
     CMD_UNDO, CMD_REDO, CMD_CUT, CMD_COPY, CMD_PASTE, CMD_DELETE, CMD_SELECT_ALL,
     CMD_FIND, CMD_FIND_NEXT, CMD_FIND_PREV, CMD_REPLACE, CMD_GOTO,
+    CMD_FIND_IN_FILES, CMD_REPLACE_IN_FILES, CMD_NEXT_RESULT, CMD_PREV_RESULT, CMD_OPTIONS,
     CMD_VIEW_WORKSPACE, CMD_VIEW_BOTTOM, CMD_VIEW_FULLSCREEN, CMD_VIEW_LINE_NUMBERS,
     CMD_TERMINAL, CMD_NEXT_DOC, CMD_PREV_DOC, CMD_ABOUT
 };
@@ -117,6 +136,10 @@ public:
     void focus_changed_window();
     void scheme_chosen(int i);
     void restart_terminal();
+    void options_button(int which);
+    void fif_button(int which);
+    void result_chosen(int i);
+    void bottom_page_chosen(int page);
     void theme_chosen(int i);
 
     /* tt::PaneHost */
@@ -166,6 +189,25 @@ private:
     void build_color_menus(Widget view_menu);
     void save_settings();
     Pixel tab_fill();
+    /* Options (options.cpp). */
+    void apply_look();
+    void show_options();
+    void set_font(const char* xlfd);
+    /* Find in Files and the results pane (findfiles.cpp). */
+    void build_bottom();
+    void show_bottom_page(int page);
+    void show_find_in_files(bool replace);
+    int find_in_files(const char* what, const char* dir, const char* types, bool match_case,
+                      bool whole, int* files);
+    void replace_in_files(const char* what, const char* with, const char* dir,
+                          const char* types, bool match_case, bool whole);
+    void search_file(const char* path, const char* what, bool match_case, bool whole);
+    void walk(const char* dir, const char* what, const char* types, bool match_case, bool whole,
+              int depth);
+    void clear_results();
+    void fill_results();
+    void goto_result(int i);
+    bool confirm(const char* message);
 
     Widget top_, form_, bar_, body_, right_, tree_box_, tree_sash_, bottom_sash_, tree_,
         edit_box_, tabs_, grid_,
@@ -217,6 +259,25 @@ private:
     uint32_t palette_[16];      /* the terminal's, from the scheme */
     ttr::Str theme_name_;       /* "" follows ttr's */
     th::Theme theme_;           /* what that is */
+    /* Strings opt_ points into, and the font TwGrid holds. */
+    ttr::Str cursor_shape_, cursor_color_;
+    char* font_;
+    /* The Options dialog. */
+    Widget opt_dlg_, opt_font_, opt_tab_, opt_indent_, opt_spaces_, opt_auto_, opt_ws_,
+        opt_line_, opt_numbers_, opt_ruler_, opt_shape_, opt_blink_, opt_ccolor_;
+    Widget opt_shapes_[3];
+    /* Find in Files. */
+    Widget fif_dlg_, fif_what_, fif_with_, fif_with_label_, fif_folder_, fif_types_, fif_case_,
+        fif_word_, fif_find_btn_, fif_replace_btn_;
+    bool fif_replace_;
+    /* The bottom pane's pages: the terminal and the results. */
+    Widget bottom_tabs_, page_tabs_[2], results_box_, results_;
+    int bottom_page_;
+    ttr::Vector<Result*> results_list_;
+    int cur_result_;
+    int scanned_, result_files_;
+    ttr::Str fif_what_text_;
+    bool fif_case_on_, fif_word_on_;
 };
 
 } /* namespace ttrcode */

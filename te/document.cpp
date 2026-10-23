@@ -20,6 +20,30 @@ char* dup(const char* s, size_t n)
     return d;
 }
 
+bool word_char(char c)
+{
+    unsigned char u = (unsigned char)c;
+    return u == '_' || u >= 0x80 || (u >= '0' && u <= '9') || (u >= 'a' && u <= 'z') ||
+           (u >= 'A' && u <= 'Z');
+}
+
+bool same(char a, char b, bool match_case);
+
+/* text at s[i] of a line of len bytes; whole: not inside a longer word. */
+bool match_at(const char* s, size_t len, size_t i, const char* text, size_t tl, bool match_case,
+              bool whole)
+{
+    if (i + tl > len)
+        return false;
+    for (size_t j = 0; j < tl; j++)
+        if (!same(s[i + j], text[j], match_case))
+            return false;
+    if (whole && ((i > 0 && word_char(s[i - 1]) && word_char(text[0])) ||
+                  (i + tl < len && word_char(s[i + tl]) && word_char(text[tl - 1]))))
+        return false;
+    return true;
+}
+
 bool same(char a, char b, bool match_case)
 {
     return match_case ? a == b : tolower((unsigned char)a) == tolower((unsigned char)b);
@@ -406,7 +430,7 @@ bool Document::redo(Pos* cursor)
 }
 
 bool Document::find(const char* text, Pos from, bool forward, bool match_case, Pos* a, Pos* b,
-                    bool* wrapped) const
+                    bool* wrapped, bool whole_word) const
 {
     size_t tl = strlen(text);
     if (wrapped)
@@ -420,10 +444,7 @@ bool Document::find(const char* text, Pos from, bool forward, bool match_case, P
         if (forward) {
             size_t start = k == 0 ? from.col : 0;
             for (size_t i = start; i + tl <= ln.len; i++) {
-                size_t j = 0;
-                while (j < tl && same(ln.s[i + j], text[j], match_case))
-                    j++;
-                if (j == tl) {
+                if (match_at(ln.s, ln.len, i, text, tl, match_case, whole_word)) {
                     *a = Pos(l, i);
                     *b = Pos(l, i + tl);
                     if (wrapped)
@@ -436,10 +457,7 @@ bool Document::find(const char* text, Pos from, bool forward, bool match_case, P
             if (k == 0)
                 last = (long)from.col - 1 < last ? (long)from.col - 1 : last;
             for (long i = last; i >= 0; i--) {
-                size_t j = 0;
-                while (j < tl && same(ln.s[i + (long)j], text[j], match_case))
-                    j++;
-                if (j == tl) {
+                if (match_at(ln.s, ln.len, (size_t)i, text, tl, match_case, whole_word)) {
                     *a = Pos(l, (size_t)i);
                     *b = Pos(l, (size_t)i + tl);
                     if (wrapped)
@@ -452,7 +470,7 @@ bool Document::find(const char* text, Pos from, bool forward, bool match_case, P
     return false;
 }
 
-int Document::replace_all(const char* from, const char* to, bool match_case)
+int Document::replace_all(const char* from, const char* to, bool match_case, bool whole_word)
 {
     size_t fl = strlen(from), tl = strlen(to);
     if (!fl || memchr(from, '\n', fl))
@@ -462,10 +480,7 @@ int Document::replace_all(const char* from, const char* to, bool match_case)
     for (long l = 0; l < n_; l++) {
         size_t i = 0;
         while (i + fl <= lines_[l].len) {
-            size_t j = 0;
-            while (j < fl && same(lines_[l].s[i + j], from[j], match_case))
-                j++;
-            if (j == fl) {
+            if (match_at(lines_[l].s, lines_[l].len, i, from, fl, match_case, whole_word)) {
                 erase(Pos(l, i), Pos(l, i + fl));
                 insert(Pos(l, i), to, tl);
                 i += tl;

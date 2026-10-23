@@ -86,9 +86,10 @@ public:
      * searches start at 'from', backward ones end just before it. False
      * if not found anywhere (the search wraps around). */
     bool find(const char* text, Pos from, bool forward, bool match_case, Pos* a, Pos* b,
-              bool* wrapped) const;
-    /* Replace every match, as one undo step; returns how many. */
-    int replace_all(const char* from, const char* to, bool match_case);
+              bool* wrapped, bool whole_word = false) const;
+    /* Replace every match, as one undo step; returns how many. whole_word:
+     * not where the text is part of a longer word. */
+    int replace_all(const char* from, const char* to, bool match_case, bool whole_word = false);
 
 private:
     struct Line {

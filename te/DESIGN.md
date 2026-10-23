@@ -25,8 +25,9 @@ Like the rest of ttr's portable code, it is C++98 for MIPSpro 7.4 and
 - `version()` changes with every edit, undo and redo. Renderers use it
   to know when to redraw, and views use it to know whether their marks
   are still valid.
-- Search runs within a line, wraps around, and can match case or not.
-  Replace all is one undo step.
+- Search runs within a line and wraps around. It can match case or not,
+  and can match whole words only (not inside a longer word). Replace all
+  is one undo step.
 
 ## View (`te/view.h`)
 
@@ -43,11 +44,15 @@ A view is one window onto a document. A document can have several views
   and Shift+Tab outdents them), delete line, copy, cut, paste, find,
   replace all, go to line, undo and redo, and selecting the word at a
   position (a double click).
+- `show_whitespace` makes `row()` show spaces as `·` and the first cell
+  of a tab as `»`, with `Cell::ws` set so hosts can dim them. Both are
+  Latin-1, so IRIX's server fonts have them.
 - Settings: `tab_width` (the columns a tab character shows as),
   `indent_width` (how far Tab indents with spaces; 0 means the tab
   width), `insert_spaces` and `auto_indent`.
 - mc's blocks: `mark_block()` turns the selection into a block that stays
-  where it is while the cursor moves. F5 and F6 copy or move the block to
+  where it is while the cursor moves. Tab and Shift+Tab indent and
+  outdent the block's lines, and it stays marked. F5 and F6 copy or move the block to
   the cursor, and the copy becomes the new block. Any other edit drops
   the block.
 - Layout: `row(y, cells)` gives one screen row as cells. Each cell has a

@@ -18,7 +18,10 @@ starts a comment):
 | `gutterForeground`, `gutterBackground` | line numbers |
 | `findBackground` | the last search hit |
 | `control` | control characters shown as `^X` |
-| `comment`, `keyword`, `string`, `number`, `preprocessor` | syntax colours (coming in ttrcode) |
+| `comment`, `keyword`, `string`, `number`, `preprocessor` | syntax colours (ttrcode) |
+| `currentLine` | the background of the line with the caret (ttrcode) |
+| `ruler` | the column marker line (ttrcode) |
+| `whitespace` | visible spaces and tabs (ttrcode) |
 | `color0` ... `color15` | the terminal's 16 colours |
 
 Left-out keys are derived from the ones given (see `th/scheme.h`).

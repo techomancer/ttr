@@ -35,6 +35,9 @@ enum SchemeColor {
     SC_STRING,
     SC_NUMBER,
     SC_PREPROCESSOR,
+    SC_CURRENT_LINE,        /* the background of the caret's line */
+    SC_RULER,               /* the column marker */
+    SC_WHITESPACE,          /* visible spaces and tabs */
     SC_ANSI0,               /* the terminal's 16 colours: black, red, ... */
     SC_COUNT = SC_ANSI0 + 16
 };

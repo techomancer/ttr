@@ -499,6 +499,8 @@ $(B)/ttrt_settingsdlg.o: $(B)/.dir src/ttrt/settingsdlg.cpp $(TTRT_H) \
 TTRCODE_OBJS = $(B)/ttrcode_main.o \
 	$(B)/ttrcode_app.o \
 	$(B)/ttrcode_editsource.o \
+	$(B)/ttrcode_findfiles.o \
+	$(B)/ttrcode_options.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
 TTRCODE_H = src/ttrcode/app.h src/ttrcode/editsource.h $(TE_H) $(TT_H) $(TH_H) \
@@ -515,6 +517,10 @@ $(B)/ttrcode_main.o: $(B)/.dir src/ttrcode/main.cpp $(TTRCODE_H)
 	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrcode/main.cpp -o $@
 $(B)/ttrcode_app.o: $(B)/.dir src/ttrcode/app.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/app.cpp -o $@
+$(B)/ttrcode_findfiles.o: $(B)/.dir src/ttrcode/findfiles.cpp $(TTRCODE_H)
+	$(COMPILE) -c src/ttrcode/findfiles.cpp -o $@
+$(B)/ttrcode_options.o: $(B)/.dir src/ttrcode/options.cpp $(TTRCODE_H)
+	$(COMPILE) -c src/ttrcode/options.cpp -o $@
 $(B)/ttrcode_editsource.o: $(B)/.dir src/ttrcode/editsource.cpp src/ttrcode/editsource.h \
 		$(TE_H) tw/tw.h
 	$(COMPILE) -c src/ttrcode/editsource.cpp -o $@

@@ -393,6 +393,42 @@ static void test_blocks()
     CHECK(!v.has_block());
 }
 
+static void test_more()
+{
+    te::Document d;
+    te::View v(d);
+    v.set_size(40, 10);
+    /* Whole words. */
+    load(d, "int interval = in + in_x;");
+    te::Pos a, b;
+    bool wrapped;
+    CHECK(d.find("in", te::Pos(0, 0), true, true, &a, &b, &wrapped, true));
+    CHECK_POS(a, 0, 15);
+    CHECK(d.replace_all("in", "IN", true, true) == 1);
+    CHECK_TEXT(d, "int interval = IN + in_x;");
+    /* A marked block indents with Tab and stays marked, on one line too. */
+    load(d, "a\nb\nc");
+    v.set_cursor(te::Pos(1, 0), false);
+    v.set_cursor(te::Pos(1, 1), true);
+    v.mark_block();
+    v.move(te::MOVE_DOC_END, false);
+    v.tab(false);
+    CHECK_TEXT(d, "a\n\tb\nc");
+    CHECK(v.has_block());
+    v.tab(true);
+    CHECK_TEXT(d, "a\nb\nc");
+    /* Visible whitespace. */
+    load(d, "a b\tc");
+    v.show_whitespace = true;
+    te::Cell row[40];
+    v.row(0, row);
+    CHECK(row[1].cp == 0xb7 && row[1].ws);
+    CHECK(row[3].cp == 0xbb && row[3].ws);
+    CHECK(row[4].cp == ' ' && !row[4].ws);
+    CHECK(row[8].cp == 'c');
+    v.show_whitespace = false;
+}
+
 static void test_layout()
 {
     te::Document d;
@@ -593,6 +629,7 @@ int main()
     test_blocks();
     test_layout();
     test_select_word();
+    test_more();
     test_view_find();
     test_syntax();
     printf("te: %d checks, %d failures\n", g_checks, g_failures);

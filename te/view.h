@@ -25,6 +25,7 @@ struct Cell {
     uint8_t width;          /* columns: 1, 2, or 0 for the right half of a wide character */
     uint8_t kind;           /* CellKind */
     uint8_t syn;            /* SynClass (syntax.h), SYN_NONE without colouring */
+    uint8_t ws;             /* 1: visible whitespace (show_whitespace) */
 };
 
 class Syntax;
@@ -57,6 +58,7 @@ public:
     int indent_width;       /* columns per indent with spaces (0: tab_width) */
     bool insert_spaces;     /* Tab inserts spaces instead of a tab */
     bool auto_indent;       /* Enter keeps the line's indentation */
+    bool show_whitespace;   /* row() shows spaces as middle dots, tabs as >> */
 
     /* Syntax colouring for row() (owned by the host; 0: none). */
     void set_syntax(Syntax* s) { syntax_ = s; }
@@ -87,8 +89,8 @@ public:
     void newline();
     void backspace();
     void del();
-    /* Tab: a tab (or spaces); with a selection of lines, indent them
-     * (outdent with shift). */
+    /* Tab: a tab (or spaces); with a selection of lines, or else with a
+     * marked block, indent them (outdent with shift). */
     void tab(bool shift);
     void delete_line();
     /* The selection's text (malloc'd), and cut and paste. */
@@ -109,8 +111,9 @@ public:
     bool undo();
     bool redo();
     /* Search from the cursor; the hit becomes the selection. */
-    bool find(const char* text, bool forward, bool match_case, bool* wrapped);
-    int replace_all(const char* from, const char* to, bool match_case);
+    bool find(const char* text, bool forward, bool match_case, bool* wrapped,
+              bool whole_word = false);
+    int replace_all(const char* from, const char* to, bool match_case, bool whole_word = false);
     void goto_line(long line);
 
     /* Scrolling: the first line and column shown. */
@@ -133,6 +136,7 @@ private:
     Pos next_char(Pos p) const;
     Pos prev_char(Pos p) const;
     void erase_selection();
+    void indent_lines(long first, long last, bool out);
     void move_to(Pos p, bool extend, bool keep_column);
 
     Document& doc_;
