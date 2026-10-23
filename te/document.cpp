@@ -30,7 +30,7 @@ bool same(char a, char b, bool match_case)
 Document::Document()
     : lines_(0), n_(0), cap_(0), crlf_(false), undo_(0), undo_n_(0), undo_cap_(0), redo_(0),
       redo_n_(0), redo_cap_(0), group_(0), group_depth_(0), merge_ok_(false), next_group_(1),
-      saved_(0), version_(0)
+      saved_(0), version_(0), changed_from_(0)
 {
     set_text("", 0);
 }
@@ -101,6 +101,7 @@ void Document::set_text(const char* data, size_t n)
     saved_ = state();
     merge_ok_ = false;
     version_++;
+    changed_from_ = 0;
 }
 
 char* Document::text(size_t* n) const
@@ -190,7 +191,7 @@ void Document::raw_insert(Pos at, const char* s, size_t n, Pos* end_pos)
     free(tail);
     if (end_pos)
         *end_pos = Pos(line, end_col);
-    version_++;
+    touch(at.line);
 }
 
 void Document::raw_erase(Pos a, Pos b)
@@ -213,7 +214,21 @@ void Document::raw_erase(Pos a, Pos b)
         memmove(lines_ + a.line + 1, lines_ + b.line + 1, (size_t)(n_ - b.line - 1) * sizeof(Line));
         n_ -= gone;
     }
+    touch(a.line);
+}
+
+void Document::touch(long line)
+{
     version_++;
+    if (changed_from_ < 0 || line < changed_from_)
+        changed_from_ = line;
+}
+
+long Document::take_changed()
+{
+    long c = changed_from_;
+    changed_from_ = -1;
+    return c;
 }
 
 char* Document::get(Pos a, Pos b, size_t* n) const

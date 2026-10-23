@@ -8,6 +8,7 @@
 
 #include "editsource.h"
 
+#include "../../te/syntax.h"
 #include "../../te/view.h"
 #include "../../th/scheme.h"
 #include "../../th/theme.h"
@@ -37,6 +38,7 @@ struct Options {
 struct Doc {
     te::Document text;
     te::View view;
+    te::Syntax syntax;
     ttr::Str path;              /* empty: not saved yet */
     ttr::Str name;              /* the tab's label */
     Widget tab;                 /* the tab's toggle button */
@@ -44,7 +46,16 @@ struct Doc {
     bool shown_modified;        /* what the tab label says */
     time_t mtime;
 
-    Doc() : view(text), tab(0), close(0), shown_modified(false), mtime(0) {}
+    Doc() : view(text), syntax(text), tab(0), close(0), shown_modified(false), mtime(0)
+    {
+        view.set_syntax(&syntax);
+    }
+    /* The language from the name and the first line. */
+    void detect_language()
+    {
+        syntax.set_language(te::language_for(path.empty() ? name.c_str() : path.c_str(),
+                                             text.line(0), text.length(0)));
+    }
 };
 
 /* The workspace tree's rows. */

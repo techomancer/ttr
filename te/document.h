@@ -78,6 +78,9 @@ public:
     void mark_saved() { saved_ = state(); }
     /* Changes with every edit, undo and redo (for renderers). */
     unsigned long version() const { return version_; }
+    /* The first line changed since the last call, or -1 (for one
+     * consumer: the document's syntax colouring). */
+    long take_changed();
 
     /* Search, within lines (patterns do not cross line ends). Forward
      * searches start at 'from', backward ones end just before it. False
@@ -106,6 +109,7 @@ private:
     void raw_erase(Pos a, Pos b);
     void record(bool insert, Pos at, const char* s, size_t n);
     void clear_ops(Op* ops, long* count);
+    void touch(long line);
     void push_op(Op** ops, long* count, long* cap, const Op& op);
     /* The group id of the last undo step: identifies the text's state. */
     unsigned long state() const { return undo_n_ ? undo_[undo_n_ - 1].group : 0; }
@@ -123,6 +127,7 @@ private:
     unsigned long next_group_;  /* ids for new undo groups */
     unsigned long saved_;       /* state() when saved */
     unsigned long version_;
+    long changed_from_;
 
     Document(const Document&);
     Document& operator=(const Document&);

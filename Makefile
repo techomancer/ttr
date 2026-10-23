@@ -275,8 +275,9 @@ $(B)/tu_test_tu.o: $(B)/.dir tu/test/test_tu.cpp $(TU_H) $(TL_TERMINAL_H)
 # te, the text editing core shared by ttrc's editor and ttrcode
 # (te/DESIGN.md): libte.a and its tests. "make te-test" runs them.
 TE_OBJS = $(B)/te_document.o \
+	$(B)/te_syntax.o \
 	$(B)/te_view.o
-TE_H = te/document.h te/view.h tl/port.h
+TE_H = te/document.h te/syntax.h te/view.h tl/port.h
 
 $(B)/libte.a: $(TE_OBJS)
 	rm -f $@
@@ -284,6 +285,8 @@ $(B)/libte.a: $(TE_OBJS)
 
 $(B)/te_document.o: $(B)/.dir te/document.cpp $(TE_H)
 	$(COMPILE) -c te/document.cpp -o $@
+$(B)/te_syntax.o: $(B)/.dir te/syntax.cpp $(TE_H)
+	$(COMPILE) -c te/syntax.cpp -o $@
 $(B)/te_view.o: $(B)/.dir te/view.cpp $(TE_H) tl/unicode.h
 	$(COMPILE) -c te/view.cpp -o $@
 

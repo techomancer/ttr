@@ -682,6 +682,11 @@ symbolic link is written through. Files with CRLF line ends stay that
 way. When a file changes on disk and has no unsaved changes, ttrcode
 reloads it when its window gets the focus again.
 
+**Syntax colors** for C, C++, Python, shell scripts and makefiles, chosen
+by the file's name (`.c`, `.cpp`, `.h`, `.py`, `.sh`, `Makefile`, ...) or
+its `#!` line; the status bar shows the language. The colors come from the
+color scheme (`comment`, `keyword`, `string`, `number`, `preprocessor`).
+
 **Colors.** View > Color Scheme colors the editor and the terminal pane:
 Light (the default, black on white) and Dark are built in, and Amber,
 Classic Blue, Green Screen, Solarized Light and Solarized Dark come in

@@ -1,4 +1,5 @@
 #include "view.h"
+#include "syntax.h"
 
 #include "../tl/unicode.h"
 
@@ -63,8 +64,14 @@ bool is_word(uint32_t cp)
 
 View::View(Document& doc)
     : tab_width(8), indent_width(0), insert_spaces(false), auto_indent(true), doc_(doc), want_col_(0), top_(0),
-      left_(0), cols_(80), rows_(24), found_(false), block_(false), block_version_(0)
+      left_(0), cols_(80), rows_(24), found_(false), block_(false), block_version_(0),
+      syntax_(0), syn_buf_(0), syn_cap_(0)
 {
+}
+
+View::~View()
+{
+    free(syn_buf_);
 }
 
 void View::set_size(int cols, int rows)
@@ -672,6 +679,7 @@ bool View::row(int y, Cell* out) const
         out[x].cp = ' ';
         out[x].width = 1;
         out[x].kind = CELL_TEXT;
+        out[x].syn = 0;
     }
     long line = top_ + y;
     if (line < 0 || line >= doc_.lines())
@@ -682,11 +690,26 @@ bool View::row(int y, Cell* out) const
     bool blk = has_block();
     const char* s = doc_.line(line);
     size_t len = doc_.length(line);
+    const uint8_t* syn = 0;
+    if (syntax_ && len > 0) {
+        if (len > syn_cap_) {
+            uint8_t* p = (uint8_t*)realloc(syn_buf_, len);
+            if (p) {
+                syn_buf_ = p;
+                syn_cap_ = len;
+            }
+        }
+        if (len <= syn_cap_) {
+            syntax_->classify(line, syn_buf_);
+            syn = syn_buf_;
+        }
+    }
     int col = 0;
     for (size_t i = 0; i < len;) {
         uint32_t cp;
         size_t n = decode(s + i, len - i, &cp);
         int w = columns(cp, col, tab_width);
+        uint8_t sc = syn ? syn[i] : 0;
         Pos here(line, i);
         uint8_t kind = CELL_TEXT;
         if (sel && a <= here && here < b)
@@ -700,8 +723,10 @@ bool View::row(int y, Cell* out) const
             break;
         if (cp == '\t') {
             for (int k = 0; k < w; k++)
-                if (x + k >= 0 && x + k < cols_)
+                if (x + k >= 0 && x + k < cols_) {
                     out[x + k].kind = kind;
+                    out[x + k].syn = sc;
+                }
         } else if (is_control(cp)) {
             uint32_t shown[2] = { '^', cp == 0x7f ? (uint32_t)'?' : cp + '@' };
             for (int k = 0; k < 2; k++)
@@ -714,15 +739,18 @@ bool View::row(int y, Cell* out) const
                 out[x].cp = cp;
                 out[x].width = 2;
                 out[x].kind = kind;
+                out[x].syn = sc;
                 out[x + 1].cp = ' ';
                 out[x + 1].width = 0;
                 out[x + 1].kind = kind;
+                out[x + 1].syn = sc;
             } else if (x >= 0 && x < cols_) {
                 out[x].kind = kind;     /* half a wide character: a blank */
             }
         } else if (w == 1 && x >= 0) {
             out[x].cp = cp;
             out[x].kind = kind;
+            out[x].syn = sc;
         }
         col += w;
         i += n;

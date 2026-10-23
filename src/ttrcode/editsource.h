@@ -8,6 +8,7 @@
 #ifndef TTRCODE_EDITSOURCE_H
 #define TTRCODE_EDITSOURCE_H
 
+#include "../../te/syntax.h"
 #include "../../te/view.h"
 #include "../../tw/tw.h"
 
@@ -20,6 +21,7 @@ struct EditColors {
     uint32_t control;               /* ^X for control characters */
     uint32_t found_background;      /* the last search hit */
     uint32_t cursor;
+    uint32_t syntax[te::SYN_COUNT];     /* text colour per class; [0] unused */
 };
 
 class EditSource : public tw::Source {

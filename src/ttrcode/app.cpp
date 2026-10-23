@@ -799,6 +799,7 @@ int App::load(Doc* d, const char* path)
     struct stat st;
     d->mtime = stat(path, &st) == 0 ? st.st_mtime : 0;
     d->view.set_cursor(te::Pos(0, 0), false);
+    d->detect_language();
     update_tab(d);
     return err;
 }
@@ -862,6 +863,7 @@ bool App::save_doc(Doc* d, bool ask_name)
             return false;
         d->path = p;
         d->name = base_name(p.c_str());
+        d->detect_language();
     }
     int err = write_file(d, d->path.c_str());
     if (err) {
@@ -984,8 +986,9 @@ void App::update_ui()
     char st[800];
     if (d) {
         te::Pos c = d->view.cursor();
-        snprintf(st, sizeof(st), "Ln %ld, Col %d     %s     %s", c.line + 1,
-                 d->view.column_of(c) + 1, d->text.crlf() ? "CRLF" : "LF",
+        snprintf(st, sizeof(st), "Ln %ld, Col %d     %s     %s     %s", c.line + 1,
+                 d->view.column_of(c) + 1, te::language_name(d->syntax.language()),
+                 d->text.crlf() ? "CRLF" : "LF",
                  d->path.empty() ? d->name.c_str() : d->path.c_str());
         if (d->shown_modified != d->text.modified())
             update_tab(d);
@@ -2168,6 +2171,13 @@ void App::set_scheme(const char* name)
     c.control = scheme_.get(th::SC_CONTROL);
     c.found_background = scheme_.get(th::SC_FIND_BG);
     c.cursor = scheme_.get(th::SC_CURSOR);
+    c.syntax[te::SYN_NONE] = c.text;
+    c.syntax[te::SYN_COMMENT] = scheme_.get(th::SC_COMMENT);
+    c.syntax[te::SYN_KEYWORD] = scheme_.get(th::SC_KEYWORD);
+    c.syntax[te::SYN_TYPE] = scheme_.get(th::SC_KEYWORD);
+    c.syntax[te::SYN_STRING] = scheme_.get(th::SC_STRING);
+    c.syntax[te::SYN_NUMBER] = scheme_.get(th::SC_NUMBER);
+    c.syntax[te::SYN_PREPROC] = scheme_.get(th::SC_PREPROCESSOR);
     src_.set_colors(c);
     for (int i = 0; i < 16; i++)
         palette_[i] = (uint32_t)scheme_.ansi(i);

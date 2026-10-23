@@ -60,6 +60,20 @@ A view is one window onto a document. A document can have several views
 The host owns everything else: files (ttrc reads and writes them through
 tf), the clipboard, key bindings, dialogs and drawing.
 
+## Syntax (`te/syntax.h`)
+
+Syntax colouring gives each byte of a line a class: comment, keyword,
+type, string, number or preprocessor. Languages are C, C++, Python,
+shell and make, chosen from the file name or the `#!` line.
+- Lexing is per line, starting from the state the previous line ended in:
+  inside a block comment, a triple-quoted string, a quoted shell string,
+  or a continued preprocessor line.
+- `Syntax` caches the state at the start of every line. The document
+  reports the first line changed since the last look
+  (`Document::take_changed`), and the cache is dropped from there on.
+- `View::row()` puts the classes in `Cell::syn`; hosts map them to
+  colours.
+
 ## Tests
 
 `make te-test` runs the tests for the document and the view. ttrc's

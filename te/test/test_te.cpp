@@ -1,6 +1,7 @@
 /* Tests for te: the document (edits, undo, search) and the view (moves,
  * editing commands, layout). */
 #include "../document.h"
+#include "../syntax.h"
 #include "../view.h"
 
 #include <stdio.h>
@@ -490,6 +491,98 @@ static void test_view_find()
     CHECK_TEXT(d, "ox dog ox\nox");
 }
 
+/* Classes of a line lexed from a state, as a string: '.' none, 'c'
+ * comment, 'k' keyword, 't' type, 's' string, 'n' number, 'p' preproc. */
+static const char* classes(te::Language l, const char* line, unsigned state, unsigned* end)
+{
+    static char out[256];
+    uint8_t cls[256];
+    size_t n = strlen(line);
+    unsigned e = te::Syntax::lex(l, line, n, state, cls);
+    if (end)
+        *end = e;
+    for (size_t i = 0; i < n; i++)
+        out[i] = ".ckts np"[cls[i]] == ' ' ? 'n' : ".cktsnp"[cls[i]];
+    out[n] = 0;
+    return out;
+}
+
+#define CHECK_CLS(l, line, state, want) \
+    check_cls((l), (line), (state), (want), __FILE__, __LINE__)
+static unsigned check_cls(te::Language l, const char* line, unsigned state, const char* want,
+                          const char* file, int ln)
+{
+    unsigned end;
+    const char* got = classes(l, line, state, &end);
+    g_checks++;
+    if (strcmp(got, want) != 0) {
+        g_failures++;
+        printf("%s:%d: %s\n  got  %s\n  want %s\n", file, ln, line, got, want);
+    }
+    return end;
+}
+
+static void test_syntax()
+{
+    using namespace te;
+    CHECK(language_for("a/b.c", 0, 0) == LANG_C);
+    CHECK(language_for("x.hpp", 0, 0) == LANG_CPP);
+    CHECK(language_for("x.h", 0, 0) == LANG_CPP);
+    CHECK(language_for("run.py", 0, 0) == LANG_PYTHON);
+    CHECK(language_for("Makefile", 0, 0) == LANG_MAKE);
+    CHECK(language_for("build", "#!/bin/sh", 9) == LANG_SHELL);
+    CHECK(language_for("tool", "#!/usr/bin/env python3", 22) == LANG_PYTHON);
+    CHECK(language_for("README", "hello", 5) == LANG_NONE);
+
+    /* C */
+    CHECK_CLS(LANG_C, "int x = 42; // hi", 0, "ttt.....nn..ccccc");
+    CHECK_CLS(LANG_C, "return \"a\\\"b\";", 0, "kkkkkk.ssssss.");
+    CHECK_CLS(LANG_C, "#include <stdio.h>", 0, "pppppppppppppppppp");
+    CHECK(check_cls(LANG_C, "a /* b", 0, "..cccc", __FILE__, __LINE__) == 1);
+    CHECK(check_cls(LANG_C, "still */ x", 1, "cccccccc..", __FILE__, __LINE__) == 0);
+    CHECK(check_cls(LANG_C, "#define A \\", 0, "ppppppppppp", __FILE__, __LINE__) == 2);
+    CHECK_CLS(LANG_C, "  1", 2, "ppp");
+    CHECK_CLS(LANG_C, "size_t n = 0x1fU;", 0, "tttttt.....nnnnn.");
+    CHECK_CLS(LANG_CPP, "class A : public B {}", 0, "kkkkk.....kkkkkk.....");
+    CHECK_CLS(LANG_C, "class A", 0, ".......");
+
+    /* Python */
+    CHECK_CLS(LANG_PYTHON, "def f(self): # c", 0, "kkk...tttt...ccc");
+    CHECK_CLS(LANG_PYTHON, "x = r'a\\' + 1.5e3", 0, "....sssss...nnnnn");
+    CHECK(check_cls(LANG_PYTHON, "s = \"\"\"doc", 0, "....ssssss", __FILE__, __LINE__) == 1);
+    CHECK(check_cls(LANG_PYTHON, "more\"\"\" + 1", 1, "sssssss...n", __FILE__, __LINE__) == 0);
+    CHECK_CLS(LANG_PYTHON, "  @app.route", 0, "..pppppppppp");
+
+    /* Shell */
+    CHECK_CLS(LANG_SHELL, "if [ -f $x ]; then echo \"$HOME/a\"; fi # c", 0,
+              "kk......pp....kkkk......spppppsss..kk.ccc");
+    CHECK_CLS(LANG_SHELL, "a#b ${c} 2", 0, "....pppp.n");
+    CHECK(check_cls(LANG_SHELL, "echo 'multi", 0, ".....ssssss", __FILE__, __LINE__) == 1);
+    CHECK(check_cls(LANG_SHELL, "line' done", 1, "sssss.kkkk", __FILE__, __LINE__) == 0);
+
+    /* Make */
+    CHECK_CLS(LANG_MAKE, "CC = gcc # c", 0, "tt.......ccc");
+    CHECK_CLS(LANG_MAKE, "all: $(B)/x", 0, "ttt..pppp..");
+    CHECK_CLS(LANG_MAKE, "\t$(CC) -o $@", 0, ".ppppp....pp");
+    CHECK_CLS(LANG_MAKE, "ifeq ($(A),1)", 0, "kkkk..pppp...");
+
+    /* A document's cached states follow edits. */
+    Document d;
+    load(d, "a /* b\nc\nd */ e\nf");
+    Syntax syn(d);
+    syn.set_language(LANG_C);
+    uint8_t cls[64];
+    syn.classify(3, cls);
+    CHECK(cls[0] == SYN_NONE);
+    syn.classify(1, cls);
+    CHECK(cls[0] == SYN_COMMENT);
+    d.erase(Pos(0, 2), Pos(0, 4));      /* the comment no longer opens */
+    syn.classify(1, cls);
+    CHECK(cls[0] == SYN_NONE);
+    syn.classify(2, cls);
+    CHECK(cls[0] == SYN_NONE && cls[2] == SYN_NONE);
+}
+
 int main()
 {
     test_document();
@@ -501,6 +594,7 @@ int main()
     test_layout();
     test_select_word();
     test_view_find();
+    test_syntax();
     printf("te: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;
 }

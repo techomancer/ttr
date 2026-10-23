@@ -24,7 +24,10 @@ struct Cell {
     uint32_t cp;            /* code point; ' ' for tabs and padding */
     uint8_t width;          /* columns: 1, 2, or 0 for the right half of a wide character */
     uint8_t kind;           /* CellKind */
+    uint8_t syn;            /* SynClass (syntax.h), SYN_NONE without colouring */
 };
+
+class Syntax;
 
 enum Move {
     MOVE_LEFT,
@@ -44,6 +47,7 @@ enum Move {
 class View {
 public:
     explicit View(Document& doc);
+    ~View();
 
     Document& document() { return doc_; }
     const Document& document() const { return doc_; }
@@ -53,6 +57,9 @@ public:
     int indent_width;       /* columns per indent with spaces (0: tab_width) */
     bool insert_spaces;     /* Tab inserts spaces instead of a tab */
     bool auto_indent;       /* Enter keeps the line's indentation */
+
+    /* Syntax colouring for row() (owned by the host; 0: none). */
+    void set_syntax(Syntax* s) { syntax_ = s; }
 
     /* The area the view is drawn in, in cells. */
     void set_size(int cols, int rows);
@@ -139,6 +146,9 @@ private:
     Pos block_a_, block_b_;
     bool block_;
     unsigned long block_version_;   /* the document's version when marked */
+    Syntax* syntax_;
+    mutable uint8_t* syn_buf_;      /* a line's classes, for row() */
+    mutable size_t syn_cap_;
 
     View(const View&);
     View& operator=(const View&);

@@ -39,6 +39,8 @@ EditSource::EditSource()
     colors_.control = 0x800000;
     colors_.found_background = 0xffff80;
     colors_.cursor = 0x000000;
+    for (int i = 0; i < te::SYN_COUNT; i++)
+        colors_.syntax[i] = colors_.text;
 }
 
 EditSource::~EditSource()
@@ -157,6 +159,10 @@ void EditSource::layout()
                 break;
             default:
                 c.style = text;
+                if (e.syn > 0 && e.syn < te::SYN_COUNT) {
+                    c.style.fg = colors_.syntax[e.syn];
+                    c.style.deco = c.style.fg;
+                }
                 break;
             }
         }
