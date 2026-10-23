@@ -105,8 +105,8 @@ OBJS = $(B)/main.o \
 
 all: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttrcode
 
-$(B)/ttr: $(OBJS)
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
+$(B)/ttr: $(OBJS) $(B)/libth.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(B)/libth.a $(LIBS)
 
 $(B)/.dir:
 	mkdir -p $(B)
@@ -296,6 +296,37 @@ te-test: $(B)/te_test
 $(B)/te_test_te.o: $(B)/.dir te/test/test_te.cpp $(TE_H)
 	$(COMPILE) -c te/test/test_te.cpp -o $@
 
+# th, ttr's colours for every ttr program (th/DESIGN.md): UI themes, text
+# colour schemes, and their Motif glue (th_motif.o). "make th-test" runs
+# its tests.
+TH_OBJS = $(B)/th_th.o \
+	$(B)/th_theme.o \
+	$(B)/th_scheme.o \
+	$(B)/th_motif.o
+TH_H = th/th.h th/theme.h th/scheme.h th/motif.h th/internal.h
+
+$(B)/libth.a: $(TH_OBJS)
+	rm -f $@
+	$(AR) rc $@ $(TH_OBJS)
+
+$(B)/th_th.o: $(B)/.dir th/th.cpp $(TH_H)
+	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c th/th.cpp -o $@
+$(B)/th_theme.o: $(B)/.dir th/theme.cpp $(TH_H)
+	$(COMPILE) -c th/theme.cpp -o $@
+$(B)/th_scheme.o: $(B)/.dir th/scheme.cpp $(TH_H)
+	$(COMPILE) -c th/scheme.cpp -o $@
+$(B)/th_motif.o: $(B)/.dir th/motif.cpp $(TH_H)
+	$(COMPILE) -c th/motif.cpp -o $@
+
+$(B)/th_test: $(B)/th_test_th.o $(B)/libth.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/th_test_th.o $(B)/libth.a
+
+th-test: $(B)/th_test
+	$(B)/th_test
+
+$(B)/th_test_th.o: $(B)/.dir th/test/test_th.cpp $(TH_H)
+	$(COMPILE) -c th/test/test_th.cpp -o $@
+
 # tf, ttrc's file systems (ttrc/DESIGN.md section 5): libtf.a and its
 # tests. TF_SYS is the per-system part: tf_sys_linux.o or tf_sys_irix.o
 # (IRIX: make TF_SYS=$(B)/tf_sys_irix.o).
@@ -432,9 +463,9 @@ TTRT_H = src/ttrt/settings.h src/ttrt/settingsdlg.h $(TT_H)
 
 ttrt: $(B)/ttrt
 
-$(B)/ttrt: $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a
+$(B)/ttrt: $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a \
-		$(B)/libtl.a $(B)/libtp.a $(LIBS)
+		$(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(LIBS)
 
 $(B)/ttrt_main.o: $(B)/.dir src/ttrt/main.cpp $(TTRT_H) $(CORE_H)
 	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrt/main.cpp -o $@
@@ -452,9 +483,10 @@ TTRCODE_H = src/ttrcode/app.h src/ttrcode/editsource.h $(TE_H) $(TT_H) src/core/
 
 ttrcode: $(B)/ttrcode
 
-$(B)/ttrcode: $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a
+$(B)/ttrcode: $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a $(B)/libtw.a $(B)/libtl.a \
+		$(B)/libtp.a $(B)/libth.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a \
-		$(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(LIBS)
+		$(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(LIBS)
 
 $(B)/ttrcode_main.o: $(B)/.dir src/ttrcode/main.cpp $(TTRCODE_H)
 	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrcode/main.cpp -o $@
@@ -498,7 +530,7 @@ $(B)/tl_test_unicode.o: $(B)/.dir tl/test/test_unicode.cpp tl/test/tltest.h tl/u
 	$(COMPILE) -c tl/test/test_unicode.cpp -o $@
 
 # Header groups, to keep the rules below short.
-CORE_H = src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
+CORE_H = $(TH_H) src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
 	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
 	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h \
 	src/core/settings.h src/core/shortcuts.h src/core/launch.h \

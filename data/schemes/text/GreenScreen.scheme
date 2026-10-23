@@ -1,0 +1,33 @@
+! A green phosphor terminal.
+name: Green Screen
+isDark: true
+foreground: #33ff33
+background: #001400
+cursor: #66ff66
+selectionForeground: #001400
+selectionBackground: #33ff33
+gutterForeground: #1a8a1a
+gutterBackground: #000e00
+findBackground: #0a5a0a
+control: #aaffaa
+comment: #1aa01a
+keyword: #88ff88
+string: #55ee55
+number: #55ee55
+preprocessor: #88ff88
+color0: #001400
+color1: #22aa22
+color2: #33ff33
+color3: #55ee55
+color4: #1a8a1a
+color5: #22aa22
+color6: #55ee55
+color7: #33ff33
+color8: #116611
+color9: #44ff44
+color10: #66ff66
+color11: #88ff88
+color12: #22bb22
+color13: #44ff44
+color14: #88ff88
+color15: #ccffcc

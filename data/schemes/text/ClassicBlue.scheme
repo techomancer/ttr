@@ -1,0 +1,33 @@
+! Light text on blue, as the DOS editors and IDEs had it.
+name: Classic Blue
+isDark: true
+foreground: #ffff55
+background: #0000aa
+cursor: #ffffff
+selectionForeground: #0000aa
+selectionBackground: #aaaaaa
+gutterForeground: #55ffff
+gutterBackground: #000080
+findBackground: #00aaaa
+control: #ff55ff
+comment: #aaaaaa
+keyword: #ffffff
+string: #55ffff
+number: #55ff55
+preprocessor: #55ff55
+color0: #000000
+color1: #aa0000
+color2: #00aa00
+color3: #aa5500
+color4: #0000aa
+color5: #aa00aa
+color6: #00aaaa
+color7: #aaaaaa
+color8: #555555
+color9: #ff5555
+color10: #55ff55
+color11: #ffff55
+color12: #5555ff
+color13: #ff55ff
+color14: #55ffff
+color15: #ffffff

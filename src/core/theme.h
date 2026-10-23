@@ -1,5 +1,6 @@
 /*
- * Color themes: a color for each of a few roles. Theme files use the
+ * Color themes: a color for each of a few roles. ttr's view of th's UI
+ * themes (th/theme.h), which every ttr program shares. Theme files use the
  * format of the IRIX desktop color schemes (data/schemes/irix/README.md),
  * X resource lines with one value per display gamma:
  *
@@ -18,6 +19,8 @@
 #include "core/color.h"
 #include "core/str.h"
 #include "core/vector.h"
+
+#include "../../th/theme.h"
 
 namespace ttr {
 
@@ -61,6 +64,10 @@ struct Theme {
     /* Set a role. A new background also drops the specific backgrounds,
      * so they follow it. */
     void put(ThemeRole role, const Rgb& c);
+
+    /* The same theme as th's. */
+    th::Theme to_th() const;
+    static Theme from_th(const th::Theme& t);
 };
 
 struct ThemeInfo {

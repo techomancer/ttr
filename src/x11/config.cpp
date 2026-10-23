@@ -1,4 +1,6 @@
 #include "x11/config.h"
+
+#include "../../th/motif.h"
 #include "core/scale.h"
 #include "core/settings.h"
 #include "core/theme.h"
@@ -708,37 +710,10 @@ static bool mwm_color(Display* dpy, XrmDatabase db, const char* res,
     return parse_color(dpy, mine.c_str(), out);
 }
 
-static void put_color(XrmDatabase* db, const char* spec, const Rgb& c)
-{
-    char hex[8];
-    format_hex_color(c, hex);
-    XrmPutStringResource(db, spec, hex);
-}
-
-/* Motif widgets get the theme through the resource database: what the
- * theme sets, nothing else, so Motif derives the rest as usual. */
+/* Motif widgets get the theme through the resource database. */
 static void apply_theme(XrmDatabase* db, const Theme& t)
 {
-    put_color(db, "*background", t.get(TR_BACKGROUND));
-    if (t.set[TR_FOREGROUND])
-        put_color(db, "*foreground", t.color[TR_FOREGROUND]);
-    if (t.set[TR_BUTTON])
-        put_color(db, "*XmPushButton.background", t.color[TR_BUTTON]);
-    if (t.set[TR_TEXT_FIELD]) {
-        put_color(db, "*XmTextField.background", t.color[TR_TEXT_FIELD]);
-        put_color(db, "*XmText.background", t.color[TR_TEXT_FIELD]);
-    }
-    if (t.set[TR_LIST])
-        put_color(db, "*XmList.background", t.color[TR_LIST]);
-    if (t.set[TR_TROUGH])
-        put_color(db, "*XmScrollBar.troughColor", t.color[TR_TROUGH]);
-    if (t.set[TR_SCROLL_BAR])
-        put_color(db, "*XmScrollBar.background", t.color[TR_SCROLL_BAR]);
-    if (t.set[TR_SELECT_FILL]) {
-        put_color(db, "*XmToggleButton.selectColor", t.color[TR_SELECT_FILL]);
-        put_color(db, "*XmToggleButtonGadget.selectColor",
-                  t.color[TR_SELECT_FILL]);
-    }
+    th::apply_theme(db, t.to_th());
 }
 
 static void read_colors(Display* dpy, const Resources& r, Config* cfg)
