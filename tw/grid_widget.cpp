@@ -3,9 +3,11 @@
  * records are C structures; this file fills them in C++98.
  */
 #include "grid_widget.h"
+#include "renderer.h"
 #include "surface.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <X11/IntrinsicP.h>
 #include <X11/StringDefs.h>
@@ -27,6 +29,8 @@ struct TwGridPart {
     int rows;
     int frame_delay;
     int blink_interval;
+    String renderer;            /* auto, core, soft, gl */
+    String background;          /* an animated background (GL), or "" */
     XtCallbackList input_cb;
     XtCallbackList pointer_cb;
     XtCallbackList resize_cb;
@@ -37,6 +41,7 @@ struct TwGridPart {
     XtIntervalId frame_timer;
     XtIntervalId blink_timer;
     int cols_now, rows_now;
+    Colormap own_cmap;          /* made for a visual not the parent's */
 };
 
 struct TwGridRec {
@@ -126,6 +131,10 @@ XtResource k_resources[] = {
       OFF(frame_delay), (String)XtRImmediate, (XtPointer)8 },
     { (String)TwNblinkInterval, (String)TwCBlinkInterval, (String)XtRInt, sizeof(int),
       OFF(blink_interval), (String)XtRImmediate, (XtPointer)500 },
+    { (String)TwNrenderer, (String)TwCRenderer, (String)XtRString, sizeof(String),
+      OFF(renderer), (String)XtRString, (XtPointer)"auto" },
+    { (String)TwNdynamicBackground, (String)TwCDynamicBackground, (String)XtRString, sizeof(String),
+      OFF(background), (String)XtRString, (XtPointer)"" },
     { (String)TwNinputCallback, (String)XtCCallback, (String)XtRCallback,
       sizeof(XtCallbackList), OFF(input_cb), (String)XtRCallback, (XtPointer)0 },
     { (String)TwNpointerCallback, (String)XtCCallback, (String)XtRCallback,
@@ -202,6 +211,7 @@ void initialize(Widget req, Widget nw, ArgList, Cardinal*)
     g->grid.blink_timer = 0;
     g->grid.cols_now = 0;
     g->grid.rows_now = 0;
+    g->grid.own_cmap = 0;
     g->grid.surface->set_margins(k_margin, k_margin);
     g->grid.surface->set_frame_delay(g->grid.frame_delay);
     g->grid.surface->set_blink_interval(g->grid.blink_interval);
@@ -225,6 +235,8 @@ void destroy(Widget w)
         XtRemoveTimeOut(g->grid.blink_timer);
     delete g->grid.surface;
     delete g->grid.sched;
+    if (g->grid.own_cmap)
+        XFreeColormap(XtDisplay(w), g->grid.own_cmap);
     g->grid.surface = 0;
     g->grid.sched = 0;
 }
@@ -246,20 +258,89 @@ void do_resize(Widget w)
     }
 }
 
+/* The renderer the resources ask for: auto is the core renderer, unless
+ * an animated background needs GL. */
+const char* wanted_renderer(TwGridWidget g)
+{
+    const char* r = g->grid.renderer ? g->grid.renderer : "auto";
+    if (strcmp(r, "core") == 0 || strcmp(r, "soft") == 0 || strcmp(r, "gl") == 0)
+        return r;
+    const char* bg = g->grid.background;
+    return bg && *bg && strcmp(bg, "none") != 0 ? "gl" : "core";
+}
+
+/* Put the window on WM_COLORMAP_WINDOWS of its shell, so window managers
+ * install its colormap (8-bit PseudoColor desktops, a TrueColor window). */
+void add_colormap_window(Widget w)
+{
+    Widget shell = w;
+    while (XtParent(shell) && !XtIsShell(shell))
+        shell = XtParent(shell);
+    if (!XtIsRealized(shell))
+        return;
+    Window* old = 0;
+    int n = 0;
+    Display* dpy = XtDisplay(w);
+    XGetWMColormapWindows(dpy, XtWindow(shell), &old, &n);
+    Window* list = (Window*)malloc(sizeof(Window) * (size_t)(n + 2));
+    int k = 0;
+    for (int i = 0; i < n; i++)
+        if (old[i] != XtWindow(w))
+            list[k++] = old[i];
+    if (k == 0)
+        list[k++] = XtWindow(shell);
+    list[k++] = XtWindow(w);
+    XSetWMColormapWindows(dpy, XtWindow(shell), list, k);
+    free(list);
+    if (old)
+        XFree(old);
+}
+
 void realize(Widget w, XtValueMask* mask, XSetWindowAttributes* attrs)
 {
     TwGridWidget g = (TwGridWidget)w;
+    Display* dpy = XtDisplay(w);
     /* We paint every pixel: no background clears, no flicker, and keep
      * the contents where they are when the window grows. */
     *mask |= CWBitGravity | CWBackPixmap;
     *mask &= ~(XtValueMask)CWBackPixel;
     attrs->bit_gravity = NorthWestGravity;
     attrs->background_pixmap = None;
-    XtCreateWindow(w, InputOutput, CopyFromParent, *mask, attrs);
+    const char* kind = wanted_renderer(g);
+    Visual* visual = CopyFromParent;
+    XVisualInfo vi;
+    if (strcmp(kind, "core") != 0) {
+        if (!tw::choose_visual(kind, dpy, XScreenNumberOfScreen(XtScreen(w)), &vi)) {
+            fprintf(stderr, "TwGrid: no visual for the %s renderer, using core\n", kind);
+            kind = "core";
+        } else {
+            XWindowAttributes pa;
+            XGetWindowAttributes(dpy, XtWindow(XtParent(w)), &pa);
+            if (vi.visual != pa.visual) {
+                /* A visual of its own: a colormap and border pixel to match. */
+                g->grid.own_cmap = XCreateColormap(dpy, RootWindowOfScreen(XtScreen(w)),
+                                                   vi.visual, AllocNone);
+                attrs->colormap = g->grid.own_cmap;
+                attrs->border_pixel = 0;
+                *mask |= CWColormap | CWBorderPixel;
+                *mask &= ~(XtValueMask)CWBorderPixmap;
+                g->core.depth = (Cardinal)vi.depth;
+                g->core.colormap = g->grid.own_cmap;
+                visual = vi.visual;
+            }
+        }
+    }
+    XtCreateWindow(w, InputOutput, visual, *mask, attrs);
+    if (g->grid.own_cmap)
+        add_colormap_window(w);
     XWindowAttributes wa;
-    XGetWindowAttributes(XtDisplay(w), XtWindow(w), &wa);
-    g->grid.surface->attach(XtDisplay(w), XtWindow(w), wa.visual, g->core.colormap,
-                            g->core.depth, g->grid.sched);
+    XGetWindowAttributes(dpy, XtWindow(w), &wa);
+    g->grid.surface->attach(dpy, XtWindow(w), wa.visual, wa.colormap, wa.depth, g->grid.sched,
+                            kind);
+    if (g->grid.background && *g->grid.background &&
+        !g->grid.surface->set_background(g->grid.background))
+        fprintf(stderr, "TwGrid: the %s renderer has no background \"%s\"\n",
+                g->grid.surface->renderer_name(), g->grid.background);
     do_resize(w);
 }
 
@@ -470,6 +551,20 @@ void TwGridDamage(Widget w)
     TwGridWidget g = (TwGridWidget)w;
     if (g->grid.surface)
         g->grid.surface->damage();
+}
+
+const char* TwGridRendererName(Widget w)
+{
+    TwGridWidget g = (TwGridWidget)w;
+    return g->grid.surface ? g->grid.surface->renderer_name() : "";
+}
+
+Boolean TwGridSetBackground(Widget w, const char* name)
+{
+    TwGridWidget g = (TwGridWidget)w;
+    if (!XtIsRealized(w))
+        return False;
+    return g->grid.surface->set_background(name) ? True : False;
 }
 
 void TwGridSetSource(Widget w, tw::Source* src)

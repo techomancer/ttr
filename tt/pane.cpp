@@ -256,13 +256,19 @@ TermPane::TermPane(Widget parent, const char* name, const PaneOptions& o, PaneHo
         XtAddCallback(scroll_, XmNdragCallback, scroll_cb, (XtPointer)this);
     }
     font_ = dup_str(o.font && o.font[0] ? o.font : pick_font(dpy));
-    Arg args[12];
+    Arg args[16];
     Cardinal n = 0;
     XtSetArg(args[n], TwNfont, font_); n++;
     if (o.fallback_fonts) {
         XtSetArg(args[n], TwNfallbackFonts, o.fallback_fonts); n++;
     }
     XtSetArg(args[n], TwNsource, (tw::Source*)&src_); n++;
+    if (o.renderer && *o.renderer) {
+        XtSetArg(args[n], TwNrenderer, o.renderer); n++;
+    }
+    if (o.dynamic_background && *o.dynamic_background) {
+        XtSetArg(args[n], TwNdynamicBackground, o.dynamic_background); n++;
+    }
     XtSetArg(args[n], XmNuserData, (XtPointer)this); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;

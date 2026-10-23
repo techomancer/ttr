@@ -395,6 +395,8 @@ ttrt -e top                 # run a program instead of the shell
 | `-nomenu` | no menu bar |
 | `-vb` | flash the window instead of beeping |
 | `-title TEXT` | window title (programs can change it) |
+| `-renderer NAME` | how text is drawn: `core` (X11 server drawing, the default and fastest on an Indy), `soft` (a TrueColor framebuffer, through MIT-SHM on a local display), `gl` (OpenGL) or `auto` |
+| `-dynbg NAME` | an animated background behind the text: `night`, `sunset`, `ocean`, `aurora`, `embers` or `static` (needs OpenGL; `auto` then picks it) |
 | `-xrm 'ttrt.NAME: VALUE'` | any setting below, for this window |
 | `-e PROGRAM ARGS...` | run a program instead of the shell; must come last |
 
@@ -423,6 +425,8 @@ bell: visual
 | `backspace` | `del` or `bs`: what Backspace sends | `del` |
 | `bell` | `audible`, `visual` (flash), `off` | `audible` |
 | `colorScheme` | a text color scheme, shared with ttrcode (see "The code editor"): its text, background, cursor and 16 terminal colors; text, background and cursor colors set apart from their defaults still win | none: xterm's colors |
+| `renderer` | `auto`, `core`, `soft`, `gl` (new windows) | `auto`: core, or gl for a background |
+| `dynamicBackground` | `night`, `sunset`, `ocean`, `aurora`, `embers`, `static`, or empty | none |
 
 The same names work as X resources of class `TTRt` (`TTRt*saveLines:
 5000`). The settings file wins over X resources, and the command line wins
@@ -630,6 +634,7 @@ terminal.
 ttrcode                     # the current directory as the workspace
 ttrcode ~/src/project main.c util.c
 ttrcode -fn 9x15 file.txt
+ttrcode -renderer gl -dynbg night    # OpenGL, stars behind the terminal pane
 ```
 
 The window has the workspace tree on the left (Enter or a double click
@@ -714,6 +719,8 @@ the file wins over them:
 | `insertSpaces` | `true`: Tab inserts spaces; `false`: a tab | `true` |
 | `lineNumbers` | `true`, `false` | `true` |
 | `treeWidth`, `bottomHeight` | the workspace's width, the terminal pane's height, in pixels | `220`, `220` |
+| `renderer` | `auto`, `core`, `soft`, `gl`, as for ttrt (`-renderer`) | `auto` |
+| `terminalBackground` | an animated background for the terminal pane, as ttrt's (`-dynbg`) | none |
 
 The plan is in [ttrcode/DESIGN.md](ttrcode/DESIGN.md).
 

@@ -485,6 +485,9 @@ void App::build_layout()
         XtSetArg(args[n], TwNfallbackFonts, opt_.fallback_fonts); n++;
     }
     XtSetArg(args[n], TwNsource, (tw::Source*)&src_); n++;
+    if (opt_.renderer && *opt_.renderer) {
+        XtSetArg(args[n], TwNrenderer, opt_.renderer); n++;
+    }
     XtSetArg(args[n], TwNcolumns, 100); n++;
     XtSetArg(args[n], TwNrows, 36); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
@@ -621,6 +624,8 @@ void App::make_terminal()
     term_opt_.have_cursor_color = true;
     term_opt_.cursor_color = (uint32_t)scheme_.get(th::SC_CURSOR);
     term_opt_.palette = palette_;
+    term_opt_.renderer = opt_.renderer;
+    term_opt_.dynamic_background = opt_.terminal_background;
     term_ = new tt::TermPane(bottom_slot_, "terminal", term_opt_, this);
     XtVaSetValues(term_->widget(), XmNtopAttachment, XmATTACH_FORM,
                   XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_FORM,

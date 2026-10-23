@@ -137,6 +137,8 @@ private:
     Widget menu_bar_;
     Widget backspace_del_;
     Widget bell_;
+    Widget renderer_w_;
+    Widget dynbg_w_;
 };
 
 }

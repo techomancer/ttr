@@ -44,6 +44,8 @@ struct Resources {
     String backspace;
     String bell;
     String color_scheme;
+    String renderer;
+    String dynamic_background;
 };
 
 /* Names and defaults come from settings.h, the list the Settings dialog
@@ -73,7 +75,11 @@ XtResource k_resources[] = {
     { TS(S_BELL), (String)"Bell", (String)XtRString, sizeof(String),
       ROFF(bell), (String)XtRString, TSD(S_BELL) },
     { TS(S_COLOR_SCHEME), (String)"ColorScheme", (String)XtRString, sizeof(String),
-      ROFF(color_scheme), (String)XtRString, TSD(S_COLOR_SCHEME) }
+      ROFF(color_scheme), (String)XtRString, TSD(S_COLOR_SCHEME) },
+    { TS(S_RENDERER), (String)"Renderer", (String)XtRString, sizeof(String),
+      ROFF(renderer), (String)XtRString, TSD(S_RENDERER) },
+    { TS(S_DYNAMIC_BACKGROUND), (String)"DynamicBackground", (String)XtRString, sizeof(String),
+      ROFF(dynamic_background), (String)XtRString, TSD(S_DYNAMIC_BACKGROUND) }
 };
 #undef TSD
 #undef TS
@@ -96,6 +102,8 @@ XrmOptionDescRec k_options[] = {
     { (char*)"+ls", (char*)".loginShell", XrmoptionNoArg, (XPointer)"false" },
     { (char*)"-nomenu", (char*)".menuBar", XrmoptionNoArg, (XPointer)"false" },
     { (char*)"-vb", (char*)".bell", XrmoptionNoArg, (XPointer)"visual" },
+    { (char*)"-renderer", (char*)".renderer", XrmoptionSepArg, 0 },
+    { (char*)"-dynbg", (char*)".dynamicBackground", XrmoptionSepArg, 0 },
     { (char*)"-xrm", 0, XrmoptionResArg, 0 }
 };
 /* XtAppInitialize handles -xrm itself; only merge_settings needs it. */
@@ -394,6 +402,10 @@ void App::apply(const ttr::Str* v, const bool* changed)
         pane->set_bell(bell_mode(v[S_BELL].c_str()));
     if (changed[S_MENU_BAR])
         show_menu_bar(strcmp(v[S_MENU_BAR].c_str(), "true") == 0);
+    /* A background shows at once with the GL renderer; the renderer
+     * itself applies to new windows. */
+    if (changed[S_DYNAMIC_BACKGROUND])
+        pane->set_dynamic_background(v[S_DYNAMIC_BACKGROUND].c_str());
     /* Scrollback and the login shell apply to new windows. */
     for (int i = 0; i < S_COUNT; i++)
         if (changed[i])
@@ -492,6 +504,7 @@ int main(int argc, char** argv)
     if (argc > 1) {
         fprintf(stderr, "usage: ttrt [-fn font] [-fg color] [-bg color] [-cr color] [-sl lines]\n"
                         "            [-ls] [-nomenu] [-vb] [-geometry WxH] [-title title]\n"
+                        "            [-renderer auto|core|soft|gl] [-dynbg name]\n"
                         "            [-xrm resource] [-e command ...]\n");
         return 2;
     }
@@ -514,6 +527,8 @@ int main(int argc, char** argv)
         a->cur[S_BACKSPACE] = strcmp(a->res.backspace, "bs") == 0 ? "bs" : "del";
         a->cur[S_BELL] = a->res.bell ? a->res.bell : "audible";
         a->cur[S_COLOR_SCHEME] = a->res.color_scheme ? a->res.color_scheme : "";
+        a->cur[S_RENDERER] = a->res.renderer ? a->res.renderer : "auto";
+        a->cur[S_DYNAMIC_BACKGROUND] = a->res.dynamic_background ? a->res.dynamic_background : "";
     }
 
     a->main_w = XtVaCreateManagedWidget("main", xmFormWidgetClass, a->top, (char*)0);
@@ -541,6 +556,8 @@ int main(int argc, char** argv)
     o.bold_is_bright = a->res.bold_is_bright != False;
     o.backspace_is_del = strcmp(a->res.backspace, "bs") != 0;
     o.bell = bell_mode(a->cur[ttrt::S_BELL].c_str());
+    o.renderer = a->cur[ttrt::S_RENDERER].c_str();
+    o.dynamic_background = a->cur[ttrt::S_DYNAMIC_BACKGROUND].c_str();
     o.argv = (const char* const*)a->cmd;
     o.login = a->res.login_shell != False;
     a->pane = new tt::TermPane(a->main_w, "terminal", o, a);

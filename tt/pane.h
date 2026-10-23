@@ -54,6 +54,8 @@ struct PaneOptions {
     bool backspace_is_del;
     BellMode bell;
     bool scroll_bar;
+    const char* renderer;           /* TwGrid's: auto, core, soft, gl */
+    const char* dynamic_background; /* an animated background (GL), or null */
     /* What runs: argv (null: the user's shell, a login shell if login),
      * in cwd (null: ours), with env changes ("NAME=value", "NAME"). TERM,
      * TERMINFO, COLORTERM and WINDOWID are set by the pane. */
@@ -65,7 +67,8 @@ struct PaneOptions {
     PaneOptions()
         : font(0), fallback_fonts(0), foreground(0xe5e5e5), background(0), palette(0),
           have_cursor_color(false), cursor_color(0), scrollback(1000), bold_is_bright(true),
-          backspace_is_del(true), bell(BELL_AUDIBLE), scroll_bar(true), argv(0), login(false),
+          backspace_is_del(true), bell(BELL_AUDIBLE), scroll_bar(true), renderer(0),
+          dynamic_background(0), argv(0), login(false),
           cwd(0), env(0)
     {
     }
@@ -114,6 +117,8 @@ public:
     void set_bold_is_bright(bool on);
     void set_backspace_is_del(bool on);
     void set_bell(BellMode b) { bell_ = b; }
+    /* False if the renderer cannot draw it (only gl can). */
+    bool set_dynamic_background(const char* name) { return TwGridSetBackground(grid_, name) != False; }
 
     void cell_size(int* w, int* h) const;
     int cols() { return term_.cols(); }

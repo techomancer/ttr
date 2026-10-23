@@ -66,20 +66,43 @@ bool Surface::set_fonts(Display* dpy, const char* regular, const char* bold)
 }
 
 bool Surface::attach(Display* dpy, Window win, Visual* visual, Colormap cmap, int depth,
-                     Scheduler* sched)
+                     Scheduler* sched, const char* kind)
 {
     detach();
     dpy_ = dpy;
     win_ = win;
     sched_ = sched;
-    r_ = create_core_renderer();
-    if (!r_->init(dpy, win, visual, cmap, depth, &fonts_)) {
-        delete r_;
-        r_ = 0;
-        return false;
+    const char* order[3] = { kind ? kind : "core", "soft", "core" };
+    for (int i = 0; i < 3 && !r_; i++) {
+        if (i > 0 && strcmp(order[i], order[0]) == 0)
+            continue;
+        Renderer* r = strcmp(order[i], "gl") == 0 ? create_gl_renderer()
+                    : strcmp(order[i], "soft") == 0 ? create_soft_renderer()
+                                                     : create_core_renderer();
+        if (r && r->init(dpy, win, visual, cmap, depth, &fonts_)) {
+            r_ = r;
+        } else {
+            delete r;
+        }
     }
+    if (!r_)
+        return false;
     r_->set_geometry(g_);
     full_pending_ = true;
+    return true;
+}
+
+const char* Surface::renderer_name() const
+{
+    return r_ ? r_->name() : "";
+}
+
+bool Surface::set_background(const char* name)
+{
+    if (!r_ || !r_->set_background(name))
+        return false;
+    full_pending_ = true;
+    damage();
     return true;
 }
 
@@ -164,6 +187,11 @@ void Surface::set_focus(bool in)
         return;
     focused_ = in;
     blink_on_ = true;
+    if (r_ && r_->full_frames()) {
+        full_pending_ = true;
+        damage();
+        return;
+    }
     if (src_ && r_) {
         src_->frame_begin();
         Cursor c = src_->cursor();
@@ -275,7 +303,8 @@ void Surface::frame()
     }
     stat_cells_ = 0;
     int rows = g_.rows;
-    if (full_pending_ || src_->full_damage()) {
+    r_->begin_frame(src_->background());
+    if (full_pending_ || src_->full_damage() || r_->full_frames()) {
         clear_margins();
         for (int y = 0; y < rows; y++)
             draw_row(y, 0, g_.cols - 1);
@@ -300,6 +329,11 @@ void Surface::frame()
     src_->frame_done();
     r_->flush();
     last_frame_ = now;
+    /* An animated background keeps frames coming. */
+    if (r_->animation_ms() > 0 && !scheduled_) {
+        scheduled_ = true;
+        sched_->schedule_frame(r_->animation_ms());
+    }
 
     /* Keep the cursor blinking while focused. */
     Cursor c = src_->cursor();
@@ -325,6 +359,13 @@ void Surface::blink()
         return;
     }
     blink_on_ = !blink_on_;
+    if (r_->full_frames()) {
+        full_pending_ = true;
+        damage();
+        blink_armed_ = true;
+        sched_->schedule_blink(blink_ms_);
+        return;
+    }
     src_->frame_begin();
     if (c.y >= 0 && c.y < g_.rows) {
         draw_row(c.y, c.x, c.x + (c.wide ? 1 : 0));

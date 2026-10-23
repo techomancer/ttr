@@ -209,6 +209,7 @@ public:
     }
 
     void flush() { XFlush(dpy_); }
+    const char* name() const { return "core"; }
 
 private:
     /* Glyph masks live on the server in depth-1 pixmap pages of fixed
@@ -409,7 +410,8 @@ private:
 
     void decorate(int px, int py, int n, const CellStyle& st)
     {
-        if (!(st.flags & (S_UNDERLINE | S_DOUBLE_UNDERLINE | S_CURLY_UNDERLINE | S_STRIKE | S_OVERLINE)) ||
+        if (!(st.flags & (S_UNDERLINE | S_DOUBLE_UNDERLINE | S_CURLY_UNDERLINE | S_STRIKE |
+                          S_OVERLINE | S_LEFT_LINE)) ||
             (st.flags & S_INVISIBLE))
             return;
         int w = n * g_.cell_w;
@@ -433,6 +435,8 @@ private:
             fill_px(px, py + fonts_->ascent() * 2 / 3, w, t, c);
         if (st.flags & S_OVERLINE)
             fill_px(px, py, w, t, c);
+        if (st.flags & S_LEFT_LINE)
+            fill_px(px, py, 1, g_.cell_h, c);
     }
 
     Display* dpy_;

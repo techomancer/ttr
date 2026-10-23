@@ -32,6 +32,8 @@ struct Options {
     const char* scheme;         /* text colour scheme (th/scheme.h) */
     const char* ui_theme;       /* UI theme; "" follows ttr's */
     int tree_width, bottom_height;
+    const char* renderer;       /* TwGrid's for every grid: auto, core, soft, gl */
+    const char* terminal_background;    /* an animated background (GL) */
 };
 
 /* An open file. */

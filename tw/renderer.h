@@ -10,6 +10,7 @@
 #include "tw.h"
 
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
 
 namespace tw {
 
@@ -44,9 +45,29 @@ public:
     virtual void draw_cursor(const Cursor& c, const CellData& under, uint32_t color,
                              bool focused, const ClusterLookup* clusters) = 0;
     virtual void flush() = 0;
+
+    /* A frame starts; bg is the window's background colour. */
+    virtual void begin_frame(uint32_t bg) { (void)bg; }
+    /* Every frame must redraw every cell (double buffering, or an
+     * animated background behind the text). */
+    virtual bool full_frames() const { return false; }
+    /* Above 0: draw a frame this often even without damage (animation). */
+    virtual int animation_ms() const { return 0; }
+    /* An animated background by name ("aurora", ...); false if this
+     * renderer cannot draw it. */
+    virtual bool set_background(const char* name) { return !name || !*name; }
+    virtual const char* name() const = 0;
 };
 
+/* The renderers. A kind the build or the display lacks is 0. */
 Renderer* create_core_renderer();
+Renderer* create_soft_renderer();
+Renderer* create_gl_renderer();
+
+/* The visual a renderer kind wants for its window ("core": the parent's,
+ * "soft": TrueColor, "gl": a GLX visual); false if the display has none.
+ */
+bool choose_visual(const char* kind, Display* dpy, int screen, XVisualInfo* out);
 
 } /* namespace tw */
 

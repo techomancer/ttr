@@ -35,6 +35,12 @@ DBUS_CFLAGS = -I/usr/include/dbus-1.0 -I/usr/lib64/dbus-1.0/include \
 	-I/usr/lib/dbus-1.0/include -I/usr/lib/x86_64-linux-gnu/dbus-1.0/include
 LDFLAGS =
 LIBS = -lXm -lXt -lXpm -lpng -ldbus-1 -lX11 -lm
+# tw's renderers: the soft one uses MIT-SHM (libXext), the GL one OpenGL
+# 1.1 through GLX. Without OpenGL: make GL_CPPFLAGS= GL_LIBS= (the gl
+# renderer is then absent and -renderer gl falls back to soft).
+GL_CPPFLAGS = -DTTR_HAVE_GL
+GL_LIBS = -lGL
+TW_LIBS = -lXext $(GL_LIBS)
 
 # make install: the program and the session launcher go to BINDIR, the
 # session file to XSESSIONDIR, where display managers look for sessions,
@@ -176,14 +182,19 @@ $(B)/tp_test_tp.o: $(B)/.dir tp/test/test_tp.cpp tp/tp.h
 	$(COMPILE) -c tp/test/test_tp.cpp -o $@
 
 # tw, the text window drawing engine and its TwGrid widget (tw/DESIGN.md).
-TW_OBJS = $(B)/tw_bdf.o \
+TW_OBJS = $(B)/tw_backgrounds.o \
+	$(B)/tw_bdf.o \
 	$(B)/tw_core_render.o \
 	$(B)/tw_fonts.o \
+	$(B)/tw_gl_render.o \
 	$(B)/tw_glyphs.o \
 	$(B)/tw_grid_widget.o \
 	$(B)/tw_palette.o \
-	$(B)/tw_surface.o
-TW_H = tw/tw.h tw/bdf.h tw/fonts.h tw/glyphs.h tw/renderer.h tw/palette.h tw/surface.h
+	$(B)/tw_soft_render.o \
+	$(B)/tw_surface.o \
+	$(B)/tw_visual.o
+TW_H = tw/tw.h tw/bdf.h tw/fonts.h tw/glyphs.h tw/renderer.h tw/palette.h tw/surface.h \
+	tw/backgrounds.h
 
 $(B)/libtw.a: $(TW_OBJS)
 	rm -f $@
@@ -203,6 +214,14 @@ $(B)/tw_palette.o: $(B)/.dir tw/palette.cpp tw/palette.h tw/tw.h
 	$(COMPILE) -c tw/palette.cpp -o $@
 $(B)/tw_surface.o: $(B)/.dir tw/surface.cpp $(TW_H)
 	$(COMPILE) -c tw/surface.cpp -o $@
+$(B)/tw_soft_render.o: $(B)/.dir tw/soft_render.cpp $(TW_H)
+	$(COMPILE) -c tw/soft_render.cpp -o $@
+$(B)/tw_gl_render.o: $(B)/.dir tw/gl_render.cpp $(TW_H)
+	$(COMPILE) $(GL_CPPFLAGS) -c tw/gl_render.cpp -o $@
+$(B)/tw_backgrounds.o: $(B)/.dir tw/backgrounds.cpp $(TW_H)
+	$(COMPILE) $(GL_CPPFLAGS) -c tw/backgrounds.cpp -o $@
+$(B)/tw_visual.o: $(B)/.dir tw/visual.cpp $(TW_H)
+	$(COMPILE) -c tw/visual.cpp -o $@
 
 # The Unicode fonts ttrt draws with where the X server has none (IRIX): the
 # public domain X.org misc-fixed fonts in their ISO 10646 BDF form.
@@ -468,7 +487,7 @@ ttrt: $(B)/ttrt
 
 $(B)/ttrt: $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a \
-		$(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(LIBS)
+		$(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(TW_LIBS) $(LIBS)
 
 $(B)/ttrt_main.o: $(B)/.dir src/ttrt/main.cpp $(TTRT_H) $(CORE_H)
 	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrt/main.cpp -o $@
@@ -490,7 +509,7 @@ ttrcode: $(B)/ttrcode
 $(B)/ttrcode: $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a $(B)/libtw.a $(B)/libtl.a \
 		$(B)/libtp.a $(B)/libth.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a \
-		$(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(LIBS)
+		$(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(TW_LIBS) $(LIBS)
 
 $(B)/ttrcode_main.o: $(B)/.dir src/ttrcode/main.cpp $(TTRCODE_H)
 	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrcode/main.cpp -o $@

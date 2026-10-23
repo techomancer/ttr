@@ -1,6 +1,7 @@
 #include "settingsdlg.h"
 
 #include "../../tt/pane.h"
+#include "../../tw/backgrounds.h"
 
 #include "core/scale.h"
 #include "core/settings.h"
@@ -50,6 +51,29 @@ static const char* const k_bell_labels[] = {
 };
 static const char* const k_bell_values[] = { "audible", "visual", "off" };
 static const int k_nbells = 3;
+
+static const char* const k_renderer_labels[] = {
+    "Automatic", "Core X11", "Software (TrueColor)", "OpenGL"
+};
+static const char* const k_renderer_values[] = { "auto", "core", "soft", "gl" };
+static const int k_nrenderers = 4;
+
+/* "None", then tw's animated backgrounds, named for people. */
+static int background_choices(const char** labels, const char** values, int max)
+{
+    static char names[16][32];
+    int n = 0;
+    labels[n] = "None";
+    values[n++] = "";
+    const char* const* bg = tw::background_names();
+    for (int i = 0; bg[i] && n < max && i < 16; i++) {
+        snprintf(names[i], sizeof(names[i]), "%s", bg[i]);
+        names[i][0] = (char)toupper((unsigned char)names[i][0]);
+        labels[n] = names[i];
+        values[n++] = bg[i];
+    }
+    return n;
+}
 
 /* Sizes offered for scalable fonts. */
 static const int k_scalable_sizes[] = {
@@ -214,7 +238,8 @@ SettingsDialog::SettingsDialog(Widget parent, SettingsHost* host)
     : parent_(parent), host_(host), dpy_(XtDisplay(parent)), dialog_(0),
       family_(0), family_w_(0), size_w_(0), preview_(0), preview_fg_(0),
       preview_bg_(0), have_preview_fg_(false), have_preview_bg_(false),
-      picker_(new ttr::ColorPicker(picked, this)), picking_(-1), scheme_w_(0)
+      picker_(new ttr::ColorPicker(picked, this)), picking_(-1), scheme_w_(0),
+      renderer_w_(0), dynbg_w_(0)
 {
     int i;
     for (i = 0; i < C_COUNT; i++) {
@@ -495,6 +520,30 @@ void SettingsDialog::build()
         if (strcmp(orig_[S_BELL].c_str(), k_bell_values[i]) == 0)
             b = i;
     select_item(bell_, k_bell_labels[b]);
+
+    /* Drawing: tw's renderers and dash's animated backgrounds. */
+    f = frame(page, "Drawing");
+    r = row(f, "Renderer:");
+    renderer_w_ = drop_down(r, "renderer", k_renderer_labels, k_nrenderers, k_nrenderers, 20);
+    label(r, "(new windows)");
+    int rp = 0;
+    for (i = 0; i < k_nrenderers; i++)
+        if (strcmp(orig_[S_RENDERER].c_str(), k_renderer_values[i]) == 0)
+            rp = i;
+    select_item(renderer_w_, k_renderer_labels[rp]);
+    {
+        const char* labels[17];
+        const char* values[17];
+        int nb = background_choices(labels, values, 17);
+        r = row(f, "Background:");
+        dynbg_w_ = drop_down(r, "dynamicBackground", labels, nb, nb, 12);
+        int bp = 0;
+        for (i = 0; i < nb; i++)
+            if (strcmp(orig_[S_DYNAMIC_BACKGROUND].c_str(), values[i]) == 0)
+                bp = i;
+        select_item(dynbg_w_, labels[bp]);
+        label(r, "animated, with OpenGL (Automatic picks it)");
+    }
     XtManageChild(page);
 
     /* Separator, the file it saves to, OK, Apply, Cancel. */
@@ -1026,6 +1075,15 @@ void SettingsDialog::collect(Str* v) const
         } else {
             v[s] = k_settings[s].fallback ? k_settings[s].fallback : "";
         }
+    }
+    int rp = selected_pos(renderer_w_);
+    v[S_RENDERER] = k_renderer_values[rp >= 0 && rp < k_nrenderers ? rp : 0];
+    {
+        const char* labels[17];
+        const char* values[17];
+        int nb = background_choices(labels, values, 17);
+        int bp = selected_pos(dynbg_w_);
+        v[S_DYNAMIC_BACKGROUND] = values[bp >= 0 && bp < nb ? bp : 0];
     }
     int sp = selected_pos(scheme_w_);
     v[S_COLOR_SCHEME] = sp >= 1 && sp <= schemes_.count() ? schemes_[sp - 1].name : "";

@@ -428,16 +428,55 @@ so the same code runs on IRIX's OpenGL and on Mesa.
 
 ### 5.4 Choosing a renderer
 
-`TwNrenderer` is `auto`, `core`, `soft` or `gl`. Auto:
+`TwNrenderer` is `auto`, `core`, `soft` or `gl`. The renderer decides
+the window's visual (`choose_visual`), so TwGrid creates its window with
+it:
+- **core:** the parent's visual.
+- **soft:** a TrueColor visual, the deepest one if the default is not
+  TrueColor. An 8-bit Indy desktop gets a 24-bit window with its own
+  colormap, put on the shell's `WM_COLORMAP_WINDOWS`.
+- **gl:** `glXChooseVisual`, in this order: double-buffered with 8 bits
+  per channel; single-buffered with 8 bits (the Indy's 24-bit visual has
+  no back buffer); then any RGBA visual.
 
-| Situation | Renderer |
+A renderer that cannot start falls back to soft, then to core.
+
+What is implemented now:
+
+| Situation | `auto` gives |
 |---|---|
-| Default visual is PseudoColor (Indy, Indigo2 XL/XZ, 8-bit desktops) | core |
-| IRIX, GLX present, renderer string names IMPACT/MGRAS, Odyssey or VPro | gl, single-buffered |
-| IRIX otherwise with a TrueColor visual (O2, Octane SI) | soft |
-| Linux, GLX direct rendering available | gl, double-buffered |
-| Linux otherwise, or remote display | soft |
-| GL init fails | soft, then core |
+| An animated background is set (`TwNdynamicBackground`) | gl |
+| Otherwise | core |
+
+The design's per-board choice (gl on IMPACT, VPro and Linux with direct
+rendering; soft on O2 and remote displays) waits for measurements on
+real hardware. Until then, the core renderer is the fastest path on
+Newport and on a modern X server alike.
+
+Implementation notes:
+- **SoftRender** (`soft_render.cpp`) keeps an `XImage` in the server's
+  byte order, so it goes out unconverted: Xlib's own swapping of 32-bit
+  images to a big-endian server got the channels wrong. It uses MIT-SHM
+  when the server can attach the segment (local displays) and
+  `XPutImage` otherwise. Damage goes out as at most eight merged
+  rectangles per frame. Glyphs come from the glyph cache: the cache asks
+  the server to rasterize the core font's glyph into a depth-1 pixmap
+  once (`GlyphCache::set_display`), so text has exactly the core
+  renderer's pixels. FreeType is still to come.
+- **GLRender** (`gl_render.cpp`) draws each frame as three batches:
+  backgrounds, glyph quads from a texture atlas (`GL_ALPHA`, or
+  `GL_LUMINANCE_ALPHA` on IMPACT), then lines and builtin glyphs.
+  - Vertices sit on whole pixels and texels map one to one, so the text
+    is as sharp as the other renderers'. On the IRIX guest, GL and soft
+    give pixel-identical text.
+  - A double-buffered context draws whole frames and swaps.
+  - A single-buffered context draws only damaged rows into the front
+    buffer, with `glCopyPixels` for scrolls.
+- **Backgrounds** (`backgrounds.cpp`) are dash's night, sunset, ocean,
+  aurora, embers and static, ported to C++98 and GL 1.1. With one on,
+  every frame is drawn whole and animated: every 33 ms on Linux and every
+  100 ms on IRIX. Cells in the window's background colour
+  (`S_DEFAULT_BG`) are left transparent over it.
 
 The choice is logged; `ttrt -renderer core` forces one for testing.
 

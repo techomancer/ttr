@@ -25,6 +25,8 @@ extern WidgetClass twGridWidgetClass;
 #define TwNrows ((char*)"rows")
 #define TwNframeDelay ((char*)"frameDelay")
 #define TwNblinkInterval ((char*)"blinkInterval")
+#define TwNrenderer ((char*)"renderer")
+#define TwNdynamicBackground ((char*)"dynamicBackground")
 #define TwNinputCallback ((char*)"inputCallback")
 #define TwNpointerCallback ((char*)"pointerCallback")
 #define TwNresizeCallback ((char*)"resizeCallback")
@@ -36,6 +38,8 @@ extern WidgetClass twGridWidgetClass;
 #define TwCRows ((char*)"Rows")
 #define TwCFrameDelay ((char*)"FrameDelay")
 #define TwCBlinkInterval ((char*)"BlinkInterval")
+#define TwCRenderer ((char*)"Renderer")
+#define TwCDynamicBackground ((char*)"DynamicBackground")
 
 enum {
     TW_CR_KEY = 1,
@@ -71,5 +75,12 @@ void TwGridGetCellSize(Widget w, int* width, int* height);
 /* Size the widget (and ask its parent) for cols x rows cells. */
 void TwGridSetSize(Widget w, int cols, int rows);
 tw::Surface* TwGridSurface(Widget w);
+/* The renderer drawing: "core", "soft" or "gl" (TwNrenderer is "auto",
+ * "core", "soft" or "gl"; auto means core, or gl for a background). */
+const char* TwGridRendererName(Widget w);
+/* An animated background ("night", "sunset", "ocean", "aurora",
+ * "embers", "static"; "" or "none" for none). False if the renderer
+ * cannot draw it (only GL can; choose it with TwNrenderer). */
+Boolean TwGridSetBackground(Widget w, const char* name);
 
 #endif

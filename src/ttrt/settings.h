@@ -37,6 +37,8 @@ enum {
     S_BACKSPACE,        /* del, bs */
     S_BELL,             /* audible, visual, off */
     S_COLOR_SCHEME,     /* a text colour scheme (th/scheme.h); "": none */
+    S_RENDERER,         /* auto, core, soft, gl (tw's renderers) */
+    S_DYNAMIC_BACKGROUND, /* an animated background (gl), or "" */
     S_COUNT
 };
 
@@ -51,7 +53,9 @@ static const Setting k_settings[S_COUNT] = {
     { "boldIsBright", "true" },
     { "backspace", "del" },
     { "bell", "audible" },
-    { "colorScheme", "" }
+    { "colorScheme", "" },
+    { "renderer", "auto" },
+    { "dynamicBackground", "" }
 };
 
 /* $XDG_CONFIG_HOME/ttrt/settings, or ~/.config/ttrt/settings. */

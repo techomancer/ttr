@@ -2,19 +2,84 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <X11/Xutil.h>
 
 namespace tw {
 
 GlyphCache::GlyphCache()
     : fonts_(0), cw_(0), ch_(0), ascent_(0), table_(0), count_(0), store_(0), store_len_(0),
-      store_cap_(0), generation_(0)
+      store_cap_(0), generation_(0), dpy_(0), drawable_(0), pm_(0), gc_(0), pm_w_(0), pm_h_(0)
 {
 }
 
 GlyphCache::~GlyphCache()
 {
+    if (pm_)
+        XFreePixmap(dpy_, pm_);
+    if (gc_)
+        XFreeGC(dpy_, gc_);
     free(table_);
     free(store_);
+}
+
+void GlyphCache::set_display(Display* dpy, Drawable d)
+{
+    dpy_ = dpy;
+    drawable_ = d;
+}
+
+/* The core font's glyph for g's base character, drawn by the server into
+ * a depth-1 pixmap at the cell's baseline and read back: exactly the
+ * pixels the core renderer would put on the screen. */
+bool GlyphCache::raster_core(CachedGlyph* g, uint8_t* mask, bool* synth_bold)
+{
+    if (!dpy_ || !fonts_)
+        return false;
+    uint32_t cp = g->cps[0];
+    int face = g->face;
+    *synth_bold = false;
+    if (face == FACE_BOLD && !fonts_->has_face(FACE_BOLD)) {
+        face = FACE_REGULAR;
+        *synth_bold = true;
+    }
+    const CoreFont& f = fonts_->face(face);
+    if (!f.loaded() || !f.has(cp))
+        return false;
+    int w = g->w, h = g->h;
+    if (!pm_ || pm_w_ < w || pm_h_ < h) {
+        if (pm_)
+            XFreePixmap(dpy_, pm_);
+        if (gc_)
+            XFreeGC(dpy_, gc_);
+        pm_w_ = 2 * cw_;
+        pm_h_ = ch_;
+        pm_ = XCreatePixmap(dpy_, drawable_, (unsigned)pm_w_, (unsigned)pm_h_, 1);
+        XGCValues v;
+        v.graphics_exposures = False;
+        gc_ = XCreateGC(dpy_, pm_, GCGraphicsExposures, &v);
+    }
+    XSetForeground(dpy_, gc_, 0);
+    XFillRectangle(dpy_, pm_, gc_, 0, 0, (unsigned)pm_w_, (unsigned)pm_h_);
+    XSetForeground(dpy_, gc_, 1);
+    XSetFont(dpy_, gc_, f.fs()->fid);
+    if (f.two_byte()) {
+        XChar2b c;
+        c.byte1 = (unsigned char)(cp >> 8);
+        c.byte2 = (unsigned char)(cp & 255);
+        XDrawString16(dpy_, pm_, gc_, 0, ascent_, &c, 1);
+    } else {
+        char c = (char)cp;
+        XDrawString(dpy_, pm_, gc_, 0, ascent_, &c, 1);
+    }
+    XImage* im = XGetImage(dpy_, pm_, 0, 0, (unsigned)w, (unsigned)h, 1, XYPixmap);
+    if (!im)
+        return false;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+            if (XGetPixel(im, x, y))
+                mask[y * g->stride + x / 8] |= (uint8_t)(0x80 >> (x % 8));
+    XDestroyImage(im);
+    return true;
 }
 
 void GlyphCache::configure(const Fonts* fonts, int cell_w, int cell_h, int ascent)
@@ -94,7 +159,12 @@ void GlyphCache::compose(CachedGlyph* g)
     memset(mask, 0, (size_t)stride * (size_t)ch_);
     g->found = false;
     bool synth = false;
-    for (int i = 0; i < g->n; i++) {
+    int first = 0;
+    if (raster_core(g, mask, &synth)) {
+        g->found = true;
+        first = 1;                              /* marks from the BDF fonts */
+    }
+    for (int i = first; i < g->n; i++) {
         bool s = false;
         const BdfFont* f = fonts_->bdf_for(g->face, g->cps[i], &s);
         if (!f) {

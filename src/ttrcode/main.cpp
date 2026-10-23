@@ -1,7 +1,8 @@
 /*
  * ttrcode, the ttr code editor (ttrcode/DESIGN.md).
  *
- *   ttrcode [-fn font] [X toolkit options] [directory] [file ...]
+ *   ttrcode [-fn font] [-renderer auto|core|soft|gl] [-dynbg name]
+ *           [X toolkit options] [directory] [file ...]
  *
  * The directory is the workspace (default: the current one); files open
  * in tabs.
@@ -33,6 +34,7 @@ struct Resources {
     Boolean line_numbers;
     String scheme, ui_theme;
     int tree_width, bottom_height;
+    String renderer, terminal_background;
 };
 
 #define ROFF(f) XtOffsetOf(Resources, f)
@@ -54,14 +56,18 @@ XtResource k_resources[] = {
     { (String)"treeWidth", (String)"TreeWidth", (String)XtRInt, sizeof(int), ROFF(tree_width),
       (String)XtRString, (XtPointer)"220" },
     { (String)"bottomHeight", (String)"BottomHeight", (String)XtRInt, sizeof(int),
-      ROFF(bottom_height), (String)XtRString, (XtPointer)"220" }
+      ROFF(bottom_height), (String)XtRString, (XtPointer)"220" },
+    RSTR("renderer", "Renderer", renderer, "auto"),
+    RSTR("terminalBackground", "TerminalBackground", terminal_background, "")
 };
 #undef RSTR
 #undef ROFF
 
 XrmOptionDescRec k_options[] = {
     { (char*)"-fn", (char*)".font", XrmoptionSepArg, 0 },
-    { (char*)"-font", (char*)".font", XrmoptionSepArg, 0 }
+    { (char*)"-font", (char*)".font", XrmoptionSepArg, 0 },
+    { (char*)"-renderer", (char*)".renderer", XrmoptionSepArg, 0 },
+    { (char*)"-dynbg", (char*)".terminalBackground", XrmoptionSepArg, 0 }
 };
 
 /* The settings file's lines as the application's resources, under what
@@ -117,7 +123,8 @@ int main(int argc, char** argv)
     int first_file = 1;
     struct stat st;
     if (argc > 1 && argv[1][0] == '-') {
-        fprintf(stderr, "usage: ttrcode [-fn font] [directory] [file ...]\n");
+        fprintf(stderr, "usage: ttrcode [-fn font] [-renderer auto|core|soft|gl] [-dynbg name]\n"
+                        "               [directory] [file ...]\n");
         return 2;
     }
     if (argc > 1 && stat(argv[1], &st) == 0 && S_ISDIR(st.st_mode)) {
@@ -145,6 +152,8 @@ int main(int argc, char** argv)
     o.ui_theme = res.ui_theme ? res.ui_theme : "";
     o.tree_width = res.tree_width > 40 ? res.tree_width : 220;
     o.bottom_height = res.bottom_height > 40 ? res.bottom_height : 220;
+    o.renderer = res.renderer;
+    o.terminal_background = res.terminal_background;
 
     /* The UI theme, for every widget made from here on. */
     th::Theme theme;

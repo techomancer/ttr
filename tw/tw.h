@@ -27,7 +27,8 @@ enum StyleFlag {
     S_OVERLINE = 64,
     S_INVISIBLE = 128,
     S_BLINK = 256,
-    S_DEFAULT_BG = 512      /* bg is the window's background */
+    S_DEFAULT_BG = 512,     /* bg is the window's background */
+    S_LEFT_LINE = 1024      /* a 1-pixel line down the cell's left edge (rulers) */
 };
 
 /* Colours are resolved 0xRRGGBB; the model owns palettes and inversion. */

@@ -39,8 +39,14 @@ public:
     int cell_width() const { return fonts_.cell_width(); }
     int cell_height() const { return fonts_.cell_height(); }
 
+    /* kind: "core", "soft" or "gl"; a renderer that cannot start falls
+     * back to soft, then core. */
     bool attach(Display* dpy, Window win, Visual* visual, Colormap cmap, int depth,
-                Scheduler* sched);
+                Scheduler* sched, const char* kind = "core");
+    /* The renderer drawing now ("core", "soft", "gl"), or "". */
+    const char* renderer_name() const;
+    /* An animated background (GL only); false if the renderer has none. */
+    bool set_background(const char* name);
     void detach();
     void set_source(Source* src);
     void set_margins(int x, int y) { margin_x_ = x; margin_y_ = y; }
