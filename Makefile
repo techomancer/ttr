@@ -109,6 +109,16 @@ OBJS = $(B)/main.o \
 	$(B)/x11_wm.o \
 	$(B)/x11_xpainter.o
 
+# The shared core's headers; defined before any rule lists them (make
+# expands prerequisites as it reads them).
+CORE_H = $(TH_H) src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
+	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
+	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h \
+	src/core/settings.h src/core/shortcuts.h src/core/launch.h \
+	src/core/startup.h src/core/xdgautostart.h src/core/scale.h \
+	src/core/theme.h \
+	src/core/audio.h src/core/net.h src/core/storage.h src/core/notify.h
+
 all: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttrcode
 
 $(B)/ttr: $(OBJS) $(B)/libth.a
@@ -559,13 +569,6 @@ $(B)/tl_test_unicode.o: $(B)/.dir tl/test/test_unicode.cpp tl/test/tltest.h tl/u
 	$(COMPILE) -c tl/test/test_unicode.cpp -o $@
 
 # Header groups, to keep the rules below short.
-CORE_H = $(TH_H) src/core/port.h src/core/vector.h src/core/str.h src/core/geom.h \
-	src/core/color.h src/core/painter.h src/core/frame.h src/core/wmlink.h \
-	src/core/text.h src/core/icon.h src/core/apps.h src/core/switcher.h \
-	src/core/settings.h src/core/shortcuts.h src/core/launch.h \
-	src/core/startup.h src/core/xdgautostart.h src/core/scale.h \
-	src/core/theme.h \
-	src/core/audio.h src/core/net.h src/core/storage.h src/core/notify.h
 X11_H = src/x11/wm.h src/x11/hints.h src/x11/config.h src/x11/xpainter.h \
 	src/x11/iconload.h src/x11/svg.h src/x11/keys.h \
 	$(CORE_H)
