@@ -168,7 +168,7 @@ This installs:
 | `/usr/bin/ttrcode` | the code editor |
 | `/usr/share/ttrc/tc.sh`, `tc.csh` | the `tc` command for your shell (see "The file manager") |
 | `/usr/share/ttr/fonts/` | ttrt's Unicode fonts (public domain misc-fixed BDF) |
-| `/usr/share/terminfo/t/ttrt` | ttrt's terminfo entry (`/usr/share/lib/terminfo` on IRIX; packages built with `DESTDIR` set `TERMINFO_DIR`) |
+| `/usr/share/terminfo/t/ttrt` | ttrt's terminfo entry (`/usr/share/lib/terminfo` on IRIX; with `DESTDIR` it goes under `DESTDIR`, never into the system directory; `TERMINFO_DIR` names another place) |
 | `/usr/bin/ttr-session` | starts a ttr session (see below) |
 | `/usr/share/xsessions/ttr.desktop` | makes display managers offer "To The Roots" |
 | `/usr/share/ttr/schemes/` | the color themes (`ttr`, `irix`) and text color schemes (`text`) |

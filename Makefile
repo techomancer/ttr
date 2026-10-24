@@ -55,9 +55,9 @@ DATADIR = $(PREFIX)/share/ttr
 TTRC_DATADIR = $(PREFIX)/share/ttrc
 # Where tic puts ttrt's compiled terminfo entry. Empty: tic's own default,
 # the system directory every user's curses reads (/usr/share/lib/terminfo
-# on IRIX, /usr/share/terminfo with ncurses). Packages built with DESTDIR
-# must name it: TERMINFO_DIR=/usr/share/terminfo (Linux) or
-# /usr/share/lib/terminfo (IRIX).
+# on IRIX, /usr/share/terminfo with ncurses). With DESTDIR it is never the
+# system's: TERMINFO_DIR under DESTDIR, or DESTDIR/PREFIX/share/terminfo
+# when it is empty (IRIX packages name /usr/share/lib/terminfo).
 TERMINFO_DIR =
 DESTDIR =
 
@@ -843,8 +843,8 @@ install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode
 		mkdir -p $(DESTDIR)$(TERMINFO_DIR) && \
 		TERMINFO=$(DESTDIR)$(TERMINFO_DIR) tic data/ttrt.ti; \
 	elif [ -n "$(DESTDIR)" ]; then \
-		echo "make install: DESTDIR needs TERMINFO_DIR for ttrt's terminfo entry" >&2; \
-		exit 1; \
+		mkdir -p $(DESTDIR)$(PREFIX)/share/terminfo && \
+		TERMINFO=$(DESTDIR)$(PREFIX)/share/terminfo tic data/ttrt.ti; \
 	else \
 		tic data/ttrt.ti || echo "tic failed: ttrt will use TERM=xterm" >&2; \
 	fi

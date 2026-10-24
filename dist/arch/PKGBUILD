@@ -16,7 +16,8 @@ license=('BSD-3-Clause')
 # ttr draws with X core fonts: the bitmap fonts have Helvetica in every
 # size the UI scale needs, and mkfontscale indexes font folders (fonts.dir)
 # as font packages are installed, so the X server can use them.
-depends=('openmotif' 'libxt' 'libxpm' 'libpng' 'dbus' 'libx11'
+depends=('openmotif' 'libxt' 'libxpm' 'libpng' 'libjpeg-turbo' 'giflib' 'libtiff'
+         'dbus' 'libx11'
          'xorg-fonts-75dpi' 'xorg-fonts-100dpi' 'xorg-fonts-misc'
          'xorg-mkfontscale')
 makedepends=('git')
