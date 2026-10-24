@@ -245,6 +245,36 @@ programs need a D-Bus session bus. When there is none, which is common
 without systemd, `ttr-session` starts one for the session with
 `dbus-run-session`. Running plain `ttr` works too, but without that help.
 
+On **IRIX**, the login screen runs `~/.xsession` instead of the usual
+4Dwm session whenever that file exists (`/var/X11/xdm/Xsession` decides).
+This one starts ttr in place of 4Dwm:
+
+```sh
+#!/bin/sh
+
+# The standard login environment (PATH and the rest).
+if [ -x /usr/bin/X11/userenv ]; then
+    eval `/usr/bin/X11/userenv`
+fi
+
+# Your X resources, if you have them.
+if [ -r $HOME/.Xresources ]; then
+    xrdb -merge $HOME/.Xresources
+elif [ -r $HOME/.Xdefaults ]; then
+    xrdb -merge $HOME/.Xdefaults
+fi
+
+# Programs to start with the session go here, in the background:
+#/usr/bin/X11/xterm -geometry 80x24+0+0 &
+
+# The window manager last: the session ends when it exits (Restart ttr
+# in the Start menu does not end it: ttr replaces itself in place).
+exec /usr/bin/ttr
+```
+
+`chmod +x ~/.xsession` is customary (without it, the file is run with
+`/bin/sh`). To go back to 4Dwm, remove or rename the file.
+
 ttr does not replace a window manager that is already running. It prints
 "another window manager is already running" and exits.
 
