@@ -322,7 +322,31 @@ void Surface::frame()
     stat_cells_ = 0;
     int rows = g_.rows;
     r_->begin_frame(src_->background());
-    if (full_pending_ || src_->full_damage() || r_->full_frames()) {
+    bool retained = r_->retained();
+    if (r_->take_full_request())
+        full_pending_ = true;
+    if (retained) {
+        /* The renderer keeps rows: send the changed ones, whole. */
+        bool all = full_pending_ || src_->full_damage();
+        if (!all)
+            for (int i = 0; i < src_->scroll_count(); i++) {
+                int top, bottom, count;
+                src_->scroll(i, &top, &bottom, &count);
+                if (bottom >= rows)
+                    bottom = rows - 1;
+                if (top <= bottom)
+                    r_->scroll(top, bottom, count);
+            }
+        for (int y = 0; y < rows; y++) {
+            int lo, hi;
+            if (!all && !(y < src_->rows() && src_->row_dirty(y, &lo, &hi)))
+                continue;
+            r_->row_begin(y);
+            draw_row(y, 0, g_.cols - 1);
+            r_->row_end(y);
+        }
+        full_pending_ = false;
+    } else if (full_pending_ || src_->full_damage() || r_->full_frames()) {
         clear_margins();
         for (int y = 0; y < rows; y++)
             draw_row(y, 0, g_.cols - 1);

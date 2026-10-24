@@ -59,6 +59,16 @@ public:
     /* Every frame must redraw every cell (double buffering, or an
      * animated background behind the text). */
     virtual bool full_frames() const { return false; }
+    /* Retained: the renderer keeps every row it was given and draws all
+     * of them itself each frame, so the Surface sends only changed rows,
+     * whole, between row_begin and row_end (and the scroll records),
+     * even when full_frames() is true. */
+    virtual bool retained() const { return false; }
+    virtual void row_begin(int y) { (void)y; }
+    virtual void row_end(int y) { (void)y; }
+    /* The renderer lost what it kept (its glyph atlas filled up): the
+     * Surface sends every row next frame. Asking clears it. */
+    virtual bool take_full_request() { return false; }
     /* Above 0: draw a frame this often even without damage (animation). */
     virtual int animation_ms() const { return 0; }
     /* An animated background by name ("aurora", ...); false if this

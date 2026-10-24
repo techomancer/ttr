@@ -265,6 +265,14 @@ tw-test: $(B)/tw_test
 $(B)/tw_test_tw.o: $(B)/.dir tw/test/test_tw.cpp $(TW_H)
 	$(COMPILE) -c tw/test/test_tw.cpp -o $@
 
+# tw_bench: a renderer's frames per second on a synthetic screen (needs a
+# display; tw/test/bench_tw.cpp says how to run it).
+$(B)/tw_bench: $(B)/tw_bench_tw.o $(B)/libtw.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/tw_bench_tw.o $(B)/libtw.a $(TW_LIBS) -lX11 -lm
+
+$(B)/tw_bench_tw.o: $(B)/.dir tw/test/bench_tw.cpp $(TW_H)
+	$(COMPILE) $(GL_CPPFLAGS) -c tw/test/bench_tw.cpp -o $@
+
 # tu, the terminal UI library (ttrc/DESIGN.md section 3): libtu.a and its
 # tests. It reads terminfo itself; no curses. "make tu-test" runs them.
 TU_OBJS = $(B)/tu_capnames.o \

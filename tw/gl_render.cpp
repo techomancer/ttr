@@ -52,7 +52,15 @@ long now_ms()
 struct Quad {
     int x, y, w, h;
     uint32_t rgb;
-    float u0, v0, u1, v1;
+    float u0, v0, u1, v1;       /* atlas coordinates (textured text) */
+    int bm, stride;             /* the flipped mask in bm_ (bitmap text) */
+};
+
+/* An image run for glDrawPixels, drawn with the quads. */
+struct ImageOp {
+    int x, y, w, h;
+    bool blend;
+    unsigned char* rgba;
 };
 
 /* A growing array of quads, kept between frames. */
@@ -62,11 +70,17 @@ public:
     ~Quads() { free(q_); }
     void clear() { n_ = 0; }
     int size() const { return n_; }
+    void swap(Quads& o)
+    {
+        Quad* q = q_; q_ = o.q_; o.q_ = q;
+        int n = n_; n_ = o.n_; o.n_ = n;
+        int c = cap_; cap_ = o.cap_; o.cap_ = c;
+    }
     const Quad& operator[](int i) const { return q_[i]; }
     Quad* add()
     {
         if (n_ == cap_) {
-            int nc = cap_ ? cap_ * 2 : 1024;
+            int nc = cap_ ? cap_ * 2 : 64;
             Quad* p = (Quad*)realloc(q_, sizeof(Quad) * (size_t)nc);
             if (!p)
                 return 0;
@@ -93,16 +107,26 @@ public:
     GLRender()
         : dpy_(0), win_(0), ctx_(0), dbl_(false), impact_(false), fonts_(0), font_serial_(-1),
           atlas_(0), atlas_size_(0), slot_cols_(0), slot_rows_(0), next_slot_(0),
-          cache_gen_(-1), bg_(0), last_anim_(0), default_bg_(0), whole_(false), pix_(0), pix_cap_(0)
+          cache_gen_(-1), bg_(0), last_anim_(0), default_bg_(0), whole_(false), verts_(0), colors_(0), texs_(0), vert_cap_(0),
+          bitmap_text_(false), bm_(0), bm_n_(0), bm_cap_(0), ops_(0), n_ops_(0), ops_cap_(0),
+          use_arrays_(false), rows_(0), order_(0), n_rows_(0), use_lists_(true), list_base_(0),
+          atlas_epoch_(0),
+          recording_(false), full_request_(false)
     {
         memset(&g_, 0, sizeof(g_));
         bg_name_[0] = 0;
     }
     ~GLRender()
     {
-        free(pix_);
+        free_ops(ops_, n_ops_);
+        free(ops_);
+        free(verts_);
+        free(colors_);
+        free(texs_);
+        free(bm_);
         if (ctx_) {
             current();
+            drop_rows();
             delete bg_;
             if (atlas_)
                 glDeleteTextures(1, &atlas_);
@@ -138,6 +162,26 @@ public:
             return false;
         const char* r = (const char*)glGetString(GL_RENDERER);
         impact_ = r && strstr(r, "IMPACT");
+        /* Boards that texture in software draw text as bitmaps:
+         * Newport (Indy, Indigo2 XL) and the XZ/Elan family. */
+        const char* force = getenv("TW_GL_TEXT");
+        bitmap_text_ = r && (strstr(r, "NEWPORT") || strstr(r, "GR2") || strstr(r, "GR3") ||
+                             strstr(r, "GU1") || strstr(r, "XZ") || strstr(r, "ELAN"));
+#if defined(__sgi)
+        use_arrays_ = false;
+#else
+        use_arrays_ = true;
+#endif
+        const char* lists = getenv("TW_GL_LISTS");
+        if (lists)
+            use_lists_ = lists[0] == '1';
+        const char* arr = getenv("TW_GL_ARRAYS");
+        if (arr)
+            use_arrays_ = arr[0] == '1';
+        if (force && strcmp(force, "bitmap") == 0)
+            bitmap_text_ = true;
+        else if (force && strcmp(force, "texture") == 0)
+            bitmap_text_ = false;
         GLint max_tex = 256;
         glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_tex);
         atlas_size_ = max_tex >= 1024 ? 1024 : max_tex >= 512 ? 512 : 256;
@@ -181,6 +225,9 @@ public:
             font_serial_ = fonts_->serial();
             reset_atlas();
         }
+        if (!rows_ || n_rows_ != g.rows)
+            make_rows(g.rows);
+        invalidate_rows();
         glViewport(0, 0, g.width, g.height);
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
@@ -193,6 +240,47 @@ public:
     }
 
     bool full_frames() const { return dbl_ || bg_ != 0; }
+    bool retained() const { return full_frames() && rows_ != 0; }
+
+    void row_begin(int)
+    {
+        current();
+        draw_lists();       /* nothing transient may go into the row */
+        recording_ = true;
+    }
+
+    void row_end(int y)
+    {
+        recording_ = false;
+        if (y < 0 || y >= n_rows_) {
+            draw_lists();
+            return;
+        }
+        RowStore& r = rows_[order_[y]];
+        r.fills.swap(fills_);
+        r.glyphs.swap(glyphs_);
+        r.solids.swap(solids_);
+        fills_.clear();
+        glyphs_.clear();
+        solids_.clear();
+        free_ops(r.ops, r.n_ops);
+        free(r.ops);
+        r.ops = ops_;
+        r.n_ops = n_ops_;
+        ops_ = 0;
+        n_ops_ = ops_cap_ = 0;
+        r.y = y;
+        r.epoch = atlas_epoch_;
+        r.stable = 0;
+        r.listed = false;
+    }
+
+    bool take_full_request()
+    {
+        bool r = full_request_;
+        full_request_ = false;
+        return r;
+    }
 
     int animation_ms() const
     {
@@ -206,6 +294,9 @@ public:
     bool set_background(const char* name)
     {
         current();
+        /* Retained or not may change with it: every row again. */
+        full_request_ = true;
+        invalidate_rows();
         delete bg_;
         bg_ = 0;
         bg_name_[0] = 0;
@@ -258,6 +349,33 @@ public:
 
     void scroll(int top, int bottom, int count)
     {
+        if (retained()) {
+            /* Rows move, and what they keep with them. Rows that come in
+             * are empty until the Surface sends them. */
+            int n = bottom - top + 1;
+            int k = count < 0 ? -count : count;
+            if (k == 0 || top < 0 || bottom >= n_rows_)
+                return;
+            if (k > n)
+                k = n;
+            int* tmp = (int*)malloc(sizeof(int) * (size_t)n);
+            if (!tmp)
+                return;
+            for (int i = 0; i < n; i++) {
+                int from = count > 0 ? (i + k) % n : (i - k + n) % n;
+                tmp[i] = order_[top + from];
+            }
+            for (int i = 0; i < n; i++) {
+                order_[top + i] = tmp[i];
+                bool came_in = count > 0 ? i >= n - k : i < k;
+                if (came_in) {
+                    rows_[tmp[i]].epoch = -1;
+                    rows_[tmp[i]].listed = false;
+                }
+            }
+            free(tmp);
+            return;
+        }
         if (whole_)
             return;             /* the whole frame is drawn anyway */
         int n = bottom - top + 1;
@@ -319,18 +437,15 @@ public:
         int py0 = g_.margin_y + y * g_.cell_h;
         if (px0 < 0 || py0 < 0 || px0 + w > g_.width || py0 + h > g_.height)
             return;
-        size_t need = (size_t)w * (size_t)(h + 1) * 4;
-        if (need > pix_cap_) {
-            unsigned char* p = (unsigned char*)realloc(pix_, need);
-            if (!p)
-                return;
-            pix_ = p;
-            pix_cap_ = need;
+        /* Over an animated background transparent pixels let it through. */
+        bool blend = full_frames() && bg_ && cells[0].style.bg == default_bg_;
+        unsigned char* rgba = (unsigned char*)malloc((size_t)w * (size_t)h * 4);
+        uint32_t* line = (uint32_t*)malloc((size_t)w * 4);
+        if (!rgba || !line || !op_slot()) {
+            free(rgba);
+            free(line);
+            return;
         }
-        current();
-        draw_lists();
-        bool blend = whole_ && bg_ && cells[0].style.bg == default_bg_;
-        uint32_t* line = (uint32_t*)(pix_ + (size_t)w * (size_t)h * 4);
         for (int dy = 0; dy < h; dy++) {
             if (blend)
                 image_row(img, cells[0].image_col, cells[0].image_row, n, g_.cell_w, g_.cell_h,
@@ -338,7 +453,7 @@ public:
             else
                 image_row_over(img, cells[0].image_col, cells[0].image_row, n, g_.cell_w,
                                g_.cell_h, dy, cells[0].style.bg, line);
-            unsigned char* o = pix_ + (size_t)dy * (size_t)w * 4;
+            unsigned char* o = rgba + (size_t)dy * (size_t)w * 4;
             for (int k = 0; k < w; k++, o += 4) {
                 uint32_t p = line[k];
                 o[0] = (unsigned char)(p >> 16);
@@ -347,16 +462,14 @@ public:
                 o[3] = blend ? (unsigned char)(p >> 24) : 255;
             }
         }
-        glDisable(GL_TEXTURE_2D);
-        if (blend)
-            glEnable(GL_BLEND);
-        else
-            glDisable(GL_BLEND);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glPixelZoom(1.0f, -1.0f);
-        glRasterPos2i(px0, py0);
-        glDrawPixels(w, h, GL_RGBA, GL_UNSIGNED_BYTE, pix_);
-        glPixelZoom(1.0f, 1.0f);
+        free(line);
+        ImageOp& op = ops_[n_ops_++];
+        op.x = px0;
+        op.y = py0;
+        op.w = w;
+        op.h = h;
+        op.blend = blend;
+        op.rgba = rgba;
     }
 
     void draw_cursor(const Cursor& c, const CellData& under, uint32_t col, bool focused,
@@ -403,8 +516,19 @@ public:
     void flush()
     {
         current();
+        if (retained()) {
+            for (int pass = PASS_FILL; pass <= PASS_SOLID; pass++)
+                replay(pass);
+        }
+        /* What is not in a row: the cursor, and everything when not
+         * retained. */
         draw_lists();
-        if (dbl_)
+        /* TW_GL_NOSWAP: never show the back buffer, so a benchmark times
+         * the drawing and not the wait for the vertical blank. */
+        static bool noswap = getenv("TW_GL_NOSWAP") != 0;
+        if (dbl_ && noswap)
+            glFinish();
+        else if (dbl_)
             glXSwapBuffers(dpy_, win_);
         else
             glFlush();
@@ -430,61 +554,309 @@ private:
         q->u0 = q->v0 = q->u1 = q->v1 = 0;
     }
 
-    /* Backgrounds, then glyphs, then lines and builtins: the order cells
-     * need however the runs came in. */
-    void draw_lists()
+    /* A list of quads. IRIX's immediate mode feeds the graphics FIFO
+     * directly and measured fastest there (VPro: 13 ms a 200x60 frame,
+     * against 17-18 with client arrays of any vertex format); elsewhere
+     * client vertex arrays, one glDrawArrays a list. TW_GL_ARRAYS=0 or 1
+     * chooses, to measure. Inside a display list either is compiled. */
+    void draw_quads(const Quads& list, bool textured)
     {
-        if (fills_.size()) {
-            glDisable(GL_TEXTURE_2D);
-            glDisable(GL_BLEND);
+        int n = list.size();
+        if (!n)
+            return;
+        if (!use_arrays_ || !arrays(n * 4)) {
             glBegin(GL_QUADS);
-            for (int i = 0; i < fills_.size(); i++) {
-                const Quad& q = fills_[i];
+            for (int i = 0; i < n; i++) {
+                const Quad& q = list[i];
                 color(q.rgb);
+                if (textured)
+                    glTexCoord2f(q.u0, q.v0);
                 glVertex2i(q.x, q.y);
+                if (textured)
+                    glTexCoord2f(q.u1, q.v0);
                 glVertex2i(q.x + q.w, q.y);
+                if (textured)
+                    glTexCoord2f(q.u1, q.v1);
                 glVertex2i(q.x + q.w, q.y + q.h);
+                if (textured)
+                    glTexCoord2f(q.u0, q.v1);
                 glVertex2i(q.x, q.y + q.h);
             }
             glEnd();
+            return;
         }
-        if (glyphs_.size()) {
+        GLint* v = verts_;
+        GLubyte* c = colors_;
+        GLfloat* t = texs_;
+        for (int i = 0; i < n; i++) {
+            const Quad& q = list[i];
+            v[0] = q.x;         v[1] = q.y;
+            v[2] = q.x + q.w;   v[3] = q.y;
+            v[4] = q.x + q.w;   v[5] = q.y + q.h;
+            v[6] = q.x;         v[7] = q.y + q.h;
+            v += 8;
+            for (int k = 0; k < 4; k++, c += 4) {
+                c[0] = (GLubyte)(q.rgb >> 16);
+                c[1] = (GLubyte)(q.rgb >> 8);
+                c[2] = (GLubyte)q.rgb;
+                c[3] = 255;
+            }
+            if (textured) {
+                t[0] = q.u0; t[1] = q.v0;
+                t[2] = q.u1; t[3] = q.v0;
+                t[4] = q.u1; t[5] = q.v1;
+                t[6] = q.u0; t[7] = q.v1;
+                t += 8;
+            }
+        }
+        glEnableClientState(GL_VERTEX_ARRAY);
+        glEnableClientState(GL_COLOR_ARRAY);
+        glVertexPointer(2, GL_INT, 0, verts_);
+        glColorPointer(4, GL_UNSIGNED_BYTE, 0, colors_);
+        if (textured) {
+            glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+            glTexCoordPointer(2, GL_FLOAT, 0, texs_);
+        }
+        glDrawArrays(GL_QUADS, 0, n * 4);
+        if (textured)
+            glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+        glDisableClientState(GL_COLOR_ARRAY);
+        glDisableClientState(GL_VERTEX_ARRAY);
+    }
+
+    /* Glyphs as glBitmap: no texturing, which boards without texture
+     * hardware (the Indy's Newport) do in software, slowly. */
+    void draw_bitmaps(const Quads& glyphs)
+    {
+        uint32_t rgb = 0;
+        bool have = false;
+        int stride = -1;
+        for (int i = 0; i < glyphs.size(); i++) {
+            const Quad& q = glyphs[i];
+            if (!have || q.rgb != rgb) {
+                color(q.rgb);
+                rgb = q.rgb;
+                have = true;
+            }
+            if (q.stride != stride) {
+                glPixelStorei(GL_UNPACK_ROW_LENGTH, q.stride * 8);
+                stride = q.stride;
+            }
+            /* The raster position is the glyph's bottom left; the mask's
+             * rows were stored bottom first. */
+            glRasterPos2i(q.x, q.y + q.h);
+            glBitmap(q.w, q.h, 0, 0, 0, 0, bm_ + q.bm);
+        }
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    }
+
+    /* Three passes, each with its GL state set once: backgrounds and
+     * image runs, then glyphs, then lines and builtins. The order cells
+     * need however the runs came in; rows do not overlap, so a frame of
+     * retained rows can run each pass over all of them. */
+    enum { PASS_FILL, PASS_GLYPH, PASS_SOLID };
+
+    void pass_begin(int pass)
+    {
+        glDisable(GL_TEXTURE_2D);
+        glDisable(GL_BLEND);
+        if (pass == PASS_GLYPH && !bitmap_text_) {
             glEnable(GL_TEXTURE_2D);
             glBindTexture(GL_TEXTURE_2D, atlas_);
             glEnable(GL_BLEND);
-            glBegin(GL_QUADS);
-            for (int i = 0; i < glyphs_.size(); i++) {
-                const Quad& q = glyphs_[i];
-                color(q.rgb);
-                glTexCoord2f(q.u0, q.v0);
-                glVertex2i(q.x, q.y);
-                glTexCoord2f(q.u1, q.v0);
-                glVertex2i(q.x + q.w, q.y);
-                glTexCoord2f(q.u1, q.v1);
-                glVertex2i(q.x + q.w, q.y + q.h);
-                glTexCoord2f(q.u0, q.v1);
-                glVertex2i(q.x, q.y + q.h);
-            }
-            glEnd();
-            glDisable(GL_TEXTURE_2D);
         }
-        if (solids_.size()) {
+    }
+
+    void pass_end(int pass)
+    {
+        if (pass == PASS_GLYPH && !bitmap_text_) {
             glDisable(GL_TEXTURE_2D);
             glDisable(GL_BLEND);
-            glBegin(GL_QUADS);
-            for (int i = 0; i < solids_.size(); i++) {
-                const Quad& q = solids_[i];
-                color(q.rgb);
-                glVertex2i(q.x, q.y);
-                glVertex2i(q.x + q.w, q.y);
-                glVertex2i(q.x + q.w, q.y + q.h);
-                glVertex2i(q.x, q.y + q.h);
-            }
-            glEnd();
         }
+    }
+
+    /* One pass of one set, in the state pass_begin set. */
+    void draw_pass(int pass, const Quads& fills, const ImageOp* ops, int n_ops,
+                   const Quads& glyphs, const Quads& solids)
+    {
+        if (pass == PASS_FILL) {
+            draw_quads(fills, false);
+            for (int i = 0; i < n_ops; i++) {
+                const ImageOp& op = ops[i];
+                if (op.blend)
+                    glEnable(GL_BLEND);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                glPixelZoom(1.0f, -1.0f);
+                glRasterPos2i(op.x, op.y);
+                glDrawPixels(op.w, op.h, GL_RGBA, GL_UNSIGNED_BYTE, op.rgba);
+                glPixelZoom(1.0f, 1.0f);
+                if (op.blend)
+                    glDisable(GL_BLEND);
+            }
+        } else if (pass == PASS_GLYPH) {
+            if (bitmap_text_)
+                draw_bitmaps(glyphs);
+            else
+                draw_quads(glyphs, true);
+        } else {
+            draw_quads(solids, false);
+        }
+    }
+
+    void draw_set(const Quads& fills, const ImageOp* ops, int n_ops, const Quads& glyphs,
+                  const Quads& solids)
+    {
+        for (int pass = PASS_FILL; pass <= PASS_SOLID; pass++) {
+            pass_begin(pass);
+            draw_pass(pass, fills, ops, n_ops, glyphs, solids);
+            pass_end(pass);
+        }
+    }
+
+    /* Draw what is queued and forget it. */
+    void draw_lists()
+    {
+        draw_set(fills_, ops_, n_ops_, glyphs_, solids_);
+        free_ops(ops_, n_ops_);
+        n_ops_ = 0;
         fills_.clear();
         glyphs_.clear();
         solids_.clear();
+    }
+
+    static void free_ops(ImageOp* ops, int n)
+    {
+        for (int i = 0; i < n; i++)
+            free(ops[i].rgba);
+    }
+
+    bool op_slot()
+    {
+        if (n_ops_ < ops_cap_)
+            return true;
+        int cap = ops_cap_ ? ops_cap_ * 2 : 16;
+        ImageOp* p = (ImageOp*)realloc(ops_, sizeof(ImageOp) * (size_t)cap);
+        if (!p)
+            return false;
+        ops_ = p;
+        ops_cap_ = cap;
+        return true;
+    }
+
+    bool arrays(int vertices)
+    {
+        if (vertices <= vert_cap_)
+            return true;
+        int cap = vert_cap_ ? vert_cap_ : 4096;
+        while (cap < vertices)
+            cap *= 2;
+        GLint* v = (GLint*)realloc(verts_, sizeof(GLint) * 2 * (size_t)cap);
+        if (v)
+            verts_ = v;
+        GLubyte* c = (GLubyte*)realloc(colors_, 4 * (size_t)cap);
+        if (c)
+            colors_ = c;
+        GLfloat* t = (GLfloat*)realloc(texs_, sizeof(GLfloat) * 2 * (size_t)cap);
+        if (t)
+            texs_ = t;
+        if (!v || !c || !t)
+            return false;
+        vert_cap_ = cap;
+        return true;
+    }
+
+    /* Retained rows (full-frame modes). Each screen row keeps the quads
+     * and image runs it was last sent with, in the coordinates of the row
+     * it was sent at; scrolling moves rows between screen positions and a
+     * translation puts them in place. Every frame replays them all, so
+     * the model is not walked again for rows that did not change. A row
+     * unchanged for a few frames is compiled into a display list, which
+     * replays cheaper; one that keeps changing is never compiled (on VPro
+     * compiling cost three times a direct draw). TW_GL_LISTS=0 turns the
+     * lists off. */
+    struct RowStore {
+        Quads fills, glyphs, solids;
+        ImageOp* ops;
+        int n_ops;
+        int y;              /* the row its coordinates are for */
+        int epoch;          /* atlas_epoch_ it was made under; -1: empty */
+        int stable;         /* frames since it changed */
+        GLuint list;        /* three lists, one a pass, from here */
+        bool listed;        /* the lists hold it */
+        RowStore() : ops(0), n_ops(0), y(0), epoch(-1), stable(0), list(0), listed(false) {}
+        ~RowStore() { free_ops(ops, n_ops); free(ops); }
+    };
+
+    void make_rows(int rows)
+    {
+        drop_rows();
+        if (rows <= 0)
+            return;
+        rows_ = new RowStore[rows];
+        order_ = (int*)malloc(sizeof(int) * (size_t)rows);
+        list_base_ = glGenLists(rows * 3);
+        if (!order_) {
+            drop_rows();
+            return;
+        }
+        n_rows_ = rows;
+        for (int i = 0; i < rows; i++) {
+            order_[i] = i;
+            rows_[i].list = list_base_ ? list_base_ + (GLuint)(i * 3) : 0;
+        }
+    }
+
+    void drop_rows()
+    {
+        if (list_base_)
+            glDeleteLists(list_base_, n_rows_ * 3);
+        delete[] rows_;
+        free(order_);
+        rows_ = 0;
+        order_ = 0;
+        n_rows_ = 0;
+        list_base_ = 0;
+    }
+
+    void invalidate_rows()
+    {
+        for (int i = 0; i < n_rows_; i++) {
+            rows_[i].epoch = -1;
+            rows_[i].listed = false;
+        }
+    }
+
+    /* One pass of every retained row: from its list, or drawn (and,
+     * once it has stayed the same a few frames, compiled). */
+    void replay(int pass)
+    {
+        pass_begin(pass);
+        for (int y = 0; y < n_rows_; y++) {
+            RowStore& r = rows_[order_[y]];
+            if (r.epoch != atlas_epoch_)
+                continue;
+            bool moved = r.y != y;
+            if (moved) {
+                glPushMatrix();
+                glTranslatef(0.0f, (float)((y - r.y) * g_.cell_h), 0.0f);
+            }
+            if (r.listed) {
+                glCallList(r.list + (GLuint)pass);
+            } else {
+                draw_pass(pass, r.fills, r.ops, r.n_ops, r.glyphs, r.solids);
+                if (pass == PASS_SOLID && use_lists_ && r.list && ++r.stable >= 3) {
+                    for (int p = PASS_FILL; p <= PASS_SOLID; p++) {
+                        glNewList(r.list + (GLuint)p, GL_COMPILE);
+                        draw_pass(p, r.fills, r.ops, r.n_ops, r.glyphs, r.solids);
+                        glEndList();
+                    }
+                    r.listed = true;
+                }
+            }
+            if (moved)
+                glPopMatrix();
+        }
+        pass_end(pass);
     }
 
     void reset_atlas()
@@ -493,14 +865,41 @@ private:
         slot_cols_ = atlas_size_ / sw;
         slot_rows_ = atlas_size_ / sh;
         next_slot_ = 0;
+        bm_n_ = 0;
         cache_gen_ = cache_.generation();
+        /* Compiled rows point into the old atlas. */
+        atlas_epoch_++;
+        if (recording_)
+            full_request_ = true;
     }
 
-    /* Put a glyph's mask into the atlas; false when it is full. */
+    /* Put a glyph's mask into the atlas (or, for bitmap text, bm_);
+     * false when it is full. */
     bool upload(CachedGlyph* gl)
     {
         if (cache_gen_ != cache_.generation())
             reset_atlas();
+        if (bitmap_text_) {
+            size_t need = (size_t)gl->stride * (size_t)gl->h;
+            if (bm_n_ + need > bm_cap_) {
+                size_t cap = bm_cap_ ? bm_cap_ * 2 : 65536;
+                while (cap < bm_n_ + need)
+                    cap *= 2;
+                unsigned char* p = (unsigned char*)realloc(bm_, cap);
+                if (!p)
+                    return false;
+                bm_ = p;
+                bm_cap_ = cap;
+            }
+            const uint8_t* bits = cache_.bits(gl);
+            for (int y = 0; y < gl->h; y++)
+                memcpy(bm_ + bm_n_ + (size_t)y * (size_t)gl->stride,
+                       bits + (size_t)(gl->h - 1 - y) * (size_t)gl->stride, (size_t)gl->stride);
+            gl->handle_a = (int)bm_n_;
+            gl->handle_b = 0;
+            bm_n_ += need;
+            return true;
+        }
         if (next_slot_ >= slot_cols_ * slot_rows_)
             return false;
         int slot = next_slot_++;
@@ -536,8 +935,17 @@ private:
             return false;
         if (cache_gen_ != cache_.generation() || gl->handle_a < 0) {
             if (!upload(gl)) {
-                /* The atlas is full: draw what uses it now, start over. */
-                draw_lists();
+                /* The atlas is full: draw what uses it now, start over.
+                 * A row being recorded cannot be drawn half: the Surface
+                 * sends everything again next frame. */
+                if (recording_) {
+                    fills_.clear();
+                    glyphs_.clear();
+                    solids_.clear();
+                    full_request_ = true;
+                } else {
+                    draw_lists();
+                }
                 cache_.clear();
                 reset_atlas();
                 gl = cache_.get(face, cps, n, wide);
@@ -558,6 +966,8 @@ private:
         q->v0 = gl->handle_b / s;
         q->u1 = (gl->handle_a + gl->w) / s;
         q->v1 = (gl->handle_b + gl->h) / s;
+        q->bm = gl->handle_a;
+        q->stride = gl->stride;
         return true;
     }
 
@@ -626,8 +1036,24 @@ private:
     uint32_t default_bg_;
     bool whole_;                /* this frame is drawn whole */
     Quads fills_, glyphs_, solids_;
-    unsigned char* pix_;        /* image runs for glDrawPixels */
-    size_t pix_cap_;
+    GLint* verts_;              /* draw_quads' client arrays */
+    GLubyte* colors_;
+    GLfloat* texs_;
+    int vert_cap_;
+    bool bitmap_text_;          /* glyphs as glBitmap, not textured quads */
+    unsigned char* bm_;         /* flipped glyph masks for glBitmap */
+    size_t bm_n_, bm_cap_;
+    ImageOp* ops_;              /* image runs queued with the lists */
+    int n_ops_, ops_cap_;
+    bool use_arrays_;
+    RowStore* rows_;
+    int* order_;                /* screen row -> rows_ index */
+    int n_rows_;
+    bool use_lists_;
+    GLuint list_base_;
+    int atlas_epoch_;
+    bool recording_;
+    bool full_request_;
 };
 
 } /* namespace */
@@ -650,7 +1076,8 @@ bool gl_choose_visual(Display* dpy, int screen, XVisualInfo* out)
     int base, event;
     if (!glXQueryExtension(dpy, &base, &event))
         return false;
-    for (int i = 0; i < 4; i++) {
+    /* TW_GL_SINGLE: a single-buffered visual (damage only), to measure. */
+    for (int i = getenv("TW_GL_SINGLE") ? 1 : 0; i < 4; i++) {
         XVisualInfo* vi = glXChooseVisual(dpy, screen, attrs[i]);
         if (vi) {
             *out = *vi;

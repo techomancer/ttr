@@ -421,30 +421,76 @@ SI/SSI/MXI, Fuel, Tezro, IP35, remote displays.
 
 ### 5.3 GLRender: OpenGL 1.1
 
-For boards with texture hardware: IMPACT (TRAM), VPro (V6/V8/V10/V12),
-and Linux with a GPU. It stays within OpenGL 1.1 plus `EXT_vertex_array`
-so the same code runs on IRIX's OpenGL and on Mesa.
+For boards with texture hardware (IMPACT with TRAM, VPro, O2) and Linux
+with a GPU; on the Indy for the animated backgrounds. OpenGL 1.1 only, so
+the same code runs on IRIX's OpenGL and on Mesa. Context and visual come
+from GLX directly (`glXChooseVisual`), not from `GLwMDrawingArea`.
 
-- Glyph atlas pages as `GL_ALPHA` textures, except on IMPACT, where
-  `GL_ALPHA` does not render and pages are `GL_LUMINANCE_ALPHA` with
-  luminance 255 (found in dash); sized to the board's limits (IMPACT
-  TRAM: 1 MB or 4 MB; the page size adapts), `GL_NEAREST` filtering,
-  `GL_MODULATE`, texturing enabled explicitly per frame.
-- Projection with one texel per pixel and quad corners on pixel
-  boundaries (`glOrtho(0, w, h, 0, -1, 1)`, vertices at integer
-  coordinates, texel centers at +0.5): this is what keeps text crisp
-  where dash's resampled atlas blurred.
-- Backgrounds as untextured quads, glyphs as textured quads modulated by
-  the run colour, decorations as quads, all from client vertex arrays
-  built per frame for the damaged rows only.
-- Two presentation modes:
-  - **single-buffered with damage** (default on IRIX: IMPACT and VPro
-    draw to the front buffer fast; scroll records become `glCopyPixels`,
-    then only dirty spans are drawn);
-  - **double-buffered full redraw** (default on Linux, where the
-    compositor wants complete frames; the whole viewport is cheap there).
-- Context and visual come from GLX directly (`glXChooseVisual`), not
-  from `GLwMDrawingArea`, so the widget does not need libGLw.
+**Coordinates.** `glOrtho(0, w, h, 0, -1, 1)`, one texel per pixel,
+quad corners at integer pixels: text is exactly as sharp as the core
+renderer's (dash's resampled atlas blurred).
+
+**Text, two ways.** The glyph cache rasterizes each glyph once from the
+X server's fonts (1-bit masks); then by board:
+- *Textured quads*: masks in one atlas texture (`GL_ALPHA`; on IMPACT,
+  which does not render `GL_ALPHA`, `GL_LUMINANCE_ALPHA` with luminance
+  255, found in dash), `GL_NEAREST`, `GL_MODULATE` by the run's colour,
+  blended. The atlas starts over when full.
+- *`glBitmap`*: boards that texture in software (Newport in the Indy and
+  Indigo2 XL, the XZ/Elan family, by `GL_RENDERER`) draw each glyph as a
+  bitmap from masks flipped once at upload. On the Indy a full 80x24
+  frame took 857 ms textured and 53 ms as bitmaps; on VPro bitmaps are
+  five times slower than textures. `TW_GL_TEXT=bitmap|texture` overrides
+  the choice.
+
+**Quads.** A frame's runs become three lists: backgrounds (and image
+runs, `glDrawPixels`), glyphs, then lines, builtins and the cursor. IRIX's
+immediate mode writes straight into the graphics FIFO and measured
+fastest there (VPro, 200x60: 13 ms a frame immediate, 17-18 ms with
+client vertex arrays in any vertex format, interleaved included); other
+systems use client arrays, one `glDrawArrays` a list. `TW_GL_ARRAYS=0|1`
+overrides. No VBOs: IRIX does not have them, and the data changes too
+often for them to pay on Linux.
+
+**Two ways to present.**
+- *Single-buffered with damage* (the Indy's 24-bit visual has no back
+  buffer): only damaged spans are drawn, into the front buffer; scroll
+  records become `glCopyPixels`.
+- *Retained rows* (double-buffered visuals, and any visual with an
+  animated background, where every frame is drawn whole): the renderer
+  keeps each screen row's quads and image runs, in the coordinates of the
+  row it was sent at (`Renderer::retained`, `row_begin`, `row_end`). The
+  Surface sends only changed rows, whole, and the scroll records, which
+  permute the rows; a translation draws a moved row in place. Each frame
+  replays every row in three passes (fills and images, glyphs, solids),
+  each pass setting its GL state once. A row unchanged for three frames
+  is compiled into three display lists, one a pass, which replay cheaper;
+  a row that keeps changing is never compiled (on VPro compiling cost
+  three times a direct draw). `TW_GL_LISTS=0` turns the lists off. When
+  the atlas starts over, compiled rows point into it no more and the
+  renderer asks the Surface for every row (`take_full_request`).
+
+Without retained rows, a full frame at 200x60 spent 7.4 of its 11.7 ms
+on the VPro walking the model and building quads, before any GL.
+
+**Measured** with `tw_bench` (`make B=... $(B)/tw_bench`; see the file),
+ms a frame:
+
+| | Indy, emulated (80x24) | Octane VPro (200x60) | Linux, Radeon RX 6600 XT, Mesa (200x60) |
+|---|---|---|---|
+| everything changes | 667 -> 47 | 11.7 -> 12.7 | 2.58 -> 1.47 |
+| one line scrolls in | 29 -> 5.2 | 6.6 | 2.49 -> 0.92 |
+| one cell changes | 2.5 -> 1.1 | 5.4 | 2.36 -> 0.40 |
+| nothing changes (Indy: animated background) | 658 -> 49 | 11.7 -> 5.1 | 2.43 -> 0.32 |
+
+(Before -> after bitmaps and retained rows. Indy single-buffered except
+with the background; VPro and Linux double-buffered, timed without
+waiting for the vertical blank, `TW_GL_NOSWAP=1`. On Linux client
+arrays halve a full frame against immediate mode, and display lists make
+an unchanged screen three times cheaper.) Single-buffered on the VPro,
+`glCopyPixels` takes 9 ms a scroll, more than redrawing everything
+double-buffered: the default prefers a double-buffered visual.
+`TW_GL_SINGLE=1` asks for a single-buffered one, to measure.
 
 ### 5.4 Choosing a renderer
 
