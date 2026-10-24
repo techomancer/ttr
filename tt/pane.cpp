@@ -338,6 +338,7 @@ void TermPane::spawn(int cols, int rows)
     started_ = true;
     int cw, ch;
     TwGridGetCellSize(grid_, &cw, &ch);
+    term_.set_cell_pixels(cw, ch);
     tp::WinSize ws;
     ws.cols = cols;
     ws.rows = rows;
@@ -368,9 +369,11 @@ void TermPane::spawn(int cols, int rows)
         sprintf(terminfo_env, "TERMINFO=%.520s", tidir);
     else
         strcpy(terminfo_env, "COLUMNS");    /* nothing to set: unset a harmless name */
+    /* TERM_PROGRAM: who we are even when TERM had to fall back to xterm
+     * (programs choose image protocols by it). */
     const char* base[] = { term_env, terminfo_env,
                            truecolor ? "COLORTERM=truecolor" : "COLORTERM", windowid,
-                           "COLUMNS", "LINES", "TERMCAP" };
+                           "TERM_PROGRAM=ttrt", "COLUMNS", "LINES", "TERMCAP" };
     const int nbase = (int)(sizeof(base) / sizeof(base[0]));
     int nextra = 0;
     while (env_ && env_[nextra])
@@ -632,6 +635,9 @@ void TermPane::resized(TwGridCallbackStruct* cb)
     if (!XtIsRealized(grid_))
         return;
     term_.resize(cb->cols, cb->rows);
+    int pw, ph;
+    TwGridGetCellSize(grid_, &pw, &ph);
+    term_.set_cell_pixels(pw, ph);
     if (!started_) {
         spawn(cb->cols, cb->rows);
     } else if (running_) {

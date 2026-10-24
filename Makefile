@@ -134,6 +134,7 @@ $(B)/.dir:
 # builds them (on IRIX the binary must be copied off the NFS share to run).
 TL_OBJS = $(B)/tl_charset.o \
 	$(B)/tl_grid.o \
+	$(B)/tl_image.o \
 	$(B)/tl_input.o \
 	$(B)/tl_parser.o \
 	$(B)/tl_selection.o \
@@ -143,12 +144,13 @@ TL_OBJS = $(B)/tl_charset.o \
 	$(B)/tl_unicode_data.o \
 	$(B)/tl_view.o
 TL_TEST_OBJS = $(B)/tl_test_main.o \
+	$(B)/tl_test_image.o \
 	$(B)/tl_test_parser.o \
 	$(B)/tl_test_terminal.o \
 	$(B)/tl_test_unicode.o \
 	$(B)/tl_test_view.o \
 	$(B)/tl_test_vterm.o
-TL_TERMINAL_H = tl/terminal.h tl/buffer.h tl/charset.h tl/grid.h tl/host.h \
+TL_TERMINAL_H = tl/terminal.h tl/buffer.h tl/charset.h tl/grid.h tl/host.h tl/image.h \
 	tl/input.h tl/parser.h tl/style.h tl/unicode.h tl/view.h tl/port.h
 AR = ar
 
@@ -628,8 +630,12 @@ $(B)/tl_selection.o: $(B)/.dir tl/selection.cpp $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/selection.cpp -o $@
 $(B)/tl_input.o: $(B)/.dir tl/input.cpp $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/input.cpp -o $@
+$(B)/tl_image.o: $(B)/.dir tl/image.cpp tl/image.h tl/grid.h tl/port.h
+	$(COMPILE) -c tl/image.cpp -o $@
 $(B)/tl_view.o: $(B)/.dir tl/view.cpp $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/view.cpp -o $@
+$(B)/tl_test_image.o: $(B)/.dir tl/test/test_image.cpp tl/test/tltest.h $(TL_TERMINAL_H)
+	$(COMPILE) -c tl/test/test_image.cpp -o $@
 $(B)/tl_test_view.o: $(B)/.dir tl/test/test_view.cpp tl/test/tltest.h $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/test/test_view.cpp -o $@
 $(B)/tl_test_vterm.o: $(B)/.dir tl/test/test_vterm.cpp tl/test/tltest.h $(TL_TERMINAL_H)

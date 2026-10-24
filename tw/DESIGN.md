@@ -330,6 +330,26 @@ dirty span split into runs (background `fill`, then `text`, then
 `decorate` for underline, strike and overline as one rectangle or
 polyline per run), then the cursor. Renderers may batch internally.
 
+**Images.** A cell may be an image tile (`CellData::image`, with the
+tile's column and row); `Source::image()` gives the image's pixels and
+the tile size they were placed with. The Surface sends runs of
+consecutive tiles of one image row to `Renderer::draw_image`; the
+shared `image_row()` samples one pixel row of a run, scaling the tile
+to the current cell size by nearest pixel when the font changed since,
+and `image_row_over()` puts it over the cells' background. How each
+renderer draws them:
+
+- CoreRender: an XImage of the run, `XPutImage`. TrueColor pixels are
+  exact; on PseudoColor (the Indy's 8-bit visual) they are ordered
+  dithered onto a 6x6x6 cube, so images take at most 216 colormap cells
+  however many colours they have.
+- SoftRender: converted into its framebuffer like any fill.
+- GLRender: `glDrawPixels` after the quads queued so far (plain GL 1.1,
+  no texture size limits); over an animated background transparent
+  pixels blend with it.
+
+A renderer without `draw_image` draws the cells as the blanks they are.
+
 ### 5.1 CoreRender: server-side Xlib
 
 For PseudoColor visuals (CI8 on Indy, Indigo2; 12-bit CI) and any visual
@@ -607,5 +627,5 @@ registry which renderers exist.
    depth-1 atlas pixmaps in CoreRender: Unicode on IRIX.
 3. SoftRender with MIT-SHM; FreeType on Linux.
 4. GLRender; auto selection per board; golden images for all three.
-5. Double-size lines, blink, images (the glyph cache's pages double as
-   storage for sixel and kitty image tiles).
+5. Double-size lines, blink, images (done: `draw_image` in all three
+   renderers, section 5).

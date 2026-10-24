@@ -48,6 +48,18 @@ struct CellData {
     uint8_t width;          /* 1, 2 (first half of a wide char), 0 (second half) */
     uint8_t cluster;        /* more code points follow; see Source::cluster */
     CellStyle style;
+    /* An image tile instead of text: the image (Source::image), and which
+     * tile of it. 0: none. Transparent pixels show style.bg. */
+    uint32_t image;
+    uint16_t image_col, image_row;
+};
+
+/* An image's pixels, as the Source keeps them. */
+struct ImageData {
+    int w, h;
+    const uint32_t* px;     /* 0xAARRGGBB, rows from the top */
+    int cell_w, cell_h;     /* a tile's size in pixels */
+    uint32_t serial;        /* changes when the image behind an id does */
 };
 
 enum CursorStyle {
@@ -96,6 +108,13 @@ public:
     virtual Cursor cursor() const = 0;
     virtual uint32_t background() const = 0;       /* margins, default bg */
     virtual uint32_t cursor_color() const = 0;
+    /* The pixels of CellData::image; false if it is gone. */
+    virtual bool image(uint32_t id, ImageData* out) const
+    {
+        (void)id;
+        (void)out;
+        return false;
+    }
     /* Everything reported has been drawn. */
     virtual void frame_done() = 0;
 };

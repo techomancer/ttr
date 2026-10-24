@@ -58,7 +58,30 @@ void TermSource::cells(int y, int lo, int hi, tw::CellData* out) const
             f &= (uint16_t)~(tw::S_DEFAULT_BG | tw::S_INVISIBLE);
         }
         d.style.flags = f;
+        if (c.is_image()) {
+            d.cp = 0;
+            d.image = (uint32_t)c.image_id();
+            d.image_col = (uint16_t)c.image_col();
+            d.image_row = (uint16_t)c.image_row();
+        } else {
+            d.image = 0;
+            d.image_col = d.image_row = 0;
+        }
     }
+}
+
+bool TermSource::image(uint32_t id, tw::ImageData* out) const
+{
+    const tl::Image* im = t_.images().get((int)id);
+    if (!im)
+        return false;
+    out->w = im->w;
+    out->h = im->h;
+    out->px = im->px;
+    out->cell_w = im->cell_w;
+    out->cell_h = im->cell_h;
+    out->serial = im->serial;
+    return true;
 }
 
 int TermSource::cluster(int y, int x, uint32_t* cps, int max) const

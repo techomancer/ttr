@@ -93,13 +93,14 @@ public:
     GLRender()
         : dpy_(0), win_(0), ctx_(0), dbl_(false), impact_(false), fonts_(0), font_serial_(-1),
           atlas_(0), atlas_size_(0), slot_cols_(0), slot_rows_(0), next_slot_(0),
-          cache_gen_(-1), bg_(0), last_anim_(0), default_bg_(0), whole_(false)
+          cache_gen_(-1), bg_(0), last_anim_(0), default_bg_(0), whole_(false), pix_(0), pix_cap_(0)
     {
         memset(&g_, 0, sizeof(g_));
         bg_name_[0] = 0;
     }
     ~GLRender()
     {
+        free(pix_);
         if (ctx_) {
             current();
             delete bg_;
@@ -306,6 +307,56 @@ public:
                 missing(cx, py, cw, st.fg);
         }
         decorate(px, py, n, st);
+    }
+
+    /* Image runs go out at once with glDrawPixels (GL 1.1, no texture
+     * size limits), after what is queued so far. Over an animated
+     * background transparent pixels let it through. */
+    void draw_image(int x, int y, const CellData* cells, int n, const ImageData& img)
+    {
+        int w = n * g_.cell_w, h = g_.cell_h;
+        int px0 = g_.margin_x + x * g_.cell_w;
+        int py0 = g_.margin_y + y * g_.cell_h;
+        if (px0 < 0 || py0 < 0 || px0 + w > g_.width || py0 + h > g_.height)
+            return;
+        size_t need = (size_t)w * (size_t)(h + 1) * 4;
+        if (need > pix_cap_) {
+            unsigned char* p = (unsigned char*)realloc(pix_, need);
+            if (!p)
+                return;
+            pix_ = p;
+            pix_cap_ = need;
+        }
+        current();
+        draw_lists();
+        bool blend = whole_ && bg_ && cells[0].style.bg == default_bg_;
+        uint32_t* line = (uint32_t*)(pix_ + (size_t)w * (size_t)h * 4);
+        for (int dy = 0; dy < h; dy++) {
+            if (blend)
+                image_row(img, cells[0].image_col, cells[0].image_row, n, g_.cell_w, g_.cell_h,
+                          dy, line);
+            else
+                image_row_over(img, cells[0].image_col, cells[0].image_row, n, g_.cell_w,
+                               g_.cell_h, dy, cells[0].style.bg, line);
+            unsigned char* o = pix_ + (size_t)dy * (size_t)w * 4;
+            for (int k = 0; k < w; k++, o += 4) {
+                uint32_t p = line[k];
+                o[0] = (unsigned char)(p >> 16);
+                o[1] = (unsigned char)(p >> 8);
+                o[2] = (unsigned char)p;
+                o[3] = blend ? (unsigned char)(p >> 24) : 255;
+            }
+        }
+        glDisable(GL_TEXTURE_2D);
+        if (blend)
+            glEnable(GL_BLEND);
+        else
+            glDisable(GL_BLEND);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glPixelZoom(1.0f, -1.0f);
+        glRasterPos2i(px0, py0);
+        glDrawPixels(w, h, GL_RGBA, GL_UNSIGNED_BYTE, pix_);
+        glPixelZoom(1.0f, 1.0f);
     }
 
     void draw_cursor(const Cursor& c, const CellData& under, uint32_t col, bool focused,
@@ -575,6 +626,8 @@ private:
     uint32_t default_bg_;
     bool whole_;                /* this frame is drawn whole */
     Quads fills_, glyphs_, solids_;
+    unsigned char* pix_;        /* image runs for glDrawPixels */
+    size_t pix_cap_;
 };
 
 } /* namespace */

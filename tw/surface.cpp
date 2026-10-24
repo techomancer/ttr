@@ -243,6 +243,8 @@ void Surface::draw_row(int y, int lo, int hi)
             row_buf_ = p;
             row_cap_ = n;
         }
+        /* Sources that know nothing of images leave those fields 0. */
+        memset(row_buf_, 0, (size_t)n * sizeof(CellData));
         src_->cells(y, lo, hi, row_buf_);
         /* Starting on the second half of a wide character: take its first
          * half too. */
@@ -255,8 +257,24 @@ void Surface::draw_row(int y, int lo, int hi)
     stat_cells_ += n;
     int i = 0;
     while (i < n) {
+        const CellData& c = row_buf_[i];
+        if (c.image) {
+            /* Consecutive tiles of one image row. */
+            int j = i + 1;
+            while (j < n && row_buf_[j].image == c.image && row_buf_[j].image_row == c.image_row &&
+                   row_buf_[j].image_col == c.image_col + (j - i) &&
+                   row_buf_[j].style.bg == c.style.bg)
+                j++;
+            ImageData img;
+            if (src_->image(c.image, &img) && img.px && img.cell_w > 0 && img.cell_h > 0)
+                r_->draw_image(lo + i, y, row_buf_ + i, j - i, img);
+            else
+                r_->draw_run(lo + i, y, row_buf_ + i, j - i, &lookup_);
+            i = j;
+            continue;
+        }
         int j = i + 1;
-        while (j < n && row_buf_[j].style == row_buf_[i].style)
+        while (j < n && !row_buf_[j].image && row_buf_[j].style == row_buf_[i].style)
             j++;
         /* A run must not end between a wide head and its tail. */
         if (j < n && row_buf_[j].width == 0)
@@ -374,6 +392,51 @@ void Surface::blink()
     }
     blink_armed_ = true;
     sched_->schedule_blink(blink_ms_);
+}
+
+void image_row(const ImageData& img, int col, int row, int n, int cw, int ch, int dy,
+               uint32_t* out)
+{
+    int total = n * cw;
+    int sy = row * img.cell_h + (ch == img.cell_h ? dy : dy * img.cell_h / ch);
+    if (sy < 0 || sy >= img.h || cw <= 0) {
+        memset(out, 0, (size_t)total * sizeof(uint32_t));
+        return;
+    }
+    const uint32_t* src = img.px + (size_t)sy * (size_t)img.w;
+    int base = col * img.cell_w;
+    if (cw == img.cell_w) {
+        for (int k = 0; k < total; k++)
+            out[k] = base + k < img.w ? src[base + k] : 0;
+        return;
+    }
+    for (int k = 0; k < total; k++) {
+        int sx = base + (k / cw) * img.cell_w + (k % cw) * img.cell_w / cw;
+        out[k] = sx < img.w ? src[sx] : 0;
+    }
+}
+
+void image_row_over(const ImageData& img, int col, int row, int n, int cw, int ch, int dy,
+                    uint32_t bg, uint32_t* out)
+{
+    image_row(img, col, row, n, cw, ch, dy, out);
+    int total = n * cw;
+    for (int k = 0; k < total; k++) {
+        uint32_t p = out[k];
+        unsigned a = p >> 24;
+        if (a == 255) {
+            out[k] = p & 0xffffff;
+        } else if (a == 0) {
+            out[k] = bg & 0xffffff;
+        } else {
+            uint32_t o = 0;
+            for (int s = 0; s < 24; s += 8) {
+                unsigned f = (p >> s) & 255, b = (bg >> s) & 255;
+                o |= (uint32_t)((f * a + b * (255 - a) + 127) / 255) << s;
+            }
+            out[k] = o;
+        }
+    }
 }
 
 } /* namespace tw */

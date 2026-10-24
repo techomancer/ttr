@@ -352,7 +352,7 @@ void reports_and_modes()
 {
     T t(10, 5);
     t.feed("\x1b[c");
-    TL_CHECK_STR(t.reply(), "\x1b[?64;1;6;22c");
+    TL_CHECK_STR(t.reply(), "\x1b[?64;1;4;6;22c");
     t.feed("\x1b[>c");
     TL_CHECK_STR(t.reply(), "\x1b[>41;1;0c");
     t.feed("\x1b[5n");

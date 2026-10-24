@@ -278,9 +278,10 @@ struct Cell {            // 8 bytes, copyable with memcpy
                          // bits 22..23 width kind: 0 narrow, 1 wide, 2 spacer tail,
                          //             3 spacer head (last column before a wrapped wide char)
                          // bit  24     protected (DECSCA)
-                         // bits 25..31 reserved
+                         // bit  25     image cell (section 5.8)
+                         // bits 26..31 reserved
     uint16_t style;      // StyleTable id, 0 = default
-    uint16_t link;       // hyperlink id, 0 = none
+    uint16_t link;       // hyperlink id, 0 = none; an image cell's tile row
 };
 ```
 
@@ -430,33 +431,51 @@ VTE and ghostty.
 
 ### 5.8 Images
 
-Two tables per terminal:
+Built: sixel (`tl/image.h`). An image is two things:
 
-- **Image store**: id, pixel size, format (RGBA 32-bit always, after
-  decode), refcount, transient flag, bytes. The engine decodes sixel
-  itself (it is a tiny format with no dependencies). PNG and other
-  compressed formats are handed to `Host::decode_image()`; if the host
-  returns false the image is rejected with the protocol's error reply.
-  A byte budget evicts images with no placements first.
-- **Placements**: image id, placement id, an `Anchor` (row, col) for the
-  top-left cell, size in cells, source rectangle, pixel offset inside the
-  cell, z-index, and the cell size the image was placed under so it can
-  be rescaled when the font changes (foot does this). Placements scroll
-  with their anchor row and die when it is pruned or cleared. Erasing
-  cells under a placement does not remove it, except through the
-  protocol's own delete commands, matching kitty and xterm's sixel.
+- **The store** (`ImageStore`): id (1-4095), pixels (0xAARRGGBB, decoded
+  by tl itself), the cell size it was placed under, and a serial that is
+  never reused, so a renderer's cache can tell a new image behind an old
+  id. A byte budget (256 MB, 32 MB on IRIX) drops the oldest images
+  first; their cells then show only their background.
+- **Image cells.** Placing an image writes one cell per character cell
+  it covers: bit 25 of `ch` set, bits 0-11 the image id, bits 12-20 the
+  tile's column (512 at most), and `link` the tile's row. An image cell
+  has no text (it reads as a space) and no hyperlink.
 
-Sixel (`DCS P1;P2;P3 q ... ST`) is the first protocol: decoded at the
-cursor, placement size computed from pixel size and the current cell
-size, cursor moved per modes 80 and 8452. The kitty graphics protocol
-(APC `G`) adds chunked transfers, direct/file/shm media (the file and shm
-media are host callbacks, off by default), placements by id, deletes and
-Unicode placeholders; animation and relative placements come last.
-iTerm2 `OSC 1337 File=` is a thin layer on the same store.
+The first design kept placements apart from the cells, anchored to rows,
+as kitty and foot do. Tiles in the cells won because everything the
+grid already does then works for images without a line of image code:
+scrolling and scroll regions, insert and delete of characters and lines,
+scrollback, the screen switch, reflow, and text written over an image
+replacing it cell by cell, which is how a VT340 and xterm behave with
+sixels. The cost is that an image cannot lie under or over text. The
+store frees an image when no cell of either screen shows it
+(`collect()`, run when images pile up and when the scrollback is
+cleared).
 
-The `View` reports visible placements as pixel rectangles relative to the
-viewport plus the image id; the host blits them in z order, under or over
-text as the z-index says.
+Sixel (`DCS P1;P2;P3 q ... ST`): 256 colour registers starting as the
+VT340's, RGB and DEC HLS colours, raster attributes, repeats, at most
+4096 x 4096 pixels. P2 = 1 leaves pixels not drawn transparent (they
+show the cell's background), otherwise they are the default background.
+The image goes at the cursor, down from its row and scrolling at the
+bottom margin; the cursor then goes to the line below, in the image's
+first column. Mode 80 (DECSDM) puts it at the top left without moving
+anything, mode 8452 leaves the cursor right of the image on its last
+row. DA1 reports sixel (4); XTSMGRAPHICS answers the number of colour
+registers and the size; XTWINOPS 14, 16 and 18 report the text area and
+cell sizes in pixels, which the host gives with `set_cell_pixels()`.
+
+Next, the kitty graphics protocol (APC `G`) on the same store and cells:
+chunked transfers, direct medium, placements by id, deletes. Its images
+also become image cells, as in WezTerm, so text over a kitty image
+replaces it where kitty would draw it on top; z-index, animation and
+relative placements are left out. iTerm2's `OSC 1337 File=` would need
+the host's decoder (ti).
+
+The `View` gives cells; `tw::Source::image()` gives a renderer an image's
+pixels by id, and the renderers draw runs of tiles of one image row
+(`Renderer::draw_image`).
 
 ### 5.9 Damage
 
@@ -697,7 +716,7 @@ visible and get written in the same commits as the features.
    XTGETTCAP, XTVERSION, kitty keyboard, modes 2026/2027/2048, OSC 133
    blocks with "jump to prompt" in ttrt, OSC 9/777 notifications wired to
    ttr's notifier.
-6. **Images.** Sixel with modes 80/1070/8452; then the kitty graphics
+6. **Images.** Sixel with modes 80/8452 (done); then the kitty graphics
    protocol (direct medium, placements, deletes, placeholders); then
    iTerm2 inline images through the host PNG decoder.
 7. **Embedding elsewhere in ttr.** A terminal pane in the run dialog or

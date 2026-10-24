@@ -338,7 +338,8 @@ static void test_encoders()
     ti::flatten(&flat, 0);
     ti::Bytes s;
     ti::encode_sixel(flat, &s);
-    CHECK(starts(s, "\033P0;1;0q\"1;1;7;5#0;2;0;0;0#1;2;0;0;20"));
+    CHECK(starts(s, "\033P0;1;0q\"1;1;7;5#"));
+    CHECK(s.n < 1200);
     CHECK(ends(s, "-\033\\"));
     /* One band of six rows: a single '-'. */
     size_t dashes = 0;

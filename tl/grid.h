@@ -18,26 +18,43 @@ enum WideKind {
 
 enum { TL_GRAPHEME_MAX = 32 };
 
-/* 8 bytes; a zero cell is an empty default cell. */
+/* 8 bytes; a zero cell is an empty default cell.
+ *
+ * An image cell (F_IMAGE, image.h) shows one tile of an image instead of
+ * text: bits 0-11 of ch are the image's id, bits 12-20 the tile's column
+ * in the image, and link is the tile's row. It has no text or link. */
 struct Cell {
     uint32_t ch;            /* bits 0-20 code point or grapheme index; 21 grapheme;
-                               22-23 WideKind; 24 protected (DECSCA) */
+                               22-23 WideKind; 24 protected (DECSCA); 25 image */
     uint16_t style;         /* StyleTable id, 0 = default */
-    uint16_t link;          /* hyperlink id, 0 = none */
+    uint16_t link;          /* hyperlink id, 0 = none; an image cell's tile row */
 
     enum {
         CP_MASK = 0x1fffff,
         F_GRAPHEME = 1u << 21,
         WIDE_SHIFT = 22,
         WIDE_MASK = 3u << 22,
-        F_PROTECTED = 1u << 24
+        F_PROTECTED = 1u << 24,
+        F_IMAGE = 1u << 25,
+        IMAGE_ID_MASK = 0xfff,
+        IMAGE_COL_MAX = 511
     };
 
     uint32_t cp() const { return ch & CP_MASK; }
     bool is_grapheme() const { return (ch & F_GRAPHEME) != 0; }
     WideKind wide() const { return (WideKind)((ch & WIDE_MASK) >> WIDE_SHIFT); }
     bool is_protected() const { return (ch & F_PROTECTED) != 0; }
-    bool is_empty() const { return cp() == 0 && !is_grapheme(); }
+    bool is_empty() const { return cp() == 0 && !is_grapheme() && !is_image(); }
+    bool is_image() const { return (ch & F_IMAGE) != 0; }
+    int image_id() const { return (int)(ch & IMAGE_ID_MASK); }
+    int image_col() const { return (int)((ch >> 12) & IMAGE_COL_MAX); }
+    int image_row() const { return link; }
+    void set_image(int id, int col, int row, uint16_t style_id)
+    {
+        ch = F_IMAGE | ((uint32_t)id & IMAGE_ID_MASK) | ((uint32_t)col & IMAGE_COL_MAX) << 12;
+        style = style_id;
+        link = (uint16_t)row;
+    }
 
     void set(uint32_t codepoint, WideKind w, uint16_t style_id, uint16_t link_id, bool prot)
     {
@@ -52,7 +69,8 @@ enum RowFlag {
     ROW_WRAPPED = 1,        /* soft wrap: the logical line continues on the next row */
     ROW_HAS_GRAPHEMES = 2,
     ROW_HAS_LINKS = 4,
-    ROW_HAS_STYLES = 8
+    ROW_HAS_STYLES = 8,
+    ROW_HAS_IMAGES = 16
 };
 
 enum LineAttr {

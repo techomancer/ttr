@@ -41,6 +41,14 @@ public:
     /* One run of cells with the same style, at row y from column x. */
     virtual void draw_run(int x, int y, const CellData* cells, int n,
                           const ClusterLookup* clusters) = 0;
+    /* A run of image cells: tiles image_col.. of tile row image_row of
+     * one image, from column x of row y. The default draws them as the
+     * blank cells they also are: their background. */
+    virtual void draw_image(int x, int y, const CellData* cells, int n, const ImageData& img)
+    {
+        (void)img;
+        draw_run(x, y, cells, n, 0);
+    }
     /* The cursor over the cell under it (already drawn plainly). */
     virtual void draw_cursor(const Cursor& c, const CellData& under, uint32_t color,
                              bool focused, const ClusterLookup* clusters) = 0;
@@ -58,6 +66,16 @@ public:
     virtual bool set_background(const char* name) { return !name || !*name; }
     virtual const char* name() const = 0;
 };
+
+/* One row of pixels of an image run, dy pixels down from the top of the
+ * cells, scaled from the image's tile size to cw x ch: n cells starting
+ * at tile column col of tile row row, into out[n * cw] as 0xAARRGGBB
+ * (A 0 where the image has no pixel). */
+void image_row(const ImageData& img, int col, int row, int n, int cw, int ch, int dy,
+               uint32_t* out);
+/* The same, put over a background: 0xRRGGBB. */
+void image_row_over(const ImageData& img, int col, int row, int n, int cw, int ch, int dy,
+                    uint32_t bg, uint32_t* out);
 
 /* The renderers. A kind the build or the display lacks is 0. */
 Renderer* create_core_renderer();

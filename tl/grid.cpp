@@ -564,7 +564,9 @@ void note_cell(Row& r, const Cell& c)
         r.flags |= ROW_HAS_STYLES;
     if (c.is_grapheme())
         r.flags |= ROW_HAS_GRAPHEMES;
-    if (c.link)
+    if (c.is_image())
+        r.flags |= ROW_HAS_IMAGES;
+    else if (c.link)
         r.flags |= ROW_HAS_LINKS;
 }
 

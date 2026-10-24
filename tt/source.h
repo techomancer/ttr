@@ -33,6 +33,7 @@ public:
     tw::Cursor cursor() const;
     uint32_t background() const;
     uint32_t cursor_color() const;
+    bool image(uint32_t id, tw::ImageData* out) const;
     void frame_done() { t_.clear_damage(); }
 
 private:

@@ -56,13 +56,14 @@ class SoftRender : public Renderer {
 public:
     SoftRender()
         : dpy_(0), win_(0), gc_(0), visual_(0), depth_(0), fonts_(0), im_(0), shm_(false),
-          swap_(false), bpp_(0), n_dirty_(0), font_serial_(-1)
+          swap_(false), bpp_(0), n_dirty_(0), font_serial_(-1), line_(0), line_cap_(0)
     {
         memset(&g_, 0, sizeof(g_));
         memset(&shminfo_, 0, sizeof(shminfo_));
     }
     ~SoftRender()
     {
+        free(line_);
         drop_image();
         if (gc_)
             XFreeGC(dpy_, gc_);
@@ -185,6 +186,43 @@ public:
                 missing(cx, py, cw, st);
         }
         decorate(px, py, n, st);
+    }
+
+    void draw_image(int x, int y, const CellData* cells, int n, const ImageData& img)
+    {
+        int px0 = g_.margin_x + x * g_.cell_w;
+        int py0 = g_.margin_y + y * g_.cell_h;
+        int w = n * g_.cell_w, h = g_.cell_h;
+        int cx = px0, cy = py0, cw = w, chh = h;
+        if (!clip(&cx, &cy, &cw, &chh))
+            return;
+        if (w > line_cap_) {
+            uint32_t* p = (uint32_t*)realloc(line_, (size_t)w * sizeof(uint32_t));
+            if (!p)
+                return;
+            line_ = p;
+            line_cap_ = w;
+        }
+        uint32_t bg = cells[0].style.bg;
+        for (int dy = cy - py0; dy < cy - py0 + chh; dy++) {
+            image_row_over(img, cells[0].image_col, cells[0].image_row, n, g_.cell_w, g_.cell_h,
+                           dy, bg, line_);
+            char* row = im_->data + (size_t)(py0 + dy) * (size_t)im_->bytes_per_line;
+            /* Neighbouring pixels are often the same: convert once. */
+            uint32_t last = ~0u;
+            unsigned long p = 0;
+            for (int k = cx - px0; k < cx - px0 + cw; k++) {
+                if (line_[k] != last) {
+                    last = line_[k];
+                    p = px(last);
+                }
+                if (bpp_ == 32)
+                    ((uint32_t*)row)[px0 + k] = (uint32_t)p;
+                else
+                    ((uint16_t*)row)[px0 + k] = (uint16_t)p;
+            }
+        }
+        mark(cx, cy, cw, chh);
     }
 
     void draw_cursor(const Cursor& c, const CellData& under, uint32_t color, bool focused,
@@ -472,6 +510,8 @@ private:
     Rect dirty_[MAX_DIRTY];
     int n_dirty_;
     int font_serial_;
+    uint32_t* line_;            /* an image row being converted */
+    int line_cap_;
 };
 
 } /* namespace */

@@ -84,8 +84,8 @@ at every length and change random bytes; the sanitizer build
   ti writes itself, sized in cells.
 
 `detect_protocol()` reads the environment: kitty and ghostty use kitty's
-protocol, iTerm2 and WezTerm iTerm2's, foot, mlterm, konsole, contour
-and Windows Terminal sixels, and everything else (and anything inside
+protocol, iTerm2 and WezTerm iTerm2's, ttrt (`TERM_PROGRAM=ttrt`), foot,
+mlterm, konsole, contour and Windows Terminal sixels, and everything else (and anything inside
 tmux or screen, which pass none of them through) half blocks. ttrc's
 Options > Appearance overrides it.
 

@@ -16,7 +16,7 @@ enum Protocol {
     PROTO_OFF,          /* no images: the viewer shows the bytes */
     PROTO_BLOCKS,       /* half blocks in the program's own cells */
     PROTO_KITTY,        /* kitty's graphics protocol (kitty, ghostty) */
-    PROTO_SIXEL,        /* DEC sixels (xterm -ti vt340, foot, mlterm, konsole) */
+    PROTO_SIXEL,        /* DEC sixels (ttrt, xterm -ti vt340, foot, mlterm, konsole) */
     PROTO_ITERM,        /* iTerm2's inline images (iTerm2, WezTerm) */
     PROTO_COUNT
 };

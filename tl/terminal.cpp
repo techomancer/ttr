@@ -20,6 +20,8 @@ void Modes::reset()
     graphemes = false;
     mouse = 0;
     mouse_encoding = 0;
+    sixel_display = false;
+    sixel_right = false;
 }
 
 static void cursor_reset(Cursor& c)
@@ -41,7 +43,8 @@ Terminal::Terminal()
       sel_mode_(SELECT_CHAR), sel_shown_(false), sel_shown_r0_(0), sel_shown_r1_(0),
       sel_shown_c0_(0), sel_shown_c1_(0), bold_bright_(true), full_damage_(true),
       vp_anchor_(0), follow_(true), last_valid_(false), last_at_bottom_(true), last_alt_(false),
-      last_top_(0), last_cx_(0), last_cy_(0), last_cwide_(false), prev_valid_(false), prev_x_(0), prev_y_(0), last_cp_(0)
+      last_top_(0), last_cx_(0), last_cy_(0), last_cwide_(false), prev_valid_(false), prev_x_(0), prev_y_(0), last_cp_(0),
+      in_sixel_(false), cell_w_(0), cell_h_(0)
 {
     parser_.set_sink(this);
     /* xterm's default palette. */
@@ -125,6 +128,8 @@ void Terminal::reset()
     }
     primary_.grid.clear_history();
     primary_.grid.full_damage = true;
+    images_.clear();
+    in_sixel_ = false;
     title_.clear();
     select_clear();
     mouse_buttons_ = 0;
@@ -138,6 +143,7 @@ void Terminal::reset()
 void Terminal::clear_scrollback()
 {
     primary_.grid.clear_history();
+    collect_images();
     follow_ = true;
     full_damage_ = true;
 }
@@ -222,6 +228,10 @@ int Terminal::cell_text(const Cell& c, uint32_t* out, int max) const
 {
     if (max <= 0)
         return 0;
+    if (c.is_image()) {
+        out[0] = ' ';
+        return 1;
+    }
     if (c.is_grapheme()) {
         const uint32_t* cps;
         int n = screen().grid.graphemes().get(c.cp(), &cps);
@@ -1201,8 +1211,7 @@ void Terminal::csi_dispatch(const Seq& q)
             }
             return;
         }
-        case 't':                           /* XTWINOPS: later */
-            return;
+        case 't': window_ops(p); return;   /* XTWINOPS: size reports */
         default:
             return;
         }
@@ -1217,6 +1226,7 @@ void Terminal::csi_dispatch(const Seq& q)
         case 'J': erase_display(p.top(0, 0), true); return;
         case 'K': erase_line(p.top(0, 0), true); return;
         case 'n': device_status(q); return;
+        case 'S': graphics_attributes(p); return;   /* XTSMGRAPHICS */
         default: return;
         }
     }
@@ -1325,6 +1335,8 @@ void Terminal::set_mode(int m, bool priv, bool on)
     case 1004: modes_.focus_events = on; break;
     case 1007: modes_.alt_scroll = on; break;
     case 2004: modes_.bracketed_paste = on; break;
+    case 80: modes_.sixel_display = on; break;
+    case 8452: modes_.sixel_right = on; break;
     case 2026: modes_.sync_output = on; break;
     case 2027: modes_.graphemes = on; break;
     case 47:
@@ -1386,6 +1398,8 @@ int Terminal::mode_state(int m, bool priv) const
     case 1004: v = modes_.focus_events; break;
     case 1007: v = modes_.alt_scroll; break;
     case 2004: v = modes_.bracketed_paste; break;
+    case 80: v = modes_.sixel_display; break;
+    case 8452: v = modes_.sixel_right; break;
     case 2026: v = modes_.sync_output; break;
     case 2027: v = modes_.graphemes; break;
     case 47: case 1047: case 1049: v = alt_; break;
@@ -1554,7 +1568,7 @@ void Terminal::device_attributes(const Seq& q)
     if (q.params.top(0, 0) != 0)
         return;
     if (q.priv == 0)
-        reply("\x1b[?64;1;6;22c");          /* VT420 class: 132 cols, selective erase, colour */
+        reply("\x1b[?64;1;4;6;22c");        /* VT420 class: 132 cols, sixel, selective erase, colour */
     else if (q.priv == '>')
         reply("\x1b[>41;1;0c");
     else if (q.priv == '=')
@@ -1563,9 +1577,134 @@ void Terminal::device_attributes(const Seq& q)
 
 /* ---- strings ----------------------------------------------------------- */
 
-void Terminal::dcs_hook(const Seq&) {}
-void Terminal::dcs_put(const uint8_t*, size_t) {}
-void Terminal::dcs_unhook(bool) {}
+/* XTWINOPS: only the reports (14 the text area, 16 a cell, 18 the size
+ * in cells); moving and resizing the window is the window manager's. */
+void Terminal::window_ops(const Params& p)
+{
+    char b[64];
+    int cw = cell_w_ > 0 ? cell_w_ : 10, ch = cell_h_ > 0 ? cell_h_ : 20;
+    switch (p.top(0, 0)) {
+    case 14: sprintf(b, "\x1b[4;%d;%dt", rows_ * ch, cols_ * cw); reply(b); break;
+    case 16: sprintf(b, "\x1b[6;%d;%dt", ch, cw); reply(b); break;
+    case 18: sprintf(b, "\x1b[8;%d;%dt", rows_, cols_); reply(b); break;
+    default: break;
+    }
+}
+
+/* XTSMGRAPHICS: CSI ? Pi ; Pa S. Pi 1 colour registers, 2 sixel size;
+ * Pa 1 read, 4 read the maximum. Setting is not supported (status 3). */
+void Terminal::graphics_attributes(const Params& p)
+{
+    int item = p.top(0, 0), action = p.top(1, 0);
+    char b[80];
+    if (item != 1 && item != 2) {
+        sprintf(b, "\x1b[?%d;1;0S", item);          /* unknown item */
+    } else if (action != 1 && action != 4) {
+        sprintf(b, "\x1b[?%d;3;0S", item);
+    } else if (item == 1) {
+        sprintf(b, "\x1b[?1;0;%dS", (int)SixelDecoder::REGISTERS);
+    } else {
+        int cw = cell_w_ > 0 ? cell_w_ : 10, ch = cell_h_ > 0 ? cell_h_ : 20;
+        int w = action == 4 ? (int)SixelDecoder::MAX_SIDE : cols_ * cw;
+        int h = action == 4 ? (int)SixelDecoder::MAX_SIDE : rows_ * ch;
+        sprintf(b, "\x1b[?2;0;%d;%dS", w, h);
+    }
+    reply(b);
+}
+
+/* DCS P1 ; P2 ; P3 q: sixels. */
+void Terminal::dcs_hook(const Seq& q)
+{
+    in_sixel_ = q.final_byte == 'q' && q.priv == 0 && q.n_intermediates == 0;
+    if (in_sixel_)
+        sixel_.begin(q.params.top(1, 0), (uint32_t)bg_.r << 16 | (uint32_t)bg_.g << 8 | bg_.b);
+}
+
+void Terminal::dcs_put(const uint8_t* s, size_t n)
+{
+    if (in_sixel_)
+        sixel_.put(s, n);
+}
+
+void Terminal::dcs_unhook(bool aborted)
+{
+    if (!in_sixel_)
+        return;
+    in_sixel_ = false;
+    uint32_t* px;
+    int w, h;
+    if (sixel_.finish(&px, &w, &h)) {
+        if (aborted)
+            free(px);
+        else
+            place_image(px, w, h);
+    }
+}
+
+void Terminal::collect_images()
+{
+    const Grid* grids[2] = { &primary_.grid, &alt_screen_.grid };
+    images_.collect(grids, 2);
+}
+
+/* A decoded image at the cursor, as a block of image cells: down from the
+ * cursor row, scrolling at the bottom margin, the cursor then on the line
+ * below in the image's first column (xterm's sixel scrolling). With DECSDM
+ * it goes to the top left and the cursor stays. */
+void Terminal::place_image(uint32_t* px, int w, int h)
+{
+    int cw = cell_w_ > 0 ? cell_w_ : 10, ch = cell_h_ > 0 ? cell_h_ : 20;
+    /* Free what nothing shows before the store has to drop what does. */
+    if (images_.count() >= ImageStore::MAX_ID - 64 || images_.count() % 64 == 63)
+        collect_images();
+    int id = images_.add(px, w, h, cw, ch);
+    if (!id)
+        return;
+    bool display = modes_.sixel_display;
+    int x0 = display ? 0 : cur_.x;
+    int cols = (w + cw - 1) / cw, rows = (h + ch - 1) / ch;
+    if (cols > cols_ - x0)
+        cols = cols_ - x0;
+    if (cols > Cell::IMAGE_COL_MAX + 1)
+        cols = Cell::IMAGE_COL_MAX + 1;
+    if (rows > 65535)
+        rows = 65535;
+    if (display && rows > rows_)
+        rows = rows_;
+    uint16_t sid = blank().style;
+    cur_.pending_wrap = false;
+    damage_cursor();
+    for (int r = 0; r < rows; r++) {
+        int y;
+        if (display) {
+            y = r;
+        } else {
+            if (r > 0)
+                index();
+            y = cur_.y;
+        }
+        sel_touch(y);
+        Row& rr = row(y);
+        fix_wide_left(rr, x0);
+        fix_wide_right(rr, x0 + cols - 1);
+        for (int c = 0; c < cols; c++)
+            rr.cells[x0 + c].set_image(id, c, r, sid);
+        rr.flags |= ROW_HAS_IMAGES;
+        if (sid)
+            rr.flags |= ROW_HAS_STYLES;
+        rr.damage(x0, x0 + cols - 1);
+    }
+    if (display)
+        return;
+    if (modes_.sixel_right) {
+        cur_.x = x0 + cols < cols_ ? x0 + cols : cols_ - 1;
+    } else {
+        index();
+        cur_.x = x0;
+    }
+    damage_cursor();
+    prev_valid_ = false;
+}
 
 void Terminal::osc_dispatch(const uint8_t* s, size_t n, bool truncated)
 {

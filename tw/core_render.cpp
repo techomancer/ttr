@@ -34,12 +34,15 @@ class CoreRender : public Renderer {
 public:
     CoreRender()
         : dpy_(0), win_(0), gc_(0), gc1_(0), fonts_(0), fid_(0), fg_(~0UL), bg_(~0UL),
-          n_pages_(0), cache_gen_(-1), font_serial_(-1)
+          n_pages_(0), cache_gen_(-1), font_serial_(-1), visual_(0), depth_(0), line_(0),
+          line_cap_(0)
     {
         memset(&g_, 0, sizeof(g_));
+        memset(cube_ok_, 0, sizeof(cube_ok_));
     }
     ~CoreRender()
     {
+        free(line_);
         drop_pages();
         if (gc1_)
             XFreeGC(dpy_, gc1_);
@@ -53,6 +56,8 @@ public:
         dpy_ = dpy;
         win_ = win;
         fonts_ = fonts;
+        visual_ = visual;
+        depth_ = depth;
         palette_.init(dpy, visual, cmap, depth);
         XGCValues v;
         v.graphics_exposures = True;    /* copies from obscured parts expose */
@@ -167,6 +172,57 @@ public:
             i++;
         }
         decorate(px, py, n, st);
+    }
+
+    /* An XImage of the run in the window's visual: exact colours on
+     * TrueColor; elsewhere a 6x6x6 cube with ordered dithering, so an
+     * image takes at most 216 colormap cells. */
+    void draw_image(int x, int y, const CellData* cells, int n, const ImageData& img)
+    {
+        int w = n * g_.cell_w, h = g_.cell_h;
+        int px0 = g_.margin_x + x * g_.cell_w;
+        int py0 = g_.margin_y + y * g_.cell_h;
+        XImage* xi = XCreateImage(dpy_, visual_, (unsigned)depth_, ZPixmap, 0, 0, (unsigned)w,
+                                  (unsigned)h, 32, 0);
+        if (!xi)
+            return;
+        xi->data = (char*)malloc((size_t)xi->bytes_per_line * (size_t)h);
+        if (!xi->data || !line(w)) {
+            XDestroyImage(xi);
+            draw_run(x, y, cells, n, 0);
+            return;
+        }
+        static const int bayer[4][4] = {
+            { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 }
+        };
+        bool exact = palette_.true_color();
+        uint32_t bg = cells[0].style.bg;
+        for (int dy = 0; dy < h; dy++) {
+            image_row_over(img, cells[0].image_col, cells[0].image_row, n, g_.cell_w, g_.cell_h,
+                           dy, bg, line_);
+            uint32_t last = ~0u;
+            unsigned long p = 0;
+            for (int k = 0; k < w; k++) {
+                uint32_t rgb = line_[k];
+                if (exact) {
+                    if (rgb != last) {
+                        last = rgb;
+                        p = palette_.pixel(rgb);
+                    }
+                } else {
+                    int t = bayer[(py0 + dy) & 3][(px0 + k) & 3] * 255 / 16;
+                    int q[3];
+                    for (int c = 0; c < 3; c++) {
+                        int v = (int)((rgb >> (16 - 8 * c)) & 255) * 5;
+                        q[c] = v / 255 + (v % 255 > t && v / 255 < 5 ? 1 : 0);
+                    }
+                    p = cube(q[0] * 36 + q[1] * 6 + q[2]);
+                }
+                XPutPixel(xi, k, dy, p);
+            }
+        }
+        XPutImage(dpy_, win_, gc_, xi, 0, 0, px0, py0, (unsigned)w, (unsigned)h);
+        XDestroyImage(xi);
     }
 
     void draw_cursor(const Cursor& c, const CellData& under, uint32_t color, bool focused,
@@ -453,6 +509,35 @@ private:
     int n_pages_;
     int cache_gen_;
     int font_serial_;
+    Visual* visual_;
+    int depth_;
+    uint32_t* line_;            /* an image row being converted */
+    int line_cap_;
+    unsigned long cube_px_[216];
+    bool cube_ok_[216];
+
+    bool line(int w)
+    {
+        if (w <= line_cap_)
+            return true;
+        uint32_t* p = (uint32_t*)realloc(line_, (size_t)w * sizeof(uint32_t));
+        if (!p)
+            return false;
+        line_ = p;
+        line_cap_ = w;
+        return true;
+    }
+
+    unsigned long cube(int i)
+    {
+        if (!cube_ok_[i]) {
+            uint32_t rgb = (uint32_t)(i / 36 * 51) << 16 | (uint32_t)(i / 6 % 6 * 51) << 8 |
+                           (uint32_t)(i % 6 * 51);
+            cube_px_[i] = palette_.pixel(rgb);
+            cube_ok_[i] = true;
+        }
+        return cube_px_[i];
+    }
 };
 
 } /* namespace */

@@ -9,6 +9,7 @@
 #include "charset.h"
 #include "grid.h"
 #include "host.h"
+#include "image.h"
 #include "input.h"
 #include "parser.h"
 #include "style.h"
@@ -39,6 +40,8 @@ struct Modes {
     bool graphemes;         /* (2027): cluster by UAX #29 instead of wcwidth */
     int mouse;              /* 0, 9, 1000, 1002, 1003 */
     int mouse_encoding;     /* 0, 1005, 1006, 1015, 1016 */
+    bool sixel_display;     /* DECSDM (80): sixels at the top left, no scrolling */
+    bool sixel_right;       /* (8452): the cursor ends right of a sixel image */
 
     void reset();
 };
@@ -96,6 +99,12 @@ public:
     int scroll_bottom() const { return bot_; }
     bool tab_stop(int x) const { return x >= 0 && x < cols_ && tabs_[x]; }
     void set_ambiguous_wide(bool on) { ambiguous_wide_ = on; }
+    /* A cell's size in pixels, for placing images and answering size
+     * queries; 0: unknown (images then assume 10 x 20). */
+    void set_cell_pixels(int w, int h) { cell_w_ = w; cell_h_ = h; }
+    /* The pixels of image cells (Cell::is_image). */
+    const ImageStore& images() const { return images_; }
+    ImageStore& images() { return images_; }
     /* UTF-8 (default) or 8-bit input; ESC % G and ESC % @ also switch. */
     void set_utf8(bool on) { parser_.set_utf8(on); }
 
@@ -246,6 +255,11 @@ private:
     int sgr_color(const Params& p, int e, uint32_t* out);
     void device_status(const Seq& q);
     void device_attributes(const Seq& q);
+    void window_ops(const Params& p);
+    void graphics_attributes(const Params& p);
+    /* Images */
+    void place_image(uint32_t* px, int w, int h);
+    void collect_images();
     void reply(const char* s);
     void reply(Buffer& b) { reply(b.c_str()); }
 
@@ -314,6 +328,11 @@ private:
     int prev_x_, prev_y_;
     uint32_t last_cp_;
     GraphemeState gstate_;
+    /* Images */
+    ImageStore images_;
+    SixelDecoder sixel_;
+    bool in_sixel_;
+    int cell_w_, cell_h_;
 
     Terminal(const Terminal&);
     Terminal& operator=(const Terminal&);

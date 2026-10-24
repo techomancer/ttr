@@ -51,7 +51,8 @@ Protocol detect_protocol()
         return PROTO_KITTY;
     if (env_is("TERM_PROGRAM", "iTerm.app") || env_is("TERM_PROGRAM", "WezTerm"))
         return PROTO_ITERM;
-    if (env_starts("TERM", "foot") || env_starts("TERM", "mlterm") || env_starts("TERM", "yaft") ||
+    if (env_is("TERM_PROGRAM", "ttrt") || env_starts("TERM", "ttrt") ||
+        env_starts("TERM", "foot") || env_starts("TERM", "mlterm") || env_starts("TERM", "yaft") ||
         env_is("TERM_PROGRAM", "contour") || getenv("KONSOLE_VERSION") || getenv("WT_SESSION"))
         return PROTO_SIXEL;
     return PROTO_BLOCKS;
@@ -161,18 +162,44 @@ void kitty_delete(unsigned id, Bytes* out)
 /* ------------------------------------------------------------------ */
 /* Sixel                                                               */
 
+namespace {
+
+/* A pixel's colour in the 6x6x6 cube; a 4x4 Bayer matrix spreads the
+ * error. */
+int cube_index(const unsigned char* p, int x, int y)
+{
+    static const int bayer[4][4] = {
+        { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 }
+    };
+    /* 51 levels between cube steps; the threshold dithers. */
+    int t = bayer[y & 3][x & 3] * 51 / 16;
+    int q[3];
+    for (int k = 0; k < 3; k++) {
+        int v = p[k] / 51, rest = p[k] % 51;
+        q[k] = v + (rest > t && v < 5 ? 1 : 0);
+    }
+    return q[0] * 36 + q[1] * 6 + q[2];
+}
+
+} /* namespace */
+
 void encode_sixel(const Image& im, Bytes* out)
 {
     if (im.empty())
         return;
     int w = im.w, h = im.h;
-    /* A 6x6x6 colour cube; a 4x4 Bayer matrix spreads the error. */
-    static const int bayer[4][4] = {
-        { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 }
-    };
     out->addf("\033P0;1;0q\"1;1;%d;%d", w, h);
+    /* Only the registers the image uses. */
+    bool any[216];
+    memset(any, 0, sizeof(any));
+    for (int y = 0; y < h; y++) {
+        const unsigned char* p = im.row(y);
+        for (int x = 0; x < w; x++, p += 4)
+            any[cube_index(p, x, y)] = true;
+    }
     for (int i = 0; i < 216; i++)
-        out->addf("#%d;2;%d;%d;%d", i, (i / 36) * 20, (i / 6 % 6) * 20, (i % 6) * 20);
+        if (any[i])
+            out->addf("#%d;2;%d;%d;%d", i, (i / 36) * 20, (i / 6 % 6) * 20, (i % 6) * 20);
     unsigned char* idx = (unsigned char*)malloc((size_t)w * 6);
     unsigned char* bits = (unsigned char*)malloc((size_t)w);
     if (!idx || !bits) {
@@ -188,14 +215,7 @@ void encode_sixel(const Image& im, Bytes* out)
         for (int r = 0; r < bh; r++) {
             const unsigned char* p = im.row(band + r);
             for (int x = 0; x < w; x++, p += 4) {
-                /* 51 levels between cube steps; the threshold dithers. */
-                int t = bayer[(band + r) & 3][x & 3] * 51 / 16;
-                int q[3];
-                for (int k = 0; k < 3; k++) {
-                    int v = p[k] / 51, rest = p[k] % 51;
-                    q[k] = v + (rest > t && v < 5 ? 1 : 0);
-                }
-                int c = q[0] * 36 + q[1] * 6 + q[2];
+                int c = cube_index(p, x, band + r);
                 idx[r * w + x] = (unsigned char)c;
                 used[c] = true;
             }

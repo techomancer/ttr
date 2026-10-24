@@ -480,6 +480,18 @@ install it with `tic -o ~/.terminfo data/ttrt.ti` (ncurses) or
 `~/.terminfo` by itself).
 Otherwise it uses the best entry the system has: `xterm-256color` on
 Linux, `xterm` on IRIX 6.5, whose old entry knows only 8 colours.
+Either way it sets `TERM_PROGRAM=ttrt`.
+
+**Images.** ttrt shows sixel graphics, as xterm and a VT340 do: try
+`img2sixel` (libsixel), `chafa -f sixel`, ImageMagick's `convert
+picture.png sixel:-`, or ttrc's viewer, which picks sixels in ttrt by
+itself. An image scrolls with the text and into the scrollback, and
+text written over it replaces it. It is drawn with every renderer; on
+an 8-bit display it is dithered to 216 colours. Programs can ask for
+the cell size in pixels (`CSI 16 t`, and the pty's size reports it), and
+modes 80 (sixel display mode) and 8452 (cursor right of the image) are
+there. Images are kept in memory up to 256 MB (32 MB on IRIX); past
+that the oldest ones disappear.
 
 Programs in ttrt get Alt+letter and F10: the menu bar has no keyboard
 shortcuts of its own, so file managers and editors that use those keys
@@ -547,7 +559,7 @@ line, or in hex to a file offset such as `0x1f40`, `1f40h` or `8000`;
 
 Images (PNG, JPEG, GIF, TIFF, BMP, PNM and SGI `.rgb`) show as pictures,
 fitted to the screen: through kitty's graphics protocol in kitty and
-ghostty, iTerm2's in iTerm2 and WezTerm, sixels in foot, mlterm, konsole
+ghostty, iTerm2's in iTerm2 and WezTerm, sixels in ttrt, foot, mlterm, konsole
 and Windows Terminal, and in half blocks (two coloured pixels a cell)
 everywhere else, including inside tmux. F4 or `h` shows the bytes and F6
 or `i` the picture again. Options > Appearance > "Images in the viewer"
