@@ -147,6 +147,7 @@ private:
     Client* owner_of(Client* c);
     Client* next_focus(Client* except);
 
+    Time server_time();
     void focus(Client* c, Time t);
     void activate(Client* c, Time t);
     void raise(Client* c);

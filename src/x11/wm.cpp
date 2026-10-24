@@ -398,6 +398,7 @@ void Wm::on_signal_input(XtPointer closure, int* fd, XtInputId* id)
 void Wm::setup_ewmh()
 {
     check_win_ = XCreateSimpleWindow(dpy_, root_, -100, -100, 1, 1, 0, 0, 0);
+    XSelectInput(dpy_, check_win_, PropertyChangeMask);   /* server_time */
     XChangeProperty(dpy_, root_, atoms_.net_supporting_wm_check, XA_WINDOW,
                     32, PropModeReplace, (unsigned char*)&check_win_, 1);
     XChangeProperty(dpy_, check_win_, atoms_.net_supporting_wm_check,
@@ -1592,14 +1593,26 @@ Client* Wm::next_focus(Client* except)
 /* ------------------------------------------------------------------ */
 /* Focus, stacking, actions                                            */
 
+/* The server's time now: a property change on our own window reports it. */
+Time Wm::server_time()
+{
+    XChangeProperty(dpy_, check_win_, atoms_.net_supporting_wm_check, XA_WINDOW, 32,
+                    PropModeAppend, (unsigned char*)&check_win_, 0);
+    XEvent ev;
+    XWindowEvent(dpy_, check_win_, PropertyChangeMask, &ev);
+    return ev.xproperty.time;
+}
+
 void Wm::focus(Client* c, Time t)
 {
     if (c && c->minimized)
         return;
     /* Toolkits (Motif among them) ignore WM_TAKE_FOCUS without a real
-     * timestamp, so use the last one the server sent us. */
+     * timestamp. The last one we saw is not enough: a client that set the
+     * focus itself since (a Motif menu does) has a later one, and the
+     * server drops a focus change older than the last. */
     if (t == CurrentTime)
-        t = XtLastTimestampProcessed(dpy_);
+        t = server_time();
     Client* old = active_;
     active_ = c;
     if (old && old != c) {
