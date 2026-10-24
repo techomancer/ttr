@@ -632,6 +632,16 @@ deletes show their progress and can be stopped with Esc; when a file
 exists, ttrc asks whether to overwrite it, all of them, none, or only
 older ones.
 
+**Find file** (Alt+?) searches below a directory for names matching a
+pattern, optionally containing some text, and lists what it finds while
+it searches. In the list, Enter (Go to) changes the panel to the file's
+directory with the cursor on it, F3 views the file and comes back to the
+list, and F4 goes to the file and edits it. Panelize puts the whole list
+into the active panel, as if the files were one directory (the title
+says "Found in ..."): view, edit, copy, move and delete work on them as
+usual, Ctrl+R looks at them again, and `..` goes back to the directory
+the search started in.
+
 ttrc uses what the terminal offers: true colour and Unicode lines in ttrt
 and modern Linux terminals, 256 or 8 colours elsewhere, ASCII frames
 where the terminal has no line drawing (xwsh and winterm on a stock

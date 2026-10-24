@@ -47,6 +47,11 @@ public:
     bool load(const tf::Path& path, const char* select = 0);
     /* Read the same directory again, keeping cursor and marks. */
     void reload();
+    /* Files found under 'base', named relative to it ("src/a.c"), shown
+     * as if they were one directory (mc's panelize). ".." or load()
+     * leaves it; reload() looks at the same files again. */
+    void panelize(const tf::Path& base, const ttr::Vector<ttr::Str>& names);
+    bool panelized() const { return panelized_; }
     const tf::Path& path() const { return path_; }
     const char* error() const { return error_; }
 
@@ -104,6 +109,7 @@ public:
 
 private:
     void sort_entries();
+    void fill_panelized();
     void clamp();
     void draw_entry(tu::Screen& s, const Theme& t, const Entry& e, int x, int y, int w,
                     bool cursor);
@@ -117,6 +123,8 @@ private:
     bool reverse_;
     ListMode mode_;
     bool hidden_;
+    bool panelized_;
+    ttr::Vector<ttr::Str> found_;   /* what panelize() shows */
     char error_[300];
     /* Geometry of the last draw. */
     int lx_, ly_, lw_, lh_;     /* the listing area */

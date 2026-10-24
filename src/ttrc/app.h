@@ -105,6 +105,8 @@ private:
     void cmd_compare();
     void cmd_user_menu();
     void cmd_view();
+    /* ttrc's viewer on a file, until it closes. */
+    void view_internal(const tf::Path& p);
     void cmd_edit();
     void cmd_config();
     void cmd_appearance();

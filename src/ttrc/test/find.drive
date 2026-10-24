@@ -1,0 +1,25 @@
+# Find file (Alt-?): the results, F3 on one and back, Panelize, "..".
+expect Quit
+send \e?
+expect Start at
+send \x7fnote.txt\r
+expect Done: 1 found.
+send \e[13~
+expect line two
+send \e
+expect Done: 1 found.
+send p
+expect Found in
+expect note.txt
+send \eOB
+send \e[13~
+expect line two
+send \e
+expect Found in
+send \eOA
+send \r
+absent Found in
+expect t.tar.gz
+send \e0
+expect Quit ttrc?
+send y

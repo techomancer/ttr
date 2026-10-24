@@ -809,6 +809,22 @@ bool find_step(void* ctx)
     return true;
 }
 
+/* The results: F3 and F4 end the dialog, as buttons would. */
+enum { FIND_GOTO = 1, FIND_CLOSE, FIND_PANELIZE, FIND_VIEW, FIND_EDIT };
+
+class FoundList : public tu::ListBox {
+public:
+    bool key(const tu::Event& ev)
+    {
+        if (!ev.mods && items.size() > 0 &&
+            (ev.key == tu::KEY_F1 + 2 || ev.key == tu::KEY_F1 + 3)) {
+            dialog->set_result(ev.key == tu::KEY_F1 + 2 ? FIND_VIEW : FIND_EDIT);
+            return true;
+        }
+        return tu::ListBox::key(ev);
+    }
+};
+
 } /* namespace */
 
 void App::cmd_find()
@@ -848,20 +864,50 @@ void App::cmd_find()
     if (h > 24)
         h = 24;
     tu::Dialog d("Find file", w, h);
-    f.list = new tu::ListBox();
-    f.list->activate_result = 1;
-    d.add(f.list, 3, 2, w - 6, h - 7);
+    f.list = new FoundList();
+    f.list->activate_result = FIND_GOTO;
+    d.add(f.list, 3, 2, w - 6, h - 8);
     f.status = new tu::Label("");
-    d.add(f.status, 3, h - 4, w - 6);
-    tu::Button* rb[2] = { new tu::Button("&Go to", 1, true), new tu::Button("&Close", 2) };
-    d.add_buttons(h - 2, rb, 2);
-    int r = modal(d, theme_.dialog, find_step, &f);
-    if (r == 1 && f.list->items.size() > 0) {
+    d.add(f.status, 3, h - 5, w - 6);
+    d.add(new tu::Label("F3 view, F4 edit; Panelize lists them all in the panel."), 3, h - 4,
+          w - 6);
+    tu::Button* rb[3] = { new tu::Button("&Go to", FIND_GOTO, true),
+                          new tu::Button("&Panelize", FIND_PANELIZE),
+                          new tu::Button("&Close", FIND_CLOSE) };
+    d.add_buttons(h - 2, rb, 3);
+    d.focus(f.list);
+    int r;
+    for (;;) {
+        d.set_result(tu::Dialog::RESULT_NONE);
+        r = modal(d, theme_.dialog, f.done ? 0 : find_step, &f);
+        /* F3 in ttrc's viewer comes back to the list; the rest leaves it. */
+        if (r == FIND_VIEW && config_.internal_viewer) {
+            tf::Path p = base.child(f.list->items[f.list->current]);
+            tf::Stat st;
+            if (f.fs->stat(p.c_str(), &st, true) == 0 && st.type != tf::FT_DIR)
+                view_internal(p);
+            continue;
+        }
+        break;
+    }
+    if (r == FIND_PANELIZE) {
+        ttr::Vector<ttr::Str> names;
+        for (int i = 0; i < f.list->items.size(); i++)
+            names.push_back(ttr::Str(f.list->items[i]));
+        active()->panelize(base, names);
+        return;
+    }
+    if ((r == FIND_GOTO || r == FIND_VIEW || r == FIND_EDIT) && f.list->items.size() > 0) {
         tf::Path p = base.child(f.list->items[f.list->current]);
-        if (active()->load(p.parent()))
-            active()->select_name(p.name());
-        else
+        if (!active()->load(p.parent())) {
             show_error(active()->error());
+            return;
+        }
+        active()->select_name(p.name());
+        if (r == FIND_VIEW)
+            cmd_view();
+        else if (r == FIND_EDIT)
+            cmd_edit();
     }
 }
 
@@ -1106,7 +1152,7 @@ ttr::Str App::local_file(const Entry& e)
     job.set_overwrite_all(true);
     if (!run_job(job, "Extracting"))
         return ttr::Str("");
-    return ttr::Str(tf::Path(dir).child(e.name.c_str()).c_str());
+    return ttr::Str(tf::Path(dir).child(p.name()).c_str());
 }
 
 /* F3: ttrc's viewer, which reads through tf (archives too), or $PAGER on
@@ -1117,16 +1163,7 @@ void App::cmd_view()
     if (!e || e->up || e->st.type == tf::FT_DIR)
         return;
     if (config_.internal_viewer) {
-        Viewer v;
-        v.set_images(ti::protocol_from_setting(config_.images.c_str()), &term_);
-        int err = v.load(tf::vfs(), active_path().child(e->name.c_str()).c_str());
-        if (err) {
-            char m[600];
-            snprintf(m, sizeof(m), "Cannot read %.400s:\n%s", e->name.c_str(), strerror(err));
-            show_error(m);
-            return;
-        }
-        run_tool(&v);
+        view_internal(active_path().child(e->name.c_str()));
         return;
     }
     ttr::Str f = local_file(*e);
@@ -1136,6 +1173,20 @@ void App::cmd_view()
     char c[4400];
     snprintf(c, sizeof(c), "%s %s", pager && *pager ? pager : "more", quoted(f.c_str()).c_str());
     run(c);
+}
+
+void App::view_internal(const tf::Path& p)
+{
+    Viewer v;
+    v.set_images(ti::protocol_from_setting(config_.images.c_str()), &term_);
+    int err = v.load(tf::vfs(), p.c_str());
+    if (err) {
+        char m[600];
+        snprintf(m, sizeof(m), "Cannot read %.400s:\n%s", p.name(), strerror(err));
+        show_error(m);
+        return;
+    }
+    run_tool(&v);
 }
 
 /* ttre, or $VISUAL / $EDITOR (vi) when the configuration says so, on the

@@ -219,7 +219,7 @@ void size_string(uint64_t n, int width, char* out)
 
 Panel::Panel(tf::Fs* fs, const tf::Path& path)
     : fs_(fs), path_(path), cursor_(0), top_(0), sort_(SORT_NAME), reverse_(false),
-      mode_(LIST_FULL), hidden_(true), lx_(0), ly_(0), lw_(0), lh_(0), cols_(1)
+      mode_(LIST_FULL), hidden_(true), panelized_(false), lx_(0), ly_(0), lw_(0), lh_(0), cols_(1)
 {
     error_[0] = 0;
     if (!load(path))
@@ -259,6 +259,8 @@ bool Panel::load(const tf::Path& path, const char* select)
     error_[0] = 0;
     free_entries();
     path_ = path;
+    panelized_ = false;
+    found_.clear();
     if (!path_.is_root()) {
         Entry* up = new Entry;
         up->name = "..";
@@ -311,13 +313,64 @@ void Panel::reload()
         if (entries_[i]->marked)
             marks.push_back(entries_[i]->name);
     int old_top = top_;
-    if (!load(path_, at.c_str()))
+    if (panelized_) {
+        fill_panelized();
+        select_name(at.c_str());
+    } else if (!load(path_, at.c_str())) {
         return;
+    }
     for (int i = 0; i < entries_.size(); i++)
         for (int k = 0; k < marks.size(); k++)
             if (strcmp(entries_[i]->name.c_str(), marks[k].c_str()) == 0)
                 entries_[i]->marked = true;
     top_ = old_top;
+    clamp();
+}
+
+void Panel::panelize(const tf::Path& base, const ttr::Vector<ttr::Str>& names)
+{
+    path_ = base;
+    found_.clear();
+    for (int i = 0; i < names.size(); i++)
+        found_.push_back(names[i]);
+    panelized_ = true;
+    error_[0] = 0;
+    fill_panelized();
+}
+
+/* The entries of found_ that are still there, with ".." to leave. */
+void Panel::fill_panelized()
+{
+    free_entries();
+    Entry* up = new Entry;
+    up->name = "..";
+    up->up = true;
+    up->marked = false;
+    up->target = tf::FT_DIR;
+    fs_->stat(path_.c_str(), &up->st, true);
+    up->st.type = tf::FT_DIR;
+    entries_.push_back(up);
+    for (int i = 0; i < found_.size(); i++) {
+        tf::Path full = path_.child(found_[i].c_str());
+        Entry* e = new Entry;
+        if (fs_->stat(full.c_str(), &e->st, false) != 0) {
+            delete e;
+            continue;
+        }
+        e->name = found_[i];
+        e->up = false;
+        e->marked = false;
+        e->target = tf::FT_OTHER;
+        if (e->st.type == tf::FT_LINK) {
+            tf::Stat t;
+            if (fs_->stat(full.c_str(), &t, true) == 0)
+                e->target = t.type;
+        }
+        entries_.push_back(e);
+    }
+    sort_entries();
+    cursor_ = 0;
+    top_ = 0;
     clamp();
 }
 
@@ -535,6 +588,8 @@ bool Panel::is_archive(const Entry& e)
 
 bool Panel::up()
 {
+    if (panelized_)
+        return load(path_);         /* back to the directory itself */
     if (path_.is_root())
         return false;
     ttr::Str from(path_.name());
@@ -685,7 +740,11 @@ void Panel::draw(tu::Screen& s, const Theme& t, int x, int y, int w, int h, bool
 
     /* The path in the top border, over the column lines. */
     char title[1024];
-    fit_name(path_.c_str(), w - 6, title + 1, sizeof(title) - 2);
+    static const char k_found[] = "Found in ";
+    size_t fl = panelized_ && w - 6 > 20 + (int)sizeof(k_found) ? sizeof(k_found) - 1 : 0;
+    if (fl)
+        memcpy(title + 1, k_found, fl);
+    fit_name(path_.c_str(), w - 6 - (int)fl, title + 1 + fl, sizeof(title) - 2 - fl);
     title[0] = ' ';
     size_t tl = strlen(title);
     title[tl] = ' ';
