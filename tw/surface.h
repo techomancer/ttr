@@ -47,6 +47,9 @@ public:
     const char* renderer_name() const;
     /* An animated background (GL only); false if the renderer has none. */
     bool set_background(const char* name);
+    /* Sharp, smooth or automatic text (renderer.h); smooth needs GL. */
+    void set_text_rendering(TextRendering t);
+    bool smooth_text() const { return r_ && r_->smooth_text(); }
     void detach();
     void set_source(Source* src);
     void set_margins(int x, int y) { margin_x_ = x; margin_y_ = y; }
@@ -103,6 +106,7 @@ private:
     bool focused_;
     bool blink_on_;
     bool blink_armed_;
+    TextRendering text_;
     long hold_since_;
     long last_frame_;
     CellData* row_buf_;

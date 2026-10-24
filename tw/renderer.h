@@ -28,6 +28,17 @@ public:
     virtual int cluster(int y, int x, uint32_t* cps, int max) const = 0;
 };
 
+/* How glyphs are drawn: sharp (the font's own 1-bit pixels), smooth
+ * (antialiased from distance fields, DESIGN.md section 4.6), or chosen:
+ * smooth where the face is scalable and at least 18 pixels tall, where it
+ * looks better than the hinted bitmap. Renderers that cannot draw smooth
+ * text draw sharp. */
+enum TextRendering {
+    TEXT_SHARP,
+    TEXT_SMOOTH,
+    TEXT_AUTO
+};
+
 class Renderer {
 public:
     virtual ~Renderer() {}
@@ -71,6 +82,9 @@ public:
     virtual bool take_full_request() { return false; }
     /* Above 0: draw a frame this often even without damage (animation). */
     virtual int animation_ms() const { return 0; }
+    virtual void set_text_rendering(TextRendering t) { (void)t; }
+    /* Smooth text is what it draws now. */
+    virtual bool smooth_text() const { return false; }
     /* An animated background by name ("aurora", ...); false if this
      * renderer cannot draw it. */
     virtual bool set_background(const char* name) { return !name || !*name; }

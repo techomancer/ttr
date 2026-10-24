@@ -409,6 +409,7 @@ ttrt -e top                 # run a program instead of the shell
 | `-title TEXT` | window title (programs can change it) |
 | `-renderer NAME` | how text is drawn: `core` (X11 server drawing, the default and fastest on an Indy), `soft` (a TrueColor framebuffer, through MIT-SHM on a local display), `gl` (OpenGL) or `auto` |
 | `-dynbg NAME` | an animated background behind the text: `night`, `sunset`, `ocean`, `aurora`, `embers` or `static` (needs OpenGL; `auto` then picks it) |
+| `-text sharp\|smooth\|auto` | text drawn with the font's own pixels, or smoothed (antialiased; needs OpenGL; `auto` then picks it), or smooth for scalable fonts of 18 pixels and more |
 | `-xrm 'ttrt.NAME: VALUE'` | any setting below, for this window |
 | `-e PROGRAM ARGS...` | run a program instead of the shell; must come last |
 
@@ -439,6 +440,17 @@ bell: visual
 | `colorScheme` | a text color scheme, shared with ttrcode (see "The code editor"): its text, background, cursor and 16 terminal colors; text, background and cursor colors set apart from their defaults still win | none: xterm's colors |
 | `renderer` | `auto`, `core`, `soft`, `gl` (new windows) | `auto`: core, or gl for a background |
 | `dynamicBackground` | `night`, `sunset`, `ocean`, `aurora`, `embers`, `static`, or empty | none |
+| `textRendering` | `sharp`, `smooth`, `auto` (see below) | `auto` |
+
+**Smooth text.** With the OpenGL renderer, ttrt can draw text smoothed:
+each character's outline comes from the same font drawn four times
+larger (scalable fonts: TrueType, Type1) and its edges are antialiased.
+At larger sizes this looks much better than the font's own pixels; at
+small sizes the font's hinted pixels are sharper, so `auto` smooths
+scalable fonts of 18 pixels and more and leaves the rest sharp. `smooth`
+also makes the `auto` renderer pick OpenGL. Boards that texture in
+software (the Indy) always draw sharp text. Settings > Drawing > Text
+sets it.
 
 The same names work as X resources of class `TTRt` (`TTRt*saveLines:
 5000`). The settings file wins over X resources, and the command line wins
@@ -751,7 +763,7 @@ are not shown in the tree.
 | F4, Shift+F4 | the next, previous Find in Files result |
 | Ctrl+G | go to line |
 | Ctrl+N, Ctrl+O, Ctrl+S | new, open, save |
-| Ctrl+F4 | close the file (asks about unsaved changes) |
+| Ctrl+W, Ctrl+F4 | close the file (asks about unsaved changes) |
 | Ctrl+Tab, Ctrl+Shift+Tab | next, previous file |
 | Alt+0, Alt+2 | show or hide the workspace, the terminal pane |
 | Ctrl+` | to the terminal and back |
@@ -802,7 +814,9 @@ included, and Ctrl+Z takes it back. Other files are saved at once,
 through a new file that replaces the old one.
 
 **Options.** Tools > Options... sets:
-- the font;
+- the editor's font and the terminal pane's (the same as the editor's
+  unless you choose another), and for each whether text is sharp or
+  smooth (as ttrt's: smooth needs OpenGL);
 - the tab width, how far Tab indents, and whether it inserts spaces;
 - whether Enter keeps the indentation of the line above;
 - whether to show line numbers, the current line, and spaces and tabs
@@ -821,6 +835,8 @@ the file wins over them:
 | `colorScheme` | a scheme's name | `Light` |
 | `uiTheme` | a theme's name; left out: the same as ttr | |
 | `font` | an X font name | the best fixed-width font the server has |
+| `terminalFont` | the terminal pane's font; left out: the editor's | |
+| `textRendering`, `terminalTextRendering` | the editor's and the terminal's text: `sharp`, `smooth`, `auto`, as ttrt's (`-text` sets the editor's) | `auto` |
 | `tabWidth` | columns a tab character shows as | `8` |
 | `indentWidth` | columns Tab indents by with spaces | `4` |
 | `insertSpaces` | `true`: Tab inserts spaces; `false`: a tab | `true` |
@@ -885,6 +901,11 @@ on Linux and on IRIX. Both bitmap fonts and scalable ones work:
 - **Scalable fonts**, Type1 and TrueType, are drawn by the X server at
   exactly the size asked for, which suits a large UI scale best. They are
   marked with `*` in the font lists on Settings > Appearance.
+
+Every ttr program chooses fonts the same way: a family (with `*` for
+scalable ones), a size from the sizes that family comes in (any for a
+scalable one), Bold where it makes sense, and a preview. ttrt and
+ttrcode list only fixed-width families.
 
 If a font is not installed, ttr picks the nearest one that is, and says so
 on its standard error. With only the X server's built-in `fixed` font,

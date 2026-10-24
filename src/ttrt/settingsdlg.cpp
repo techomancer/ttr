@@ -1,5 +1,7 @@
 #include "settingsdlg.h"
 
+#include "../../tx/fontchooser.h"
+
 #include "../../tt/pane.h"
 #include "../../tw/backgrounds.h"
 
@@ -56,6 +58,13 @@ static const char* const k_renderer_labels[] = {
     "Automatic", "Core X11", "Software (TrueColor)", "OpenGL"
 };
 static const char* const k_renderer_values[] = { "auto", "core", "soft", "gl" };
+
+/* Text: tw's sharp (the font's pixels) or smooth (distance fields, GL). */
+static const char* const k_text_labels[] = {
+    "Automatic", "Sharp", "Smooth"
+};
+static const char* const k_text_values[] = { "auto", "sharp", "smooth" };
+static const int k_ntexts = 3;
 static const int k_nrenderers = 4;
 
 /* "None", then tw's animated backgrounds, named for people. */
@@ -75,60 +84,9 @@ static int background_choices(const char** labels, const char** values, int max)
     return n;
 }
 
-/* Sizes offered for scalable fonts. */
-static const int k_scalable_sizes[] = {
-    8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32
-};
-static const int k_nscalable =
-    (int)(sizeof(k_scalable_sizes) / sizeof(k_scalable_sizes[0]));
-
-static const char* const k_preview_text = "$ ls -l   AaBbYyZz 0123 {}[]|~";
-
 static XmString xmstr(const char* s)
 {
     return XmStringCreateLocalized((char*)s);
-}
-
-static int compare_nocase(const char* a, const char* b)
-{
-    while (*a && *b) {
-        int ca = tolower((unsigned char)*a), cb = tolower((unsigned char)*b);
-        if (ca != cb)
-            return ca - cb;
-        a++;
-        b++;
-    }
-    return (unsigned char)*a - (unsigned char)*b;
-}
-
-/* Field i (1-14) of an XLFD, or "" if it is not one. */
-static Str field(const char* xlfd, int i)
-{
-    if (!xlfd || xlfd[0] != '-')
-        return Str("");
-    int dashes = 0;
-    const char* p;
-    for (p = xlfd; *p; p++)
-        if (*p == '-')
-            dashes++;
-    if (dashes != 14)
-        return Str("");
-    p = xlfd + 1;
-    int k;
-    for (k = 1; k < i; k++) {
-        p = strchr(p, '-');
-        if (!p)
-            return Str("");
-        p++;
-    }
-    const char* e = strchr(p, '-');
-    int n = e ? (int)(e - p) : (int)strlen(p);
-    char buf[128];
-    if (n > 127)
-        n = 127;
-    memcpy(buf, p, n);
-    buf[n] = 0;
-    return Str(buf);
 }
 
 /* The list's selected position, from 0, or -1. */
@@ -236,10 +194,10 @@ static bool is_true(const char* v)
 
 SettingsDialog::SettingsDialog(Widget parent, SettingsHost* host)
     : parent_(parent), host_(host), dpy_(XtDisplay(parent)), dialog_(0),
-      family_(0), family_w_(0), size_w_(0), preview_(0), preview_fg_(0),
+      font_(0), preview_fg_(0),
       preview_bg_(0), have_preview_fg_(false), have_preview_bg_(false),
       picker_(new ttr::ColorPicker(picked, this)), picking_(-1), scheme_w_(0),
-      renderer_w_(0), dynbg_w_(0)
+      renderer_w_(0), dynbg_w_(0), text_w_(0)
 {
     int i;
     for (i = 0; i < C_COUNT; i++) {
@@ -280,9 +238,9 @@ void SettingsDialog::destroy()
     if (dialog_)
         XtDestroyWidget(XtParent(dialog_));
     dialog_ = 0;
-    preview_ = 0;
     scheme_w_ = 0;
-    free_fonts();
+    delete font_;
+    font_ = 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -415,40 +373,15 @@ void SettingsDialog::build()
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
     Widget page = XmCreateRowColumn(dialog_, (char*)"page", args, n);
 
-    /* Font */
-    load_fonts();
+    /* Font: the chooser every ttr program shares (tx). */
     Widget f = frame(page, "Font");
     Widget r = row(f, "Font:");
-    family_w_ = drop_down(r, "family", 0, 0, 15, 18);
-    Dimension fw = 0;
-    XtSetArg(args[0], XmNwidth, &fw);
-    XtGetValues(family_w_, args, 1);
-    for (i = 0; i < families_.size(); i++) {
-        XmString item = xmstr(families_[i]->label.c_str());
-        XmComboBoxAddItem(family_w_, item, 0, False);
-        XmStringFree(item);
-    }
-    XtSetArg(args[0], XmNwidth, fw);
-    XtSetValues(family_w_, args, 1);
-    size_w_ = drop_down(r, "size", 0, 0, 12, 9);
-    XtAddCallback(family_w_, XmNselectionCallback, family_cb, (XtPointer)this);
-    XtAddCallback(size_w_, XmNselectionCallback, size_cb, (XtPointer)this);
-
-    r = row(f, "");
-    n = 0;
-    XmString pt = xmstr(k_preview_text);
-    XtSetArg(args[n], XmNlabelString, pt); n++;
-    XtSetArg(args[n], XmNrecomputeSize, False); n++;
-    XtSetArg(args[n], XmNwidth, scaled(400)); n++;
-    XtSetArg(args[n], XmNheight, scaled(44)); n++;
-    XtSetArg(args[n], XmNalignment, XmALIGNMENT_BEGINNING); n++;
-    XtSetArg(args[n], XmNmarginWidth, scaled(8)); n++;
-    preview_ = XmCreateLabel(r, (char*)"preview", args, n);
-    XmStringFree(pt);
-    XtManageChild(preview_);
+    font_ = new tx::FontChooser(r, "font", tx::FontChooser::FIXED | tx::FontChooser::UNICODE |
+                                               tx::FontChooser::AUTOMATIC);
+    font_->set_automatic_preview(tt::pick_font(dpy_));
+    font_->set(orig_[S_FONT].c_str());
     label(row(f, ""), "Fixed-width fonts only; * scalable. Characters a "
                       "font lacks come from ttrt's own fonts.");
-    show_current_font(orig_[S_FONT].c_str());
 
     /* Colours */
     f = frame(page, "Colors");
@@ -531,6 +464,14 @@ void SettingsDialog::build()
         if (strcmp(orig_[S_RENDERER].c_str(), k_renderer_values[i]) == 0)
             rp = i;
     select_item(renderer_w_, k_renderer_labels[rp]);
+    r = row(f, "Text:");
+    text_w_ = drop_down(r, "textRendering", k_text_labels, k_ntexts, k_ntexts, 12);
+    label(r, "smooth needs OpenGL; automatic: smooth from 18 pixels");
+    int tp = 0;
+    for (i = 0; i < k_ntexts; i++)
+        if (strcmp(orig_[S_TEXT_RENDERING].c_str(), k_text_values[i]) == 0)
+            tp = i;
+    select_item(text_w_, k_text_labels[tp]);
     {
         const char* labels[17];
         const char* values[17];
@@ -606,361 +547,14 @@ void SettingsDialog::build()
     update_swatches();
 }
 
-/* ------------------------------------------------------------------ */
-/* Fonts                                                               */
-
-void SettingsDialog::free_fonts()
-{
-    int i, k;
-    for (i = 0; i < families_.size(); i++) {
-        for (k = 0; k < families_[i]->sizes.size(); k++)
-            delete families_[i]->sizes[k];
-        delete families_[i];
-    }
-    families_.clear();
-    family_ = 0;
-}
-
-/* Every fixed-width (c and m spacing) upright, non-bold font in ISO 10646
- * or Latin-1, grouped by family; the size list names a font only once,
- * preferring Unicode and medium weight. */
-void SettingsDialog::load_fonts()
-{
-    free_fonts();
-    Family* autof = new Family;
-    autof->label = "Automatic";
-    autof->scalable = false;
-    autof->scalable_rank = 0;
-    families_.push_back(autof);
-
-    static const char* const patterns[] = {
-        "-*-*-*-r-*-*-*-*-*-*-c-*-*-*",
-        "-*-*-*-r-*-*-*-*-*-*-m-*-*-*",
-        0
-    };
-    int i, k;
-    for (i = 0; patterns[i]; i++) {
-        int n = 0;
-        char** names = XListFonts(dpy_, patterns[i], 30000, &n);
-        for (k = 0; k < n; k++)
-            add_font(names[k]);
-        if (names)
-            XFreeFontNames(names);
-    }
-    for (i = 1; i < families_.size(); i++)
-        finish_family(families_[i]);
-}
-
-SettingsDialog::Family* SettingsDialog::family_named(const char* name,
-                                                     bool create)
-{
-    int i;
-    int at = families_.size();
-    for (i = 1; i < families_.size(); i++) {
-        int c = compare_nocase(name, families_[i]->name.c_str());
-        if (c == 0)
-            return families_[i];
-        if (c < 0) {
-            at = i;
-            break;
-        }
-    }
-    if (!create)
-        return 0;
-    Family* f = new Family;
-    f->name = name;
-    f->label = name;
-    f->scalable = false;
-    f->scalable_rank = 1000;
-    families_.push_back(f);
-    for (i = families_.size() - 1; i > at; i--)
-        families_[i] = families_[i - 1];
-    families_[at] = f;
-    return f;
-}
-
-void SettingsDialog::add_font(const char* xlfd)
-{
-    Str fam = field(xlfd, 2), weight = field(xlfd, 3), width = field(xlfd, 5),
-        px = field(xlfd, 7), avg = field(xlfd, 12), reg = field(xlfd, 13),
-        enc = field(xlfd, 14);
-    if (fam.empty() || px.empty())
-        return;
-    const char* w = weight.c_str();
-    if (strstr(w, "bold") || strstr(w, "demi") || strstr(w, "black") ||
-        strstr(w, "heavy"))
-        return;
-    bool unicode = strcmp(reg.c_str(), "iso10646") == 0;
-    if (strcmp(enc.c_str(), "1") != 0 ||
-        (!unicode && strcmp(reg.c_str(), "iso8859") != 0))
-        return;
-    int rank = (unicode ? 0 : 10) +
-               (strcmp(w, "medium") == 0 ? 0
-                : strcmp(w, "regular") == 0 || strcmp(w, "normal") == 0 ? 1
-                : 3) +
-               (strcmp(width.c_str(), "normal") == 0 ? 0 : 1);
-    Family* f = family_named(fam.c_str(), true);
-    int pixels = atoi(px.c_str());
-    if (pixels == 0) {
-        f->scalable = true;
-        if (rank < f->scalable_rank) {
-            f->scalable_rank = rank;
-            f->scalable_xlfd = xlfd;
-        }
-        return;
-    }
-    int avgw = (atoi(avg.c_str()) + 5) / 10;
-    int i;
-    for (i = 0; i < f->sizes.size(); i++) {
-        Size* s = f->sizes[i];
-        if (s->px == pixels && s->width == avgw) {
-            if (rank < s->rank) {
-                s->rank = rank;
-                s->xlfd = xlfd;
-            }
-            return;
-        }
-    }
-    Size* s = new Size;
-    s->px = pixels;
-    s->width = avgw;
-    s->rank = rank;
-    s->xlfd = xlfd;
-    f->sizes.push_back(s);
-}
-
-/* Scalable sizes, the order, and the labels. */
-void SettingsDialog::finish_family(Family* f)
-{
-    int i, j;
-    if (f->scalable) {
-        char text[300];
-        sprintf(text, "%.200s *", f->name.c_str());
-        f->label = text;
-        const char* x = f->scalable_xlfd.c_str();
-        for (i = 0; i < k_nscalable; i++) {
-            bool have = false;
-            for (j = 0; j < f->sizes.size(); j++)
-                if (f->sizes[j]->px == k_scalable_sizes[i])
-                    have = true;
-            if (have)
-                continue;
-            char name[400];
-            sprintf(name, "-%.60s-%.100s-%.40s-%.10s-%.40s-%.40s-%d-*-*-*-%.10s-*-%.40s-%.20s",
-                    field(x, 1).c_str(), field(x, 2).c_str(), field(x, 3).c_str(),
-                    field(x, 4).c_str(), field(x, 5).c_str(), field(x, 6).c_str(),
-                    k_scalable_sizes[i], field(x, 11).c_str(),
-                    field(x, 13).c_str(), field(x, 14).c_str());
-            Size* s = new Size;
-            s->px = k_scalable_sizes[i];
-            s->width = 0;
-            s->rank = 0;
-            s->xlfd = name;
-            f->sizes.push_back(s);
-        }
-    }
-    /* Insertion sort by height, then width. */
-    for (i = 1; i < f->sizes.size(); i++) {
-        Size* s = f->sizes[i];
-        for (j = i; j > 0; j--) {
-            Size* p = f->sizes[j - 1];
-            if (p->px < s->px || (p->px == s->px && p->width <= s->width))
-                break;
-            f->sizes[j] = p;
-        }
-        f->sizes[j] = s;
-    }
-    /* "13", or "13 (6x13)" where one height comes in several widths. */
-    for (i = 0; i < f->sizes.size(); i++) {
-        Size* s = f->sizes[i];
-        bool shared = (i > 0 && f->sizes[i - 1]->px == s->px) ||
-                      (i + 1 < f->sizes.size() && f->sizes[i + 1]->px == s->px);
-        char text[64];
-        if (shared && s->width > 0)
-            sprintf(text, "%d (%dx%d)", s->px, s->width, s->px);
-        else
-            sprintf(text, "%d", s->px);
-        s->label = text;
-    }
-}
-
-/* Select the family and size of the font in use: names that are not
- * XLFDs (9x15, fixed) are resolved through the server. A font that is
- * not on the lists gets its own entry, so OK keeps it. */
-void SettingsDialog::show_current_font(const char* value)
-{
-    if (!value || !*value) {
-        select_item(family_w_, families_[0]->label.c_str());
-        family_ = 0;
-        fill_sizes(0, 0, 0);
-        font_shown_ = "";
-        update_preview();
-        return;
-    }
-    Str real(value);
-    XFontStruct* fs = XLoadQueryFont(dpy_, value);
-    if (fs) {
-        unsigned long atom = 0;
-        if (XGetFontProperty(fs, XA_FONT, &atom) && atom) {
-            char* name = XGetAtomName(dpy_, (Atom)atom);
-            if (name) {
-                real = name;
-                XFree(name);
-            }
-        }
-        XFreeFont(dpy_, fs);
-    }
-    Family* f = family_named(field(real.c_str(), 2).c_str(), false);
-    int px = atoi(field(real.c_str(), 7).c_str());
-    int width = (atoi(field(real.c_str(), 12).c_str()) + 5) / 10;
-    int fi = -1;
-    int i;
-    if (f) {
-        for (i = 0; i < f->sizes.size(); i++)
-            if (f->sizes[i]->px == px &&
-                (f->sizes[i]->width == width || f->sizes[i]->width == 0))
-                break;
-        if (i < f->sizes.size())
-            for (fi = 0; fi < families_.size(); fi++)
-                if (families_[fi] == f)
-                    break;
-    }
-    if (fi < 0 || fi >= families_.size()) {
-        Family* own = new Family;
-        own->name = value;
-        char text[300];
-        sprintf(text, "As set: %.200s", value);
-        own->label = text;
-        own->scalable = false;
-        own->scalable_rank = 0;
-        Size* s = new Size;
-        s->px = 0;
-        s->width = 0;
-        s->rank = 0;
-        s->label = "-";
-        s->xlfd = value;
-        own->sizes.push_back(s);
-        families_.push_back(own);
-        XmString item = xmstr(text);
-        XmComboBoxAddItem(family_w_, item, 0, False);
-        XmStringFree(item);
-        fi = families_.size() - 1;
-        px = 0;
-        width = 0;
-    }
-    family_ = fi;
-    select_item(family_w_, families_[fi]->label.c_str());
-    fill_sizes(fi, px, width);
-    font_shown_ = chosen_font();
-    update_preview();
-}
-
-/* The sizes of family fi, selecting px (and width), or the nearest. */
-void SettingsDialog::fill_sizes(int fi, int px, int width)
-{
-    Widget list = XtNameToWidget(size_w_, "*List");
-    if (!list)
-        return;
-    XmListDeleteAllItems(list);
-    Family* f = families_[fi];
-    if (f->sizes.size() == 0) {
-        XmString s = xmstr("-");
-        XmListAddItemUnselected(list, s, 0);
-        XmComboBoxSelectItem(size_w_, s);
-        XmStringFree(s);
-        XtSetSensitive(size_w_, False);
-        return;
-    }
-    XtSetSensitive(size_w_, f->sizes.size() > 1);
-    int best = 0, best_d = 1 << 30;
-    int i;
-    for (i = 0; i < f->sizes.size(); i++) {
-        XmString s = xmstr(f->sizes[i]->label.c_str());
-        XmListAddItemUnselected(list, s, 0);
-        XmStringFree(s);
-        int d = abs(f->sizes[i]->px - px) * 100 + abs(f->sizes[i]->width - width);
-        if (d < best_d) {
-            best_d = d;
-            best = i;
-        }
-    }
-    select_item(size_w_, f->sizes[best]->label.c_str());
-}
-
-Str SettingsDialog::chosen_font() const
-{
-    if (family_ <= 0 || family_ >= families_.size())
-        return Str("");
-    Family* f = families_[family_];
-    int si = selected_pos(size_w_);
-    if (si < 0 || si >= f->sizes.size())
-        si = 0;
-    return f->sizes.size() > 0 ? f->sizes[si]->xlfd : Str("");
-}
-
-/* The font ttrt would use: the chosen one, or the first automatic one
- * the server has. */
-Str SettingsDialog::preview_font() const
-{
-    Str f = chosen_font();
-    if (!f.empty())
-        return f;
-    return Str(tt::pick_font(dpy_));
-}
-
+/* The preview in the text colours chosen so far. */
 void SettingsDialog::update_preview()
 {
-    if (!preview_)
+    if (!font_)
         return;
-    Str name = preview_font();
-    XmFontListEntry e = XmFontListEntryLoad(dpy_, (char*)name.c_str(),
-                                            XmFONT_IS_FONT,
-                                            (char*)XmFONTLIST_DEFAULT_TAG);
-    Arg args[3];
-    int n = 0;
-    XmFontList fl = 0;
-    if (e) {
-        fl = XmFontListAppendEntry(0, e);
-        XmFontListEntryFree(&e);
-        XtSetArg(args[n], XmNfontList, fl); n++;
-    }
-    Pixel fg = ttr::alloc_color(dpy_, color(C_FG), &preview_fg_,
-                                &have_preview_fg_);
-    Pixel bg = ttr::alloc_color(dpy_, color(C_BG), &preview_bg_,
-                                &have_preview_bg_);
-    XtSetArg(args[n], XmNforeground, fg); n++;
-    XtSetArg(args[n], XmNbackground, bg); n++;
-    XtSetValues(preview_, args, n);
-    if (fl)
-        XmFontListFree(fl);
-}
-
-void SettingsDialog::family_cb(Widget w, XtPointer closure, XtPointer call)
-{
-    (void)w;
-    (void)call;
-    SettingsDialog* self = (SettingsDialog*)closure;
-    int fi = selected_pos(self->family_w_);
-    if (fi < 0 || fi >= self->families_.size() || fi == self->family_)
-        return;
-    /* Keep the size, or the nearest the new family has. */
-    int px = 13, width = 0;
-    Family* old = self->families_[self->family_];
-    int si = selected_pos(self->size_w_);
-    if (si >= 0 && si < old->sizes.size() && old->sizes[si]->px > 0) {
-        px = old->sizes[si]->px;
-        width = old->sizes[si]->width;
-    }
-    self->family_ = fi;
-    self->fill_sizes(fi, px, width);
-    self->update_preview();
-}
-
-void SettingsDialog::size_cb(Widget w, XtPointer closure, XtPointer call)
-{
-    (void)w;
-    (void)call;
-    ((SettingsDialog*)closure)->update_preview();
+    Pixel fg = ttr::alloc_color(dpy_, color(C_FG), &preview_fg_, &have_preview_fg_);
+    Pixel bg = ttr::alloc_color(dpy_, color(C_BG), &preview_bg_, &have_preview_bg_);
+    font_->set_preview_colors(fg, bg);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1060,9 +654,7 @@ void SettingsDialog::reset_cb(Widget w, XtPointer closure, XtPointer call)
  * spelling where the user did not change it ("wheat", "9x15"). */
 void SettingsDialog::collect(Str* v) const
 {
-    Str font = chosen_font();
-    v[S_FONT] = strcmp(font.c_str(), font_shown_.c_str()) == 0 ? orig_[S_FONT]
-                                                               : font;
+    v[S_FONT] = font_->get();
     int i;
     for (i = 0; i < C_COUNT; i++) {
         int s = k_color_settings[i];
@@ -1078,6 +670,8 @@ void SettingsDialog::collect(Str* v) const
     }
     int rp = selected_pos(renderer_w_);
     v[S_RENDERER] = k_renderer_values[rp >= 0 && rp < k_nrenderers ? rp : 0];
+    int tp = selected_pos(text_w_);
+    v[S_TEXT_RENDERING] = k_text_values[tp >= 0 && tp < k_ntexts ? tp : 0];
     {
         const char* labels[17];
         const char* values[17];
@@ -1150,7 +744,7 @@ bool SettingsDialog::commit()
     host_->apply(v, changed);
     for (i = 0; i < S_COUNT; i++)
         orig_[i] = v[i];
-    font_shown_ = chosen_font();
+    font_->set(v[S_FONT].c_str());
     for (i = 0; i < C_COUNT; i++)
         if (mine_[i] && as_set_[i].empty())
             as_set_[i] = v[k_color_settings[i]];

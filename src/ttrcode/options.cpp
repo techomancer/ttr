@@ -1,5 +1,6 @@
 /*
- * ttrcode's Tools > Options dialog: the editor's font, tabs and
+ * ttrcode's Tools > Options dialog: the editor's and the terminal's fonts
+ * (the font chooser every ttr program shares) and text, tabs and
  * indentation, what it shows (whitespace, the current line, line numbers,
  * a column marker) and the caret. OK and Apply apply at once and save
  * to ~/.config/ttrcode/settings.
@@ -7,6 +8,7 @@
 #include "app.h"
 
 #include "../../tw/grid_widget.h"
+#include "../../tx/fontchooser.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +29,47 @@ enum { OPT_OK, OPT_APPLY, OPT_CANCEL };
 
 const char* const k_shapes[3] = { "bar", "block", "underline" };
 const char* const k_shape_labels[3] = { "Bar", "Block", "Underline" };
+/* Text: tw's sharp (the font's pixels) or smooth (distance fields, GL). */
+const char* const k_texts[3] = { "auto", "sharp", "smooth" };
+const char* const k_text_labels[3] = { "Automatic", "Sharp", "Smooth" };
+
+/* An option menu of n labels into buttons[]. */
+Widget option_menu(Widget parent, const char* name, const char* const* labels, int n,
+                   Widget* buttons)
+{
+    Widget pd = XmCreatePulldownMenu(parent, (char*)name, 0, 0);
+    for (int i = 0; i < n; i++)
+        buttons[i] = XtVaCreateManagedWidget(labels[i], xmPushButtonWidgetClass, pd, (char*)0);
+    Arg a[1];
+    XtSetArg(a[0], XmNsubMenuId, pd);
+    Widget m = XmCreateOptionMenu(parent, (char*)name, a, 1);
+    XtManageChild(m);
+    return m;
+}
+
+int option_index(Widget menu, const Widget* buttons, int n)
+{
+    Widget hist = 0;
+    XtVaGetValues(menu, XmNmenuHistory, &hist, (char*)0);
+    for (int i = 0; i < n; i++)
+        if (hist == buttons[i])
+            return i;
+    return 0;
+}
+
+int text_index(const char* v)
+{
+    for (int i = 0; i < 3; i++)
+        if (v && strcmp(v, k_texts[i]) == 0)
+            return i;
+    return 0;
+}
+
+/* TwGrid keeps the string's pointer: one that lives. */
+const char* text_value(const char* t)
+{
+    return k_texts[text_index(t)];
+}
 
 struct Hook {
     App* app;
@@ -123,11 +166,38 @@ void App::set_font(const char* xlfd)
         return;
     strcpy(copy, f);
     XtVaSetValues(grid_, TwNfont, copy, (char*)0);
-    if (term_)
+    /* The terminal follows unless it has a font of its own. */
+    if (term_ && !(term_font_ && *term_font_))
         term_->set_font(copy);
     free(font_);
     font_ = copy;
     opt_.font = font_;
+}
+
+void App::set_terminal_font(const char* xlfd)
+{
+    const char* v = xlfd ? xlfd : "";
+    char* copy = (char*)malloc(strlen(v) + 1);
+    if (!copy)
+        return;
+    strcpy(copy, v);
+    free(term_font_);
+    term_font_ = copy;
+    opt_.terminal_font = term_font_;
+    if (term_)
+        term_->set_font(*term_font_ ? term_font_ : font_ ? font_ : opt_.font);
+}
+
+void App::set_text_rendering(const char* editor, const char* terminal)
+{
+    text_ = text_value(editor);
+    term_text_ = text_value(terminal);
+    opt_.text_rendering = text_.c_str();
+    opt_.terminal_text_rendering = term_text_.c_str();
+    if (grid_)
+        XtVaSetValues(grid_, TwNtextRendering, text_value(editor), (char*)0);
+    if (term_)
+        term_->set_text_rendering(text_value(terminal));
 }
 
 void App::show_options()
@@ -144,9 +214,21 @@ void App::show_options()
                                               XmNtopAttachment, XmATTACH_FORM,
                                               XmNleftAttachment, XmATTACH_FORM,
                                               XmNrightAttachment, XmATTACH_FORM, (char*)0);
-        Widget r = row(page, "Font:");
-        opt_font_ = field(r, 44);
-        note(row(page, ""), "An X font name; empty: the best fixed-width font.");
+        Widget r = row(page, "Editor font:");
+        opt_font_ = new tx::FontChooser(r, "font", tx::FontChooser::FIXED |
+                                                       tx::FontChooser::UNICODE |
+                                                       tx::FontChooser::AUTOMATIC);
+        opt_font_->set_automatic_preview(tt::pick_font(XtDisplay(top_)));
+        r = row(page, "Text:");
+        opt_text_ = option_menu(r, "text", k_text_labels, 3, opt_texts_);
+        note(r, "smooth needs OpenGL; automatic: smooth from 18 pixels");
+        r = row(page, "Terminal font:");
+        opt_term_font_ = new tx::FontChooser(r, "terminalFont", tx::FontChooser::FIXED |
+                                                                    tx::FontChooser::UNICODE |
+                                                                    tx::FontChooser::AUTOMATIC);
+        opt_term_font_->set_automatic_label("Same as the editor");
+        r = row(page, "Terminal text:");
+        opt_term_text_ = option_menu(r, "terminalText", k_text_labels, 3, opt_term_texts_);
 
         r = row(page, "Tab width:");
         opt_tab_ = field(r, 3);
@@ -205,7 +287,13 @@ void App::show_options()
         XtVaSetValues(opt_dlg_, XmNdefaultButton, ok, XmNcancelButton, cancel, (char*)0);
     }
     /* The current values. */
-    XmTextFieldSetString(opt_font_, (char*)(font_ ? font_ : ""));
+    opt_font_->set(font_ ? font_ : "");
+    opt_term_font_->set_automatic_preview(font_ ? font_ : opt_.font);
+    opt_term_font_->set(term_font_ ? term_font_ : "");
+    XtVaSetValues(opt_text_, XmNmenuHistory, opt_texts_[text_index(opt_.text_rendering)],
+                  (char*)0);
+    XtVaSetValues(opt_term_text_, XmNmenuHistory,
+                  opt_term_texts_[text_index(opt_.terminal_text_rendering)], (char*)0);
     set_number(opt_tab_, opt_.tab_width);
     set_number(opt_indent_, opt_.indent_width);
     XmToggleButtonSetState(opt_spaces_, opt_.insert_spaces, False);
@@ -230,10 +318,14 @@ void App::options_button(int which)
         XtUnmanageChild(opt_dlg_);
         return;
     }
-    char* f = XmTextFieldGetString(opt_font_);
-    if (strcmp(f ? f : "", font_ ? font_ : "") != 0)
-        set_font(f);
-    XtFree(f);
+    ttr::Str f = opt_font_->get();
+    if (strcmp(f.c_str(), font_ ? font_ : "") != 0)
+        set_font(f.c_str());
+    ttr::Str tf = opt_term_font_->get();
+    if (strcmp(tf.c_str(), term_font_ ? term_font_ : "") != 0)
+        set_terminal_font(tf.c_str());
+    set_text_rendering(k_texts[option_index(opt_text_, opt_texts_, 3)],
+                       k_texts[option_index(opt_term_text_, opt_term_texts_, 3)]);
     opt_.tab_width = get_number(opt_tab_, opt_.tab_width, 1, 32);
     opt_.indent_width = get_number(opt_indent_, opt_.indent_width, 0, 32);
     opt_.insert_spaces = XmToggleButtonGetState(opt_spaces_) != False;

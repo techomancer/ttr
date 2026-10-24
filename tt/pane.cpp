@@ -271,6 +271,9 @@ TermPane::TermPane(Widget parent, const char* name, const PaneOptions& o, PaneHo
     if (o.dynamic_background && *o.dynamic_background) {
         XtSetArg(args[n], TwNdynamicBackground, o.dynamic_background); n++;
     }
+    if (o.text_rendering && *o.text_rendering) {
+        XtSetArg(args[n], TwNtextRendering, o.text_rendering); n++;
+    }
     XtSetArg(args[n], XmNuserData, (XtPointer)this); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
@@ -1082,6 +1085,15 @@ bool TermPane::Host::decode_image(const uint8_t* data, size_t n, uint32_t** px, 
 bool TermPane::Host::inflate(const uint8_t* data, size_t n, uint8_t* out, size_t out_n)
 {
     return ti::inflate(data, n, out, out_n);
+}
+
+void TermPane::set_text_rendering(const char* t)
+{
+    /* TwGrid compares the pointer: a static string for each value. */
+    const char* v = t && strcmp(t, "sharp") == 0    ? "sharp"
+                    : t && strcmp(t, "smooth") == 0 ? "smooth"
+                                                    : "auto";
+    XtVaSetValues(grid_, TwNtextRendering, v, (char*)0);
 }
 
 } /* namespace tt */

@@ -31,6 +31,7 @@ struct TwGridPart {
     int blink_interval;
     String renderer;            /* auto, core, soft, gl */
     String background;          /* an animated background (GL), or "" */
+    String text_rendering;      /* sharp, smooth, auto */
     XtCallbackList input_cb;
     XtCallbackList pointer_cb;
     XtCallbackList resize_cb;
@@ -135,6 +136,8 @@ XtResource k_resources[] = {
       OFF(renderer), (String)XtRString, (XtPointer)"auto" },
     { (String)TwNdynamicBackground, (String)TwCDynamicBackground, (String)XtRString, sizeof(String),
       OFF(background), (String)XtRString, (XtPointer)"" },
+    { (String)TwNtextRendering, (String)TwCTextRendering, (String)XtRString, sizeof(String),
+      OFF(text_rendering), (String)XtRString, (XtPointer)"auto" },
     { (String)TwNinputCallback, (String)XtCCallback, (String)XtRCallback,
       sizeof(XtCallbackList), OFF(input_cb), (String)XtRCallback, (XtPointer)0 },
     { (String)TwNpointerCallback, (String)XtCCallback, (String)XtRCallback,
@@ -258,15 +261,31 @@ void do_resize(Widget w)
     }
 }
 
+tw::TextRendering text_rendering(TwGridWidget g)
+{
+    const char* t = g->grid.text_rendering ? g->grid.text_rendering : "auto";
+    return strcmp(t, "sharp") == 0    ? tw::TEXT_SHARP
+           : strcmp(t, "smooth") == 0 ? tw::TEXT_SMOOTH
+                                      : tw::TEXT_AUTO;
+}
+
 /* The renderer the resources ask for: auto is the core renderer, unless
- * an animated background needs GL. */
+ * an animated background or smooth text needs GL (and, for smooth text,
+ * the display has a GL visual; else core, sharp). */
 const char* wanted_renderer(TwGridWidget g)
 {
     const char* r = g->grid.renderer ? g->grid.renderer : "auto";
     if (strcmp(r, "core") == 0 || strcmp(r, "soft") == 0 || strcmp(r, "gl") == 0)
         return r;
     const char* bg = g->grid.background;
-    return bg && *bg && strcmp(bg, "none") != 0 ? "gl" : "core";
+    if (bg && *bg && strcmp(bg, "none") != 0)
+        return "gl";
+    XVisualInfo vi;
+    if (text_rendering(g) == tw::TEXT_SMOOTH &&
+        tw::choose_visual("gl", XtDisplay((Widget)g), XScreenNumberOfScreen(XtScreen((Widget)g)),
+                          &vi))
+        return "gl";
+    return "core";
 }
 
 /* Put the window on WM_COLORMAP_WINDOWS of its shell, so window managers
@@ -335,6 +354,7 @@ void realize(Widget w, XtValueMask* mask, XSetWindowAttributes* attrs)
         add_colormap_window(w);
     XWindowAttributes wa;
     XGetWindowAttributes(dpy, XtWindow(w), &wa);
+    g->grid.surface->set_text_rendering(text_rendering(g));
     g->grid.surface->attach(dpy, XtWindow(w), wa.visual, wa.colormap, wa.depth, g->grid.sched,
                             kind);
     if (g->grid.background && *g->grid.background &&
@@ -370,6 +390,8 @@ Boolean set_values(Widget old, Widget req, Widget nw, ArgList, Cardinal*)
     }
     if (o->grid.source != g->grid.source)
         g->grid.surface->set_source(g->grid.source);
+    if (o->grid.text_rendering != g->grid.text_rendering)
+        g->grid.surface->set_text_rendering(text_rendering(g));
     g->grid.surface->set_frame_delay(g->grid.frame_delay);
     g->grid.surface->set_blink_interval(g->grid.blink_interval);
     return redisplay;
@@ -557,6 +579,12 @@ const char* TwGridRendererName(Widget w)
 {
     TwGridWidget g = (TwGridWidget)w;
     return g->grid.surface ? g->grid.surface->renderer_name() : "";
+}
+
+Boolean TwGridSmoothText(Widget w)
+{
+    TwGridWidget g = (TwGridWidget)w;
+    return g->grid.surface && g->grid.surface->smooth_text() ? True : False;
 }
 
 Boolean TwGridSetBackground(Widget w, const char* name)

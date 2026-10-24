@@ -19,6 +19,9 @@
 namespace ttr {
 class ColorPicker;
 }
+namespace tx {
+class FontChooser;
+}
 
 namespace ttrt {
 
@@ -44,23 +47,6 @@ private:
     SettingsDialog(const SettingsDialog&);
     SettingsDialog& operator=(const SettingsDialog&);
 
-    /* One size of a fixed-width family: a server font, or a size of a
-     * scalable one. */
-    struct Size {
-        int px;
-        int width;      /* average width, pixels; 0 for scalable */
-        int rank;       /* lower is preferred among same-size fonts */
-        ttr::Str label;
-        ttr::Str xlfd;
-    };
-    struct Family {
-        ttr::Str name;
-        ttr::Str label;
-        bool scalable;
-        ttr::Str scalable_xlfd;     /* with 0 sizes */
-        int scalable_rank;
-        ttr::Vector<Size*> sizes;   /* by px, then width */
-    };
     enum { C_FG, C_BG, C_CURSOR, C_COUNT };
     struct Slot {
         SettingsDialog* dialog;
@@ -75,15 +61,6 @@ private:
                      int count, int visible, int columns);
     Widget radio(Widget parent, const char* a, const char* b, Widget* first);
 
-    void free_fonts();
-    void load_fonts();
-    void add_font(const char* xlfd);
-    Family* family_named(const char* name, bool create);
-    void finish_family(Family* f);
-    void show_current_font(const char* value);
-    void fill_sizes(int family, int px, int width);
-    ttr::Str chosen_font() const;
-    ttr::Str preview_font() const;
     void update_preview();
     void update_swatches();
     ttr::Rgb color(int i) const;
@@ -91,8 +68,6 @@ private:
     bool commit();
     void error(const char* msg);
 
-    static void family_cb(Widget w, XtPointer closure, XtPointer call);
-    static void size_cb(Widget w, XtPointer closure, XtPointer call);
     static void scheme_cb(Widget w, XtPointer closure, XtPointer call);
     /* The colour scheme chosen in the dialog, or false for none. */
     bool chosen_scheme(th::Scheme* out) const;
@@ -109,12 +84,7 @@ private:
     Widget dialog_;
     ttr::Str orig_[S_COUNT];    /* the window's values when shown or applied */
 
-    ttr::Vector<Family*> families_;     /* [0] is Automatic */
-    int family_;
-    Widget family_w_;
-    Widget size_w_;
-    Widget preview_;
-    ttr::Str font_shown_;       /* the font as first selected, to see a change */
+    tx::FontChooser* font_;
 
     bool mine_[C_COUNT];        /* a colour of its own, else the default */
     ttr::Rgb color_[C_COUNT];
@@ -139,6 +109,7 @@ private:
     Widget bell_;
     Widget renderer_w_;
     Widget dynbg_w_;
+    Widget text_w_;
 };
 
 }

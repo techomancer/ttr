@@ -46,6 +46,7 @@ struct Resources {
     String color_scheme;
     String renderer;
     String dynamic_background;
+    String text_rendering;
 };
 
 /* Names and defaults come from settings.h, the list the Settings dialog
@@ -79,7 +80,9 @@ XtResource k_resources[] = {
     { TS(S_RENDERER), (String)"Renderer", (String)XtRString, sizeof(String),
       ROFF(renderer), (String)XtRString, TSD(S_RENDERER) },
     { TS(S_DYNAMIC_BACKGROUND), (String)"DynamicBackground", (String)XtRString, sizeof(String),
-      ROFF(dynamic_background), (String)XtRString, TSD(S_DYNAMIC_BACKGROUND) }
+      ROFF(dynamic_background), (String)XtRString, TSD(S_DYNAMIC_BACKGROUND) },
+    { TS(S_TEXT_RENDERING), (String)"TextRendering", (String)XtRString, sizeof(String),
+      ROFF(text_rendering), (String)XtRString, TSD(S_TEXT_RENDERING) }
 };
 #undef TSD
 #undef TS
@@ -104,6 +107,7 @@ XrmOptionDescRec k_options[] = {
     { (char*)"-vb", (char*)".bell", XrmoptionNoArg, (XPointer)"visual" },
     { (char*)"-renderer", (char*)".renderer", XrmoptionSepArg, 0 },
     { (char*)"-dynbg", (char*)".dynamicBackground", XrmoptionSepArg, 0 },
+    { (char*)"-text", (char*)".textRendering", XrmoptionSepArg, 0 },
     { (char*)"-xrm", 0, XrmoptionResArg, 0 }
 };
 /* XtAppInitialize handles -xrm itself; only merge_settings needs it. */
@@ -406,6 +410,10 @@ void App::apply(const ttr::Str* v, const bool* changed)
      * itself applies to new windows. */
     if (changed[S_DYNAMIC_BACKGROUND])
         pane->set_dynamic_background(v[S_DYNAMIC_BACKGROUND].c_str());
+    /* Smooth text shows at once with the GL renderer; a window that has
+     * another one gets it when it is made. */
+    if (changed[S_TEXT_RENDERING])
+        pane->set_text_rendering(v[S_TEXT_RENDERING].c_str());
     /* Scrollback and the login shell apply to new windows. */
     for (int i = 0; i < S_COUNT; i++)
         if (changed[i])
@@ -505,6 +513,7 @@ int main(int argc, char** argv)
         fprintf(stderr, "usage: ttrt [-fn font] [-fg color] [-bg color] [-cr color] [-sl lines]\n"
                         "            [-ls] [-nomenu] [-vb] [-geometry WxH] [-title title]\n"
                         "            [-renderer auto|core|soft|gl] [-dynbg name]\n"
+                        "            [-text sharp|smooth|auto]\n"
                         "            [-xrm resource] [-e command ...]\n");
         return 2;
     }
@@ -529,6 +538,7 @@ int main(int argc, char** argv)
         a->cur[S_COLOR_SCHEME] = a->res.color_scheme ? a->res.color_scheme : "";
         a->cur[S_RENDERER] = a->res.renderer ? a->res.renderer : "auto";
         a->cur[S_DYNAMIC_BACKGROUND] = a->res.dynamic_background ? a->res.dynamic_background : "";
+        a->cur[S_TEXT_RENDERING] = a->res.text_rendering ? a->res.text_rendering : "auto";
     }
 
     a->main_w = XtVaCreateManagedWidget("main", xmFormWidgetClass, a->top, (char*)0);
@@ -558,6 +568,7 @@ int main(int argc, char** argv)
     o.bell = bell_mode(a->cur[ttrt::S_BELL].c_str());
     o.renderer = a->cur[ttrt::S_RENDERER].c_str();
     o.dynamic_background = a->cur[ttrt::S_DYNAMIC_BACKGROUND].c_str();
+    o.text_rendering = a->cur[ttrt::S_TEXT_RENDERING].c_str();
     o.argv = (const char* const*)a->cmd;
     o.login = a->res.login_shell != False;
     a->pane = new tt::TermPane(a->main_w, "terminal", o, a);

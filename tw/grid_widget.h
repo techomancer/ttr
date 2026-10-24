@@ -27,6 +27,7 @@ extern WidgetClass twGridWidgetClass;
 #define TwNblinkInterval ((char*)"blinkInterval")
 #define TwNrenderer ((char*)"renderer")
 #define TwNdynamicBackground ((char*)"dynamicBackground")
+#define TwNtextRendering ((char*)"textRendering")
 #define TwNinputCallback ((char*)"inputCallback")
 #define TwNpointerCallback ((char*)"pointerCallback")
 #define TwNresizeCallback ((char*)"resizeCallback")
@@ -40,6 +41,7 @@ extern WidgetClass twGridWidgetClass;
 #define TwCBlinkInterval ((char*)"BlinkInterval")
 #define TwCRenderer ((char*)"Renderer")
 #define TwCDynamicBackground ((char*)"DynamicBackground")
+#define TwCTextRendering ((char*)"TextRendering")
 
 enum {
     TW_CR_KEY = 1,
@@ -76,8 +78,13 @@ void TwGridGetCellSize(Widget w, int* width, int* height);
 void TwGridSetSize(Widget w, int cols, int rows);
 tw::Surface* TwGridSurface(Widget w);
 /* The renderer drawing: "core", "soft" or "gl" (TwNrenderer is "auto",
- * "core", "soft" or "gl"; auto means core, or gl for a background). */
+ * "core", "soft" or "gl"; auto means core, or gl for a background or
+ * smooth text). */
 const char* TwGridRendererName(Widget w);
+/* Glyphs are drawn smooth now (TwNtextRendering is "sharp", "smooth" or
+ * "auto": smooth for a scalable face of 18 pixels or more; smooth text
+ * needs the GL renderer and a board that textures in hardware). */
+Boolean TwGridSmoothText(Widget w);
 /* An animated background ("night", "sunset", "ocean", "aurora",
  * "embers", "static"; "" or "none" for none). False if the renderer
  * cannot draw it (only GL can; choose it with TwNrenderer). */

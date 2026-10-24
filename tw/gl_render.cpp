@@ -157,7 +157,8 @@ public:
         : dpy_(0), win_(0), ctx_(0), dbl_(false), impact_(false), atlas_fmt_(GL_ALPHA), atlas_bpp_(1), atlas_cpu_(0), atlas_dirty_(false), fonts_(0), font_serial_(-1),
           atlas_(0), atlas_size_(0), slot_cols_(0), slot_rows_(0), next_slot_(0),
           cache_gen_(-1), bg_(0), last_anim_(0), default_bg_(0), whole_(false), verts_(0), colors_(0), texs_(0), vert_cap_(0),
-          text_(TEXT_TEXTURE), sdf_mode_(SDF_BAKED), sdf_edge_(0.5), sdf_weight_(0),
+          text_(TEXT_TEXTURE), forced_text_(-1), want_text_(TEXT_AUTO), soft_tex_(false),
+          sdf_ready_(false), sdf_serial_(-1), sdf_mode_(SDF_BAKED), sdf_edge_(0.5), sdf_weight_(0),
 #if !defined(__sgi)
           sdf_prog_(0), sdf_edge_loc_(-1),
 #endif
@@ -190,6 +191,51 @@ public:
     }
 
     const char* name() const { return "gl"; }
+
+    /* What draws glyphs: the override, bitmaps on boards that texture in
+     * software (smooth text there would be textured and slow), else
+     * sharp or smooth as wanted; automatic is smooth for a scalable face
+     * at least 18 pixels tall (smaller, the hinted bitmap looks better:
+     * DESIGN.md section 4.6). A change rebuilds the atlas and asks the
+     * Surface for every row again. */
+    void choose_text()
+    {
+        int t;
+        int ch = fonts_ ? fonts_->cell_height() : 0;
+        if (forced_text_ >= 0) {
+            t = forced_text_;
+        } else if (soft_tex_ || want_text_ == TEXT_SHARP) {
+            t = soft_tex_ ? TEXT_BITMAP : TEXT_TEXTURE;
+        } else {
+            sdf_configure();
+            bool scalable = sdf_.scalable(FACE_REGULAR);
+            t = want_text_ == TEXT_SMOOTH || (scalable && ch >= 18) ? TEXT_SDF : TEXT_TEXTURE;
+        }
+        if (t == TEXT_SDF) {
+            sdf_configure();
+            if (!sdf_ready_) {
+                sdf_setup((const char*)glGetString(GL_EXTENSIONS),
+                          (const char*)glGetString(GL_VERSION));
+                sdf_ready_ = true;
+            }
+        }
+        if (t == text_)
+            return;
+        text_ = t;
+        cache_.clear();
+        reset_atlas();
+        invalidate_rows();
+        full_request_ = true;
+    }
+
+    /* The distance-field maker for the fonts now in use. */
+    void sdf_configure()
+    {
+        if (!fonts_ || sdf_serial_ == fonts_->serial())
+            return;
+        sdf_.configure(fonts_, fonts_->cell_width(), fonts_->cell_height(), fonts_->ascent());
+        sdf_serial_ = fonts_->serial();
+    }
 
     /* How SDF text turns distance into coverage: a fragment shader
      * (OpenGL 2.0), SGI's texture colour table (VPro, IMPACT, RealityEngine:
@@ -341,9 +387,9 @@ public:
         /* Boards that texture in software draw text as bitmaps:
          * Newport (Indy, Indigo2 XL) and the XZ/Elan family. */
         const char* force = getenv("TW_GL_TEXT");
-        bool soft_tex = r && (strstr(r, "NEWPORT") || strstr(r, "GR2") || strstr(r, "GR3") ||
-                              strstr(r, "GU1") || strstr(r, "XZ") || strstr(r, "ELAN"));
-        text_ = soft_tex ? TEXT_BITMAP : TEXT_TEXTURE;
+        soft_tex_ = r && (strstr(r, "NEWPORT") || strstr(r, "GR2") || strstr(r, "GR3") ||
+                          strstr(r, "GU1") || strstr(r, "XZ") || strstr(r, "ELAN"));
+        text_ = soft_tex_ ? TEXT_BITMAP : TEXT_TEXTURE;
 #if defined(__sgi)
         use_arrays_ = false;
 #else
@@ -358,15 +404,15 @@ public:
         const char* arr = getenv("TW_GL_ARRAYS");
         if (arr)
             use_arrays_ = arr[0] == '1';
+        /* TW_GL_TEXT=bitmap|texture|sdf overrides the setting, to measure. */
         if (force && strcmp(force, "bitmap") == 0)
-            text_ = TEXT_BITMAP;
+            forced_text_ = TEXT_BITMAP;
         else if (force && strcmp(force, "texture") == 0)
-            text_ = TEXT_TEXTURE;
+            forced_text_ = TEXT_TEXTURE;
         else if (force && strcmp(force, "sdf") == 0)
-            text_ = TEXT_SDF;
-        if (text_ == TEXT_SDF)
-            sdf_setup((const char*)glGetString(GL_EXTENSIONS),
-                      (const char*)glGetString(GL_VERSION));
+            forced_text_ = TEXT_SDF;
+        if (forced_text_ >= 0)
+            text_ = forced_text_;
         GLint max_tex = 256;
         glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_tex);
         atlas_size_ = max_tex >= 1024 ? 1024 : max_tex >= 512 ? 512 : 256;
@@ -425,8 +471,7 @@ public:
         cache_.set_display(dpy, win);
         cache_.configure(fonts, fonts->cell_width(), fonts->cell_height(), fonts->ascent());
         sdf_.set_display(dpy, win);
-        if (text_ == TEXT_SDF)
-            sdf_.configure(fonts, fonts->cell_width(), fonts->cell_height(), fonts->ascent());
+        choose_text();
         font_serial_ = fonts->serial();
         return true;
     }
@@ -438,10 +483,10 @@ public:
         current();
         if (cell_changed || font_serial_ != fonts_->serial()) {
             cache_.configure(fonts_, g.cell_w, g.cell_h, g.ascent);
-            if (text_ == TEXT_SDF)
-                sdf_.configure(fonts_, g.cell_w, g.cell_h, g.ascent);
             font_serial_ = fonts_->serial();
             reset_atlas();
+            /* A new font may change what automatic text is. */
+            choose_text();
         }
         if (!rows_ || n_rows_ != g.rows)
             make_rows(g.rows);
@@ -458,6 +503,17 @@ public:
     }
 
     bool full_frames() const { return dbl_ || bg_ != 0; }
+
+    void set_text_rendering(TextRendering t)
+    {
+        want_text_ = t;
+        if (ctx_) {
+            current();
+            choose_text();
+        }
+    }
+
+    bool smooth_text() const { return text_ == TEXT_SDF; }
     bool retained() const { return full_frames() && rows_ != 0; }
 
     void row_begin(int)
@@ -1338,6 +1394,11 @@ private:
     int vert_cap_;
     enum { TEXT_TEXTURE, TEXT_BITMAP, TEXT_SDF };
     int text_;                  /* how glyphs are drawn */
+    int forced_text_;           /* TW_GL_TEXT, or -1 */
+    TextRendering want_text_;
+    bool soft_tex_;             /* the board textures in software */
+    bool sdf_ready_;            /* sdf_setup done */
+    int sdf_serial_;            /* the fonts sdf_ was configured for */
     enum { SDF_SHADER, SDF_TABLE, SDF_BAKED };
     int sdf_mode_;
     double sdf_edge_;

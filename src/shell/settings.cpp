@@ -1,4 +1,5 @@
 #include "shell/settings.h"
+#include "../../tx/fontchooser.h"
 #include "shell/colorspage.h"
 #include "shell/shortcutsdlg.h"
 #include "shell/startuppage.h"
@@ -26,13 +27,6 @@
 namespace ttr {
 
 static const int k_label_width = 140;
-
-/* Bitmap fonts have some of these; scalable (Type1, TrueType) ones all. */
-static const char* const k_sizes[] = {
-    "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "20",
-    "22", "24", "26", "28", "32", "36"
-};
-static const int k_nsizes = (int)(sizeof(k_sizes) / sizeof(k_sizes[0]));
 
 static const char* const k_sources[] = { "auto", "desktop", "toolchest" };
 
@@ -62,46 +56,10 @@ static XmString xmstr(const char* s)
     return XmStringCreateLocalized((char*)s);
 }
 
-static int compare_nocase(const char* a, const char* b)
-{
-    while (*a && *b) {
-        int ca = tolower((unsigned char)*a), cb = tolower((unsigned char)*b);
-        if (ca != cb)
-            return ca - cb;
-        a++;
-        b++;
-    }
-    return (unsigned char)*a - (unsigned char)*b;
-}
-
-/* Field i of an XLFD ("-foundry-family-weight-slant-..."), or "". */
-static Str xlfd_field(const char* name, int i)
-{
-    if (name[0] != '-')
-        return Str("");
-    const char* p = name + 1;
-    int f = 1;
-    while (f < i && *p) {
-        if (*p == '-')
-            f++;
-        p++;
-    }
-    if (f != i)
-        return Str("");
-    const char* e = strchr(p, '-');
-    int n = e ? (int)(e - p) : (int)strlen(p);
-    char buf[128];
-    if (n >= (int)sizeof(buf))
-        n = sizeof(buf) - 1;
-    memcpy(buf, p, n);
-    buf[n] = 0;
-    return Str(buf);
-}
-
 SettingsDialog::SettingsDialog(Widget parent, WmLink* wm, const Config& cfg,
                                const AppFolder* apps)
-    : parent_(parent), wm_(wm), cfg_(cfg), apps_(apps), dialog_(0),
-      categories_(0), current_page_(0),
+    : parent_(parent), wm_(wm), cfg_(cfg), apps_(apps), dialog_(0), title_font_(0),
+      menu_font_(0), taskbar_font_(0), categories_(0), current_page_(0),
       shortcuts_(new ShortcutsDialog(parent, wm, apps)), startup_(0),
       xdg_(0), colors_(0)
 {
@@ -109,6 +67,7 @@ SettingsDialog::SettingsDialog(Widget parent, WmLink* wm, const Config& cfg,
 
 SettingsDialog::~SettingsDialog()
 {
+    drop_fonts();
     delete colors_;
     delete xdg_;
     delete startup_;
@@ -162,6 +121,7 @@ void SettingsDialog::show()
     /* Rebuilt every time, so it shows the current values. */
     if (dialog_)
         XtDestroyWidget(XtParent(dialog_));
+    drop_fonts();
     build();
     XtManageChild(dialog_);
 }
@@ -333,194 +293,31 @@ Widget SettingsDialog::text_field(Widget parent, const char* value,
 /* ------------------------------------------------------------------ */
 /* Fonts                                                               */
 
-/* The families the X server has, sorted. Scalable ones (Type1, TrueType:
- * pixel size 0 in their names) are marked with a *, since they come in
- * every size. */
-void SettingsDialog::load_families()
+/* The chooser every ttr program shares (tx): any family, Latin-1 (Motif
+ * labels), with Bold. A font the server does not have shows as set. */
+tx::FontChooser* SettingsDialog::font_row(Widget parent, const char* label, const char* current)
 {
-    families_.clear();
-    family_labels_.clear();
-    Vector<int> scalable;
-    int n = 0;
-    char** names = XListFonts(XtDisplay(parent_),
-                              "-*-*-*-r-*--*-*-*-*-*-*-iso8859-1", 60000, &n);
-    int i, j;
-    for (i = 0; i < n; i++) {
-        Str fam = xlfd_field(names[i], 2);
-        if (fam.empty())
-            continue;
-        int is_scalable = strcmp(xlfd_field(names[i], 7).c_str(), "0") == 0;
-        /* Insert sorted, skipping duplicates. */
-        int at = families_.size();
-        bool dup = false;
-        for (j = 0; j < families_.size(); j++) {
-            int c = compare_nocase(fam.c_str(), families_[j].c_str());
-            if (c == 0) {
-                dup = true;
-                if (is_scalable)
-                    scalable[j] = 1;
-                break;
-            }
-            if (c < 0) {
-                at = j;
-                break;
-            }
-        }
-        if (dup)
-            continue;
-        families_.push_back(fam);
-        scalable.push_back(is_scalable);
-        for (j = families_.size() - 1; j > at; j--) {
-            families_[j] = families_[j - 1];
-            scalable[j] = scalable[j - 1];
-        }
-        families_[at] = fam;
-        scalable[at] = is_scalable;
-    }
-    if (names)
-        XFreeFontNames(names);
-    for (i = 0; i < families_.size(); i++) {
-        char label[300];
-        sprintf(label, "%.200s%s", families_[i].c_str(),
-                scalable[i] ? " *" : "");
-        family_labels_.push_back(Str(label));
-    }
-}
-
-int SettingsDialog::family_index(const char* family)
-{
-    int k;
-    for (k = 0; k < families_.size(); k++)
-        if (compare_nocase(families_[k].c_str(), family) == 0)
-            return k;
-    return -1;
-}
-
-void SettingsDialog::font_row(FontRow* r, Widget parent, const char* label,
-                              const char* current, const char* resolved)
-{
-    r->dialog = this;
     Widget rc = row(parent, label);
-
-    const char** fams = new const char*[families_.size() + 1];
-    int i;
-    for (i = 0; i < families_.size(); i++)
-        fams[i] = family_labels_[i].c_str();
-    /* A combo box widens to its longest entry, and some families have
-     * long names: keep the width 18 columns give an empty one. */
-    r->family = drop_down(rc, "family", fams, 0, 15, 18);
-    Dimension fw = 0;
-    Arg wargs[1];
-    XtSetArg(wargs[0], XmNwidth, &fw);
-    XtGetValues(r->family, wargs, 1);
-    for (i = 0; i < families_.size(); i++) {
-        XmString item = xmstr(fams[i]);
-        XmComboBoxAddItem(r->family, item, 0, False);
-        XmStringFree(item);
-    }
-    XtSetArg(wargs[0], XmNwidth, fw);
-    XtSetValues(r->family, wargs, 1);
-    delete [] fams;
-    r->size = drop_down(rc, "size", k_sizes, k_nsizes, k_nsizes, 3);
-
-    XmString l = xmstr("Bold");
-    Arg args[1];
-    XtSetArg(args[0], XmNlabelString, l);
-    r->bold = XmCreateToggleButton(rc, (char*)"bold", args, 1);
-    XmStringFree(l);
-    XtManageChild(r->bold);
-
-    l = xmstr("AaBbYyZz 0123");
-    XtSetArg(args[0], XmNlabelString, l);
-    r->preview = XmCreateLabel(rc, (char*)"preview", args, 1);
-    XmStringFree(l);
-    XtManageChild(r->preview);
-
-    /* Show the current font; names that are not XLFDs show the default. */
-    Str fam = xlfd_field(current, 2), weight = xlfd_field(current, 3),
-        size = xlfd_field(current, 7);
-    /* A family that is not installed shows as the one ttr uses instead,
-     * so OK does not replace it with the first one on the list. */
-    if (family_index(fam.c_str()) < 0) {
-        Str used = xlfd_field(resolved, 2);
-        if (!used.empty())
-            fam = used;
-    }
-    int k = family_index(fam.empty() ? "helvetica" : fam.c_str());
-    select_item(r->family, k >= 0 ? family_labels_[k].c_str() : "");
-    select_item(r->size, size.empty() || size.c_str()[0] == '*'
-                             ? "12" : size.c_str());
-    XmToggleButtonSetState(r->bold, strstr(weight.c_str(), "bold") != 0,
-                           False);
-
-    XtAddCallback(r->family, XmNselectionCallback, font_changed_cb,
-                  (XtPointer)r);
-    XtAddCallback(r->size, XmNselectionCallback, font_changed_cb,
-                  (XtPointer)r);
-    XtAddCallback(r->bold, XmNvalueChangedCallback, font_changed_cb,
-                  (XtPointer)r);
-    update_preview(r);
-}
-
-/* The XLFD for a row. Families name their regular weight differently,
- * so try the usual names and keep the first one the server has. */
-Str SettingsDialog::font_name(FontRow* r)
-{
-    const char** fams = new const char*[families_.size() + 1];
-    int i;
-    for (i = 0; i < families_.size(); i++)
-        fams[i] = families_[i].c_str();
-    Str fam = selected_item(r->family, fams, families_.size());
-    delete [] fams;
-    Str size = selected_item(r->size, k_sizes, k_nsizes);
-
-    static const char* const regular[] = {
-        "medium", "regular", "book", "normal", "*", 0
-    };
-    static const char* const bold[] = { "bold", "demibold", "*", 0 };
-    const char* const* weights = XmToggleButtonGetState(r->bold) ? bold
-                                                                 : regular;
-    char buf[300];
-    for (i = 0; weights[i]; i++) {
-        sprintf(buf, "-*-%.100s-%s-r-normal--%s-*-*-*-*-*-iso8859-1",
-                fam.c_str(), weights[i], size.c_str());
-        int n = 0;
-        char** found = XListFonts(XtDisplay(parent_), buf, 1, &n);
-        if (found)
-            XFreeFontNames(found);
-        if (n > 0)
-            return Str(buf);
-    }
-    return Str(buf);
+    tx::FontChooser* c = new tx::FontChooser(rc, "font", tx::FontChooser::BOLD);
+    c->set_preview_name(preview_name, this);
+    c->set(current);
+    return c;
 }
 
 /* At the scale ttr runs at, like the rest of the dialog; a new scale
  * applies after OK. */
-void SettingsDialog::update_preview(FontRow* r)
+Str SettingsDialog::preview_name(const char* xlfd, void* data)
 {
-    Str name = scale_font(XtDisplay(parent_), font_name(r).c_str(),
-                          cfg_.ui_scale);
-    XmFontListEntry e = XmFontListEntryLoad(XtDisplay(parent_),
-                                            (char*)name.c_str(),
-                                            XmFONT_IS_FONT,
-                                            (char*)XmFONTLIST_DEFAULT_TAG);
-    if (!e)
-        return;
-    XmFontList fl = XmFontListAppendEntry(0, e);
-    XmFontListEntryFree(&e);
-    Arg args[1];
-    XtSetArg(args[0], XmNfontList, fl);
-    XtSetValues(r->preview, args, 1);
-    XmFontListFree(fl);
+    SettingsDialog* self = (SettingsDialog*)data;
+    return scale_font(XtDisplay(self->parent_), xlfd, self->cfg_.ui_scale);
 }
 
-void SettingsDialog::font_changed_cb(Widget w, XtPointer closure,
-                                     XtPointer call)
+void SettingsDialog::drop_fonts()
 {
-    (void)w;
-    (void)call;
-    FontRow* r = (FontRow*)closure;
-    r->dialog->update_preview(r);
+    delete title_font_;
+    delete menu_font_;
+    delete taskbar_font_;
+    title_font_ = menu_font_ = taskbar_font_ = 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -528,7 +325,6 @@ void SettingsDialog::font_changed_cb(Widget w, XtPointer closure,
 
 void SettingsDialog::build()
 {
-    load_families();
 
     XmString title = xmstr("Settings");
     Arg args[6];
@@ -646,12 +442,9 @@ void SettingsDialog::build()
         XmStringFree(l);
     }
     f = frame(pg, "Fonts");
-    font_row(&title_, f, "Window titles:", cfg_.title_font.c_str(),
-             cfg_.title_xfont.c_str());
-    font_row(&menu_, f, "Menus and dialogs:", cfg_.menu_font.c_str(),
-             cfg_.menu_xfont.c_str());
-    font_row(&taskbar_, f, "Taskbar:", cfg_.taskbar_font.c_str(),
-             cfg_.taskbar_xfont.c_str());
+    title_font_ = font_row(f, "Window titles:", cfg_.title_font.c_str());
+    menu_font_ = font_row(f, "Menus and dialogs:", cfg_.menu_font.c_str());
+    taskbar_font_ = font_row(f, "Taskbar:", cfg_.taskbar_font.c_str());
     Widget fprow = row(f, "Font folders:");
     font_path_ = text_field(fprow, cfg_.font_path.c_str(), 40);
     XmString fpl = xmstr("for Type1 and TrueType fonts");
@@ -807,9 +600,9 @@ void SettingsDialog::save()
                                                              : "half");
     file.set("desktops",
              selected_item(desktops_, k_desktop_counts, k_ncounts).c_str());
-    file.set("titleFont", font_name(&title_).c_str());
-    file.set("menuFont", font_name(&menu_).c_str());
-    file.set("taskbarFont", font_name(&taskbar_).c_str());
+    file.set("titleFont", title_font_->get().c_str());
+    file.set("menuFont", menu_font_->get().c_str());
+    file.set("taskbarFont", taskbar_font_->get().c_str());
     file.set("uiScale", combo_text(scale_).c_str());
     file.set("fontPath", text_value(font_path_).c_str());
     if (arrows_ends_) {

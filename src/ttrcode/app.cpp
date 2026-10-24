@@ -1,5 +1,7 @@
 #include "app.h"
 
+#include "../../tx/fontchooser.h"
+
 #include "../../te/file.h"
 #include "../../th/motif.h"
 #include "../../tw/grid_widget.h"
@@ -37,6 +39,16 @@
 namespace ttrcode {
 
 namespace {
+
+/* TwNtextRendering's value as a string that lives (TwGrid keeps the
+ * pointer and compares it). */
+const char* text_value(const char* t)
+{
+    return t && strcmp(t, "sharp") == 0    ? "sharp"
+           : t && strcmp(t, "smooth") == 0 ? "smooth"
+                                            : "auto";
+}
+
 
 App* g_app;
 
@@ -285,10 +297,21 @@ App::App(Widget top, const Options& o)
       last_col_(-1), last_row_(-1), autoscroll_(0), autoscroll_id_(0), match_case_(false),
       find_dlg_(0), find_what_(0), replace_with_(0), case_toggle_(0), replace_row_(0),
       primary_(0), primary_len_(0), clipboard_(0), clipboard_len_(0), answer_(-1),
-      scheme_items_(0), theme_items_(0), font_(0), opt_dlg_(0), fif_dlg_(0), fif_replace_(false),
+      scheme_items_(0), theme_items_(0), font_(0), term_font_(0), opt_font_(0), opt_term_font_(0),
+      opt_text_(0), opt_term_text_(0), opt_dlg_(0), fif_dlg_(0), fif_replace_(false),
       bottom_tabs_(0), results_box_(0), results_(0), bottom_page_(0), cur_result_(-1),
       scanned_(0), result_files_(0), fif_case_on_(false), fif_word_on_(false)
 {
+    text_ = o.text_rendering && *o.text_rendering ? o.text_rendering : "auto";
+    term_text_ = o.terminal_text_rendering && *o.terminal_text_rendering
+                     ? o.terminal_text_rendering : "auto";
+    opt_.text_rendering = text_.c_str();
+    opt_.terminal_text_rendering = term_text_.c_str();
+    const char* tf = o.terminal_font ? o.terminal_font : "";
+    term_font_ = (char*)malloc(strlen(tf) + 1);
+    if (term_font_)
+        strcpy(term_font_, tf);
+    opt_.terminal_font = term_font_ ? term_font_ : "";
     cursor_shape_ = o.cursor_shape ? o.cursor_shape : "bar";
     cursor_color_ = o.cursor_color ? o.cursor_color : "";
     opt_.cursor_shape = cursor_shape_.c_str();
@@ -333,6 +356,9 @@ App::~App()
     }
     free(primary_);
     free(clipboard_);
+    free(term_font_);
+    delete opt_font_;
+    delete opt_term_font_;
 }
 
 void App::build_menus()
@@ -366,7 +392,7 @@ void App::build_menus()
     menu_item(m, "New", 'N', "Ctrl+N", CMD_NEW);
     menu_item(m, "Open...", 'O', "Ctrl+O", CMD_OPEN);
     menu_item(m, "Open Workspace...", 'W', 0, CMD_OPEN_WORKSPACE);
-    menu_item(m, "Close", 'C', "Ctrl+F4", CMD_CLOSE);
+    menu_item(m, "Close", 'C', "Ctrl+W", CMD_CLOSE);
     separator(m);
     menu_item(m, "Save", 'S', "Ctrl+S", CMD_SAVE);
     menu_item(m, "Save As...", 'A', 0, CMD_SAVE_AS);
@@ -415,7 +441,7 @@ void App::build_menus()
     menu_item(m, "Previous Document", 'P', "Ctrl+Shift+Tab", CMD_PREV_DOC);
     menu_item(m, "Terminal", 'T', "Ctrl+`", CMD_TERMINAL);
     separator(m);
-    menu_item(m, "Close", 'C', "Ctrl+F4", CMD_CLOSE);
+    menu_item(m, "Close", 'C', "Ctrl+W", CMD_CLOSE);
 
     m = menus[6];
     menu_item(m, "About ttrcode", 'A', 0, CMD_ABOUT);
@@ -445,7 +471,7 @@ void App::build_layout()
                                            XmNtopAttachment, XmATTACH_FORM,
                                            XmNleftAttachment, XmATTACH_FORM,
                                            XmNrightAttachment, XmATTACH_FORM, (char*)0);
-    Arg args[12];
+    Arg args[16];
     Cardinal n = 0;
     XtSetArg(args[n], XmNselectionPolicy, XmBROWSE_SELECT); n++;
     XtSetArg(args[n], XmNscrollBarDisplayPolicy, XmAS_NEEDED); n++;
@@ -506,6 +532,7 @@ void App::build_layout()
     if (opt_.renderer && *opt_.renderer) {
         XtSetArg(args[n], TwNrenderer, opt_.renderer); n++;
     }
+    XtSetArg(args[n], TwNtextRendering, text_value(opt_.text_rendering)); n++;
     XtSetArg(args[n], TwNcolumns, 100); n++;
     XtSetArg(args[n], TwNrows, 36); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
@@ -633,7 +660,8 @@ void App::sash_event(Widget w, XEvent* ev)
 
 void App::make_terminal()
 {
-    term_opt_.font = opt_.font;
+    term_opt_.font = term_font_ && *term_font_ ? term_font_ : opt_.font;
+    term_opt_.text_rendering = text_value(opt_.terminal_text_rendering);
     term_opt_.fallback_fonts = opt_.fallback_fonts;
     term_opt_.scrollback = 5000;
     term_opt_.cwd = root_.c_str();
@@ -1657,6 +1685,12 @@ void App::editor_key(TwGridCallbackStruct* cb)
         case XK_o: case XK_O: command(CMD_OPEN); return;
         case XK_s: case XK_S: command(CMD_SAVE); return;
         case XK_F4: command(CMD_CLOSE); return;
+        case XK_w: case XK_W:
+            if (!shift) {
+                command(CMD_CLOSE);
+                return;
+            }
+            break;
         default: break;
         }
     }
@@ -2153,6 +2187,12 @@ void App::save_settings()
         f.remove("cursorColor");
     if (font_ && *font_)
         f.set("font", font_);
+    if (term_font_ && *term_font_)
+        f.set("terminalFont", term_font_);
+    else
+        f.remove("terminalFont");
+    f.set("textRendering", text_.c_str());
+    f.set("terminalTextRendering", term_text_.c_str());
     ttr::make_parent_dirs(path.c_str());
     f.save(path.c_str());
 }

@@ -14,7 +14,7 @@ static const int k_min_frame_ms = 16;
 Surface::Surface()
     : dpy_(0), win_(0), sched_(0), r_(0), src_(0), margin_x_(2), margin_y_(2),
       frame_delay_(8), blink_ms_(500), scheduled_(false), full_pending_(true), focused_(false),
-      blink_on_(true), blink_armed_(false), hold_since_(-1), last_frame_(0), row_buf_(0),
+      blink_on_(true), blink_armed_(false), text_(TEXT_AUTO), hold_since_(-1), last_frame_(0), row_buf_(0),
       row_cap_(0), stat_cells_(0)
 {
     memset(&g_, 0, sizeof(g_));
@@ -87,6 +87,7 @@ bool Surface::attach(Display* dpy, Window win, Visual* visual, Colormap cmap, in
     }
     if (!r_)
         return false;
+    r_->set_text_rendering(text_);
     r_->set_geometry(g_);
     full_pending_ = true;
     return true;
@@ -95,6 +96,19 @@ bool Surface::attach(Display* dpy, Window win, Visual* visual, Colormap cmap, in
 const char* Surface::renderer_name() const
 {
     return r_ ? r_->name() : "";
+}
+
+void Surface::set_text_rendering(TextRendering t)
+{
+    text_ = t;
+    if (!r_)
+        return;
+    r_->set_text_rendering(t);
+    full_pending_ = true;
+    if (sched_ && !scheduled_) {
+        scheduled_ = true;
+        sched_->schedule_frame(0);
+    }
 }
 
 bool Surface::set_background(const char* name)

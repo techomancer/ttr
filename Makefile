@@ -122,8 +122,9 @@ CORE_H = $(TH_H) src/core/port.h src/core/vector.h src/core/str.h src/core/geom.
 
 all: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode
 
-$(B)/ttr: $(OBJS) $(B)/libth.a $(B)/libti.a
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(B)/libth.a $(B)/libti.a $(TI_LIBS) $(LIBS)
+$(B)/ttr: $(OBJS) $(B)/libth.a $(B)/libti.a $(B)/libtx.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(B)/libth.a $(B)/libti.a $(B)/libtx.a $(TI_LIBS) \
+		$(LIBS)
 
 $(B)/.dir:
 	mkdir -p $(B)
@@ -353,6 +354,25 @@ te-test: $(B)/te_test
 
 $(B)/te_test_te.o: $(B)/.dir te/test/test_te.cpp $(TE_H)
 	$(COMPILE) -c te/test/test_te.cpp -o $@
+
+# tx, Motif pieces every ttr program shares (tx/DESIGN.md): the font
+# chooser.
+TX_OBJS = $(B)/tx_fontchooser.o
+TX_H = tx/fontchooser.h src/core/str.h src/core/vector.h
+
+$(B)/libtx.a: $(TX_OBJS)
+	rm -f $@
+	$(AR) rc $@ $(TX_OBJS)
+
+$(B)/tx_fontchooser.o: $(B)/.dir tx/fontchooser.cpp $(TX_H)
+	$(COMPILE) -c tx/fontchooser.cpp -o $@
+
+# tx_demo shows the font chooser (needs a display).
+$(B)/tx_demo: $(B)/tx_demo.o $(B)/libtx.a $(B)/core_str.o
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/tx_demo.o $(B)/libtx.a $(B)/core_str.o $(LIBS)
+
+$(B)/tx_demo.o: $(B)/.dir tx/test/demo.cpp $(TX_H)
+	$(COMPILE) -c tx/test/demo.cpp -o $@
 
 # th, ttr's colours for every ttr program (th/DESIGN.md): UI themes, text
 # colour schemes, and their Motif glue (th_motif.o). "make th-test" runs
@@ -589,14 +609,14 @@ TTRT_OBJS = $(B)/ttrt_main.o \
 	$(B)/core_str.o \
 	$(B)/core_theme.o \
 	$(B)/shell_colorpicker.o
-TTRT_H = src/ttrt/settings.h src/ttrt/settingsdlg.h $(TT_H)
+TTRT_H = src/ttrt/settings.h src/ttrt/settingsdlg.h $(TT_H) $(TX_H)
 
 ttrt: $(B)/ttrt
 
 $(B)/ttrt: $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a \
-		$(B)/libti.a
+		$(B)/libti.a $(B)/libtx.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a \
-		$(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(B)/libti.a $(TI_LIBS) $(TW_LIBS) $(LIBS)
+		$(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(B)/libti.a $(B)/libtx.a $(TI_LIBS) $(TW_LIBS) $(LIBS)
 
 $(B)/ttrt_main.o: $(B)/.dir src/ttrt/main.cpp $(TTRT_H) $(CORE_H)
 	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrt/main.cpp -o $@
@@ -612,15 +632,15 @@ TTRCODE_OBJS = $(B)/ttrcode_main.o \
 	$(B)/ttrcode_options.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
-TTRCODE_H = src/ttrcode/app.h src/ttrcode/editsource.h $(TE_H) $(TT_H) $(TH_H) \
+TTRCODE_H = src/ttrcode/app.h src/ttrcode/editsource.h $(TE_H) $(TT_H) $(TH_H) $(TX_H) \
 	src/core/settings.h src/core/str.h src/core/vector.h
 
 ttrcode: $(B)/ttrcode
 
 $(B)/ttrcode: $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a $(B)/libtw.a $(B)/libtl.a \
-		$(B)/libtp.a $(B)/libth.a $(B)/libti.a
+		$(B)/libtp.a $(B)/libth.a $(B)/libti.a $(B)/libtx.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a \
-		$(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(B)/libti.a $(TI_LIBS) \
+		$(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(B)/libti.a $(B)/libtx.a $(TI_LIBS) \
 		$(TW_LIBS) $(LIBS)
 
 $(B)/ttrcode_main.o: $(B)/.dir src/ttrcode/main.cpp $(TTRCODE_H)
@@ -774,7 +794,7 @@ $(B)/shell_quicklaunch.o: $(B)/.dir src/shell/quicklaunch.cpp $(SHELL_H) \
 $(B)/shell_runcmd.o: $(B)/.dir src/shell/runcmd.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/runcmd.cpp -o $@
 
-$(B)/shell_settings.o: $(B)/.dir src/shell/settings.cpp $(SHELL_H) $(X11_H)
+$(B)/shell_settings.o: $(B)/.dir src/shell/settings.cpp $(SHELL_H) $(X11_H) $(TX_H)
 	$(COMPILE) -c src/shell/settings.cpp -o $@
 
 $(B)/shell_shell.o: $(B)/.dir src/shell/shell.cpp $(SHELL_H) $(CORE_H)

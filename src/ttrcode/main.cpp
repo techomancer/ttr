@@ -2,7 +2,7 @@
  * ttrcode, the ttr code editor (ttrcode/DESIGN.md).
  *
  *   ttrcode [-fn font] [-renderer auto|core|soft|gl] [-dynbg name]
- *           [X toolkit options] [directory] [file ...]
+ *           [-text sharp|smooth|auto] [X toolkit options] [directory] [file ...]
  *
  * The directory is the workspace (default: the current one); files open
  * in tabs.
@@ -38,6 +38,7 @@ struct Resources {
     Boolean auto_indent, show_whitespace, highlight_line, cursor_blink;
     int ruler;
     String cursor_shape, cursor_color;
+    String terminal_font, text_rendering, terminal_text_rendering;
 };
 
 #define ROFF(f) XtOffsetOf(Resources, f)
@@ -73,7 +74,10 @@ XtResource k_resources[] = {
       (String)XtRString, (XtPointer)"80" },
     RSTR("cursorShape", "CursorShape", cursor_shape, "bar"),
     RSTR("cursorColor", "CursorColor", cursor_color, ""),
-    RSTR("terminalBackground", "TerminalBackground", terminal_background, "")
+    RSTR("terminalBackground", "TerminalBackground", terminal_background, ""),
+    RSTR("terminalFont", "TerminalFont", terminal_font, ""),
+    RSTR("textRendering", "TextRendering", text_rendering, "auto"),
+    RSTR("terminalTextRendering", "TerminalTextRendering", terminal_text_rendering, "auto")
 };
 #undef RSTR
 #undef ROFF
@@ -82,7 +86,8 @@ XrmOptionDescRec k_options[] = {
     { (char*)"-fn", (char*)".font", XrmoptionSepArg, 0 },
     { (char*)"-font", (char*)".font", XrmoptionSepArg, 0 },
     { (char*)"-renderer", (char*)".renderer", XrmoptionSepArg, 0 },
-    { (char*)"-dynbg", (char*)".terminalBackground", XrmoptionSepArg, 0 }
+    { (char*)"-dynbg", (char*)".terminalBackground", XrmoptionSepArg, 0 },
+    { (char*)"-text", (char*)".textRendering", XrmoptionSepArg, 0 }
 };
 
 /* The settings file's lines as the application's resources, under what
@@ -139,7 +144,7 @@ int main(int argc, char** argv)
     struct stat st;
     if (argc > 1 && argv[1][0] == '-') {
         fprintf(stderr, "usage: ttrcode [-fn font] [-renderer auto|core|soft|gl] [-dynbg name]\n"
-                        "               [directory] [file ...]\n");
+                        "               [-text sharp|smooth|auto] [directory] [file ...]\n");
         return 2;
     }
     if (argc > 1 && stat(argv[1], &st) == 0 && S_ISDIR(st.st_mode)) {
@@ -176,6 +181,9 @@ int main(int argc, char** argv)
     o.cursor_shape = res.cursor_shape ? res.cursor_shape : "bar";
     o.cursor_color = res.cursor_color ? res.cursor_color : "";
     o.terminal_background = res.terminal_background;
+    o.terminal_font = res.terminal_font ? res.terminal_font : "";
+    o.text_rendering = res.text_rendering ? res.text_rendering : "auto";
+    o.terminal_text_rendering = res.terminal_text_rendering ? res.terminal_text_rendering : "auto";
 
     /* The UI theme, for every widget made from here on. */
     th::Theme theme;

@@ -19,6 +19,10 @@
 #include <time.h>
 #include <Xm/Xm.h>
 
+namespace tx {
+class FontChooser;
+}
+
 namespace ttrcode {
 
 struct Options {
@@ -41,6 +45,9 @@ struct Options {
     const char* cursor_color;   /* "" : the scheme's */
     const char* renderer;       /* TwGrid's for every grid: auto, core, soft, gl */
     const char* terminal_background;    /* an animated background (GL) */
+    const char* terminal_font;  /* "": the editor's */
+    const char* text_rendering; /* the editor's: sharp, smooth, auto (tw) */
+    const char* terminal_text_rendering;
 };
 
 /* An open file. */
@@ -190,6 +197,9 @@ private:
     void apply_look();
     void show_options();
     void set_font(const char* xlfd);
+    /* "": the editor's font. */
+    void set_terminal_font(const char* xlfd);
+    void set_text_rendering(const char* editor, const char* terminal);
     /* Find in Files and the results pane (findfiles.cpp). */
     void build_bottom();
     void show_bottom_page(int page);
@@ -259,8 +269,14 @@ private:
     /* Strings opt_ points into, and the font TwGrid holds. */
     ttr::Str cursor_shape_, cursor_color_;
     char* font_;
+    char* term_font_;           /* "" : the editor's */
+    ttr::Str text_, term_text_;
     /* The Options dialog. */
-    Widget opt_dlg_, opt_font_, opt_tab_, opt_indent_, opt_spaces_, opt_auto_, opt_ws_,
+    tx::FontChooser* opt_font_;
+    tx::FontChooser* opt_term_font_;
+    Widget opt_text_, opt_term_text_;
+    Widget opt_texts_[3], opt_term_texts_[3];
+    Widget opt_dlg_, opt_tab_, opt_indent_, opt_spaces_, opt_auto_, opt_ws_,
         opt_line_, opt_numbers_, opt_ruler_, opt_shape_, opt_blink_, opt_ccolor_;
     Widget opt_shapes_[3];
     /* Find in Files. */

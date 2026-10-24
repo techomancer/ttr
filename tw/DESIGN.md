@@ -20,7 +20,7 @@ It ships as a C++ core plus a Motif widget, `TwGrid`, that wraps it.
 
 The rules are ttr's (`docs/wm-design.md` section 2): C++98 that MIPSpro
 7.4 accepts, no exceptions, RTTI or STL, plain `make`. Like `tl`, it does
-not include anything from `src/core/`.
+not include anything from `src/core/`.lets do 
 
 The evidence behind the choices is in
 [ttrt/XWSH-NOTES.md](../ttrt/XWSH-NOTES.md): how xwsh draws, why dash's
@@ -307,7 +307,7 @@ Sources:
 
 ---
 
-### 4.6 Signed distance fields (experimental: `TW_GL_TEXT=sdf`)
+### 4.6 Smooth text: signed distance fields
 
 The GL renderer can draw glyphs antialiased from signed distance fields
 (`tw/sdf.h`). Each glyph's field is made at the cell's resolution: the
@@ -344,9 +344,17 @@ VPro and a High IMPACT); on Linux SDF text costs nothing measurable (a
 tested and drawn as whole cells, so IMPACT, which is bound by
 primitives, pays about 1.5x. Not done yet: drawing fields scaled
 (double-width and double-height lines, zoom), where the shader and table
-keep edges sharp, and a setting in place of the environment variable.
-`TW_GL_SDF_EDGE` and `TW_GL_SDF_WEIGHT` set the edge and weight in
-pixels.
+keep edges sharp. `TW_GL_SDF_EDGE` and `TW_GL_SDF_WEIGHT` set the edge
+and weight in pixels.
+
+The setting is TwGrid's `textRendering` (`TextRendering` in renderer.h):
+`sharp`, `smooth`, or `auto`, smooth for a scalable face of 18 pixels and
+more, where the lab showed it better than the hinted bitmap. It can
+change while a grid shows (the GL renderer rebuilds its atlas and asks
+for every row again). `smooth` makes the `auto` renderer pick OpenGL
+where the display has a GL visual; renderers other than GL, and boards
+that texture in software, draw sharp text. `TW_GL_TEXT` still overrides
+it, to measure.
 
 ## 5. Renderers
 
