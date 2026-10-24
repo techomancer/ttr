@@ -136,6 +136,7 @@ TL_OBJS = $(B)/tl_charset.o \
 	$(B)/tl_grid.o \
 	$(B)/tl_image.o \
 	$(B)/tl_input.o \
+	$(B)/tl_kitty.o \
 	$(B)/tl_parser.o \
 	$(B)/tl_selection.o \
 	$(B)/tl_style.o \
@@ -552,7 +553,7 @@ $(B)/ttrc_viewer.o: $(B)/.dir src/ttrc/viewer.cpp $(TTRC_H)
 # its scroll bar, running a program on a tp::Pty. ttrt and ttrcode use it.
 TT_OBJS = $(B)/tt_pane.o \
 	$(B)/tt_source.o
-TT_H = tt/pane.h tt/source.h tw/grid_widget.h $(TW_H) $(TL_TERMINAL_H) tp/tp.h
+TT_H = tt/pane.h tt/source.h tw/grid_widget.h $(TW_H) $(TL_TERMINAL_H) tp/tp.h ti/ti.h
 
 $(B)/libtt.a: $(TT_OBJS)
 	rm -f $@
@@ -576,9 +577,10 @@ TTRT_H = src/ttrt/settings.h src/ttrt/settingsdlg.h $(TT_H)
 
 ttrt: $(B)/ttrt
 
-$(B)/ttrt: $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a
+$(B)/ttrt: $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a \
+		$(B)/libti.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a \
-		$(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(TW_LIBS) $(LIBS)
+		$(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(B)/libti.a $(TI_LIBS) $(TW_LIBS) $(LIBS)
 
 $(B)/ttrt_main.o: $(B)/.dir src/ttrt/main.cpp $(TTRT_H) $(CORE_H)
 	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrt/main.cpp -o $@
@@ -600,9 +602,10 @@ TTRCODE_H = src/ttrcode/app.h src/ttrcode/editsource.h $(TE_H) $(TT_H) $(TH_H) \
 ttrcode: $(B)/ttrcode
 
 $(B)/ttrcode: $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a $(B)/libtw.a $(B)/libtl.a \
-		$(B)/libtp.a $(B)/libth.a
+		$(B)/libtp.a $(B)/libth.a $(B)/libti.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a \
-		$(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(TW_LIBS) $(LIBS)
+		$(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(B)/libti.a $(TI_LIBS) \
+		$(TW_LIBS) $(LIBS)
 
 $(B)/ttrcode_main.o: $(B)/.dir src/ttrcode/main.cpp $(TTRCODE_H)
 	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrcode/main.cpp -o $@
@@ -630,6 +633,8 @@ $(B)/tl_selection.o: $(B)/.dir tl/selection.cpp $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/selection.cpp -o $@
 $(B)/tl_input.o: $(B)/.dir tl/input.cpp $(TL_TERMINAL_H)
 	$(COMPILE) -c tl/input.cpp -o $@
+$(B)/tl_kitty.o: $(B)/.dir tl/kitty.cpp $(TL_TERMINAL_H)
+	$(COMPILE) -c tl/kitty.cpp -o $@
 $(B)/tl_image.o: $(B)/.dir tl/image.cpp tl/image.h tl/grid.h tl/port.h
 	$(COMPILE) -c tl/image.cpp -o $@
 $(B)/tl_view.o: $(B)/.dir tl/view.cpp $(TL_TERMINAL_H)

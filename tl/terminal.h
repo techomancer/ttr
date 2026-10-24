@@ -258,8 +258,18 @@ private:
     void window_ops(const Params& p);
     void graphics_attributes(const Params& p);
     /* Images */
-    void place_image(uint32_t* px, int w, int h);
+    enum { MOVE_SIXEL, MOVE_KITTY, MOVE_NONE, MOVE_TOP_LEFT };
+    int place_image(uint32_t* px, int w, int h, int cw, int ch, int cols, int rows, int move);
     void collect_images();
+    virtual void apc_dispatch(const uint8_t* s, size_t n, bool truncated);
+    void kitty_finish(const KittyCommand& k);
+    bool kitty_decode(const KittyCommand& k, uint32_t** px, int* w, int* h, const char** err);
+    const char* kitty_put(const KittyCommand& k, const KittyImages::Entry& e);
+    void kitty_delete(const KittyCommand& k);
+    void kitty_reply(const KittyCommand& k, const char* msg);
+    void kitty_forget_placement(int store_id);
+    /* Blank every image cell of the active screen whose id is marked. */
+    void wipe_images(const bool* ids);
     void reply(const char* s);
     void reply(Buffer& b) { reply(b.c_str()); }
 
@@ -333,6 +343,20 @@ private:
     SixelDecoder sixel_;
     bool in_sixel_;
     int cell_w_, cell_h_;
+    /* The kitty graphics protocol: its images, where it placed them, and
+     * a transfer in chunks. */
+    struct KittyPlacement {
+        uint32_t image, placement;
+        int store;
+        uint32_t serial;
+    };
+    KittyImages kitty_;
+    KittyPlacement kplace_[ImageStore::MAX_ID];
+    int n_kplace_;
+    KittyCommand kcmd_;
+    bool kloading_, kfailed_;
+    uint8_t* kdata_;
+    size_t kdata_n_, kdata_cap_;
 
     Terminal(const Terminal&);
     Terminal& operator=(const Terminal&);

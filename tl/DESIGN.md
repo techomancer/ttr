@@ -431,7 +431,8 @@ VTE and ghostty.
 
 ### 5.8 Images
 
-Built: sixel (`tl/image.h`). An image is two things:
+Built: sixel and the kitty graphics protocol (`tl/image.h`,
+`tl/kitty.cpp`). An image is two things:
 
 - **The store** (`ImageStore`): id (1-4095), pixels (0xAARRGGBB, decoded
   by tl itself), the cell size it was placed under, and a serial that is
@@ -466,12 +467,27 @@ row. DA1 reports sixel (4); XTSMGRAPHICS answers the number of colour
 registers and the size; XTWINOPS 14, 16 and 18 report the text area and
 cell sizes in pixels, which the host gives with `set_cell_pixels()`.
 
-Next, the kitty graphics protocol (APC `G`) on the same store and cells:
-chunked transfers, direct medium, placements by id, deletes. Its images
-also become image cells, as in WezTerm, so text over a kitty image
-replaces it where kitty would draw it on top; z-index, animation and
-relative placements are left out. iTerm2's `OSC 1337 File=` would need
-the host's decoder (ti).
+The kitty graphics protocol (APC `G keys ; payload`) uses the same
+store and cells, as WezTerm does: text written over a kitty image
+replaces it, where kitty draws it on top. Images sent are kept in their
+own table (`KittyImages`, by the client's id and number, with a budget)
+so they can be placed again; placing one resamples the chosen source
+rectangle (`x,y,w,h`) to its box of cells (`c,r`, stretched as kitty
+does, or keeping the aspect when only one is given) at the pixel offset
+`X,Y`, and copies it into the store. Direct transmission only (`t=d`;
+file and shared memory are refused, and programs fall back), in chunks
+(`m=1`), of RGB and RGBA (`f=24,32`, also zlib-compressed, `o=z`) and
+PNG (`f=100`). PNG and zlib are the host's (`Host::decode_image`,
+`Host::inflate`; ttrt answers with ti), so tl decodes no file format
+itself. Replies follow `q`. A placement with the same image and
+placement id replaces the earlier one; deletion (`a=d`) by everything
+on screen, image id or number (`i`, `n`), id range (`r`), the cell at
+the cursor or a given cell, a column or a row, upper case also freeing
+the image data. After a placement the cursor goes right of the image on
+its last row, or stays with `C=1`. Not supported: z-index (images cannot
+lie under text in this model), animation, relative placements and
+Unicode placeholders. iTerm2's `OSC 1337 File=` would be a thin layer
+on `decode_image`.
 
 The `View` gives cells; `tw::Source::image()` gives a renderer an image's
 pixels by id, and the renderers draw runs of tiles of one image row
@@ -716,9 +732,9 @@ visible and get written in the same commits as the features.
    XTGETTCAP, XTVERSION, kitty keyboard, modes 2026/2027/2048, OSC 133
    blocks with "jump to prompt" in ttrt, OSC 9/777 notifications wired to
    ttr's notifier.
-6. **Images.** Sixel with modes 80/8452 (done); then the kitty graphics
-   protocol (direct medium, placements, deletes, placeholders); then
-   iTerm2 inline images through the host PNG decoder.
+6. **Images.** Sixel with modes 80/8452 and the kitty graphics protocol
+   (direct medium, placements, deletes) are done; placeholders and
+   iTerm2 inline images through the host decoder remain.
 7. **Embedding elsewhere in ttr.** A terminal pane in the run dialog or
    a "command output" window, exercising the library with a second host.
    API review and freeze of `tl/tl.h`.

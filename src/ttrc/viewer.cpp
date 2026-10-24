@@ -168,7 +168,7 @@ Viewer::Viewer()
     : data_(0), len_(0), truncated_(false), hex_(false), wrap_(true), top_line_(0), top_sub_(0),
       left_(0), hex_top_(0), rows_(20), width_(80), bpr_(16), hit_(0), hit_len_(0), pat_len_(0),
       proto_(ti::PROTO_OFF), term_(0), image_(false), img_x_(0), img_y_(0), img_cols_(0),
-      img_rows_(0), img_bg_(0), over_dirty_(true), over_shown_(false)
+      img_rows_(0), img_bg_(0), cell_known_(false), over_dirty_(true), over_shown_(false)
 {
     name_[0] = 0;
 }
@@ -629,7 +629,8 @@ void Viewer::draw_image(tu::Screen& s, const Theme& t)
         bg = t.text.bg & 0xffffffUL;
     /* A cell's pixels: the terminal's, or the usual 1:2. */
     int cw = 8, ch = 16;
-    if (term_ && !term_->cell_pixels(&cw, &ch)) {
+    cell_known_ = term_ && term_->cell_pixels(&cw, &ch);
+    if (!cell_known_) {
         cw = 8;
         ch = 16;
     }
@@ -705,7 +706,10 @@ void Viewer::paint_over(tu::Term& term, bool all)
         ti::kitty_delete(k_kitty_id, &b);
     b.addf("\033[%d;%dH", img_y_ + 1, img_x_ + 1);
     if (proto_ == ti::PROTO_KITTY)
-        ti::encode_kitty(shown_, img_cols_, img_rows_, k_kitty_id, &b);
+        /* Pixels one for one where the cell size is known (the image is
+         * already that size); else a width in cells, keeping the aspect:
+         * a whole box of cells would stretch it. */
+        ti::encode_kitty(shown_, cell_known_ ? 0 : img_cols_, 0, k_kitty_id, &b);
     else if (proto_ == ti::PROTO_SIXEL)
         ti::encode_sixel(shown_, &b);
     else

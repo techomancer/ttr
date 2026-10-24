@@ -138,6 +138,7 @@ private:
     ti::Image shown_;           /* scaled for the last layout */
     int img_x_, img_y_, img_cols_, img_rows_;   /* its cells */
     unsigned long img_bg_;
+    bool cell_known_;           /* the terminal told its cell size */
     bool over_dirty_, over_shown_;
 };
 

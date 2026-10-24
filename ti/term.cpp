@@ -47,12 +47,12 @@ Protocol detect_protocol()
     if (getenv("TMUX") || env_starts("TERM", "screen") || env_starts("TERM", "tmux"))
         return PROTO_BLOCKS;
     if (getenv("KITTY_WINDOW_ID") || env_is("TERM", "xterm-kitty") ||
+        env_is("TERM_PROGRAM", "ttrt") || env_starts("TERM", "ttrt") ||
         env_is("TERM_PROGRAM", "ghostty") || env_is("TERM", "xterm-ghostty"))
         return PROTO_KITTY;
     if (env_is("TERM_PROGRAM", "iTerm.app") || env_is("TERM_PROGRAM", "WezTerm"))
         return PROTO_ITERM;
-    if (env_is("TERM_PROGRAM", "ttrt") || env_starts("TERM", "ttrt") ||
-        env_starts("TERM", "foot") || env_starts("TERM", "mlterm") || env_starts("TERM", "yaft") ||
+    if (env_starts("TERM", "foot") || env_starts("TERM", "mlterm") || env_starts("TERM", "yaft") ||
         env_is("TERM_PROGRAM", "contour") || getenv("KONSOLE_VERSION") || getenv("WT_SESSION"))
         return PROTO_SIXEL;
     return PROTO_BLOCKS;
@@ -144,10 +144,14 @@ void encode_kitty(const Image& im, int cols, int rows, unsigned id, Bytes* out)
     for (size_t at = 0; at < total; at += chunk) {
         size_t k = total - at < chunk ? total - at : chunk;
         bool more = at + k < total;
-        if (at == 0)
-            out->addf("\033_Ga=T,f=32,s=%d,v=%d,c=%d,r=%d,i=%u,q=2,C=1,m=%d;", im.w, im.h, cols,
-                      rows, id, more ? 1 : 0);
-        else
+        if (at == 0) {
+            out->addf("\033_Ga=T,f=32,s=%d,v=%d,", im.w, im.h);
+            if (cols > 0)
+                out->addf("c=%d,", cols);
+            if (rows > 0)
+                out->addf("r=%d,", rows);
+            out->addf("i=%u,q=2,C=1,m=%d;", id, more ? 1 : 0);
+        } else
             out->addf("\033_Gm=%d;", more ? 1 : 0);
         base64(im.rgba + at, k, out);
         out->add("\033\\");

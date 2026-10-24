@@ -91,6 +91,9 @@ struct DecodeOptions {
 bool decode(const unsigned char* d, size_t n, Image* out, Info* info, char* err,
             size_t errlen, const DecodeOptions& opt = DecodeOptions());
 
+/* zlib data (RFC 1950) into out, which it must fill exactly. */
+bool inflate(const unsigned char* in, size_t n, unsigned char* out, size_t out_n);
+
 /* Scale to w x h: an area average when shrinking, nearest pixel when
  * growing. */
 bool scale(const Image& in, int w, int h, Image* out);

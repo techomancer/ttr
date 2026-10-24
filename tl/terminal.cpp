@@ -44,7 +44,8 @@ Terminal::Terminal()
       sel_shown_c0_(0), sel_shown_c1_(0), bold_bright_(true), full_damage_(true),
       vp_anchor_(0), follow_(true), last_valid_(false), last_at_bottom_(true), last_alt_(false),
       last_top_(0), last_cx_(0), last_cy_(0), last_cwide_(false), prev_valid_(false), prev_x_(0), prev_y_(0), last_cp_(0),
-      in_sixel_(false), cell_w_(0), cell_h_(0)
+      in_sixel_(false), cell_w_(0), cell_h_(0), n_kplace_(0), kloading_(false), kfailed_(false),
+      kdata_(0), kdata_n_(0), kdata_cap_(0)
 {
     parser_.set_sink(this);
     /* xterm's default palette. */
@@ -81,6 +82,7 @@ Terminal::Terminal()
 
 Terminal::~Terminal()
 {
+    free(kdata_);
     free(tabs_);
 }
 
@@ -130,6 +132,10 @@ void Terminal::reset()
     primary_.grid.full_damage = true;
     images_.clear();
     in_sixel_ = false;
+    kitty_.clear();
+    n_kplace_ = 0;
+    kloading_ = false;
+    kdata_n_ = 0;
     title_.clear();
     select_clear();
     mouse_buttons_ = 0;
@@ -1634,10 +1640,13 @@ void Terminal::dcs_unhook(bool aborted)
     uint32_t* px;
     int w, h;
     if (sixel_.finish(&px, &w, &h)) {
-        if (aborted)
+        if (aborted) {
             free(px);
-        else
-            place_image(px, w, h);
+            return;
+        }
+        int cw = cell_w_ > 0 ? cell_w_ : 10, ch = cell_h_ > 0 ? cell_h_ : 20;
+        place_image(px, w, h, cw, ch, (w + cw - 1) / cw, (h + ch - 1) / ch,
+                    modes_.sixel_display ? MOVE_TOP_LEFT : MOVE_SIXEL);
     }
 }
 
@@ -1647,36 +1656,40 @@ void Terminal::collect_images()
     images_.collect(grids, 2);
 }
 
-/* A decoded image at the cursor, as a block of image cells: down from the
- * cursor row, scrolling at the bottom margin, the cursor then on the line
- * below in the image's first column (xterm's sixel scrolling). With DECSDM
- * it goes to the top left and the cursor stays. */
-void Terminal::place_image(uint32_t* px, int w, int h)
+/* An image at the cursor as a block of cols x rows image cells of cw x ch
+ * pixels each, down from the cursor row and scrolling at the bottom
+ * margin. Then the cursor: MOVE_SIXEL on the line below in the image's
+ * first column (xterm's sixel scrolling, or right of it on its last row
+ * with mode 8452); MOVE_KITTY right of it on its last row; MOVE_NONE
+ * where it was. MOVE_TOP_LEFT (DECSDM) puts it at the top left and
+ * moves nothing. Takes px; returns the image's id, 0 if refused. */
+int Terminal::place_image(uint32_t* px, int w, int h, int cw, int ch, int cols, int rows,
+                          int move)
 {
-    int cw = cell_w_ > 0 ? cell_w_ : 10, ch = cell_h_ > 0 ? cell_h_ : 20;
     /* Free what nothing shows before the store has to drop what does. */
     if (images_.count() >= ImageStore::MAX_ID - 64 || images_.count() % 64 == 63)
         collect_images();
     int id = images_.add(px, w, h, cw, ch);
     if (!id)
-        return;
-    bool display = modes_.sixel_display;
-    int x0 = display ? 0 : cur_.x;
-    int cols = (w + cw - 1) / cw, rows = (h + ch - 1) / ch;
+        return 0;
+    bool top_left = move == MOVE_TOP_LEFT;
+    int x0 = top_left ? 0 : cur_.x;
+    int sx = cur_.x, sy = cur_.y;
     if (cols > cols_ - x0)
         cols = cols_ - x0;
     if (cols > Cell::IMAGE_COL_MAX + 1)
         cols = Cell::IMAGE_COL_MAX + 1;
     if (rows > 65535)
         rows = 65535;
-    if (display && rows > rows_)
+    if (top_left && rows > rows_)
         rows = rows_;
-    uint16_t sid = blank().style;
+    if (cols < 1 || rows < 1)
+        return id;
     cur_.pending_wrap = false;
     damage_cursor();
     for (int r = 0; r < rows; r++) {
         int y;
-        if (display) {
+        if (top_left) {
             y = r;
         } else {
             if (r > 0)
@@ -1687,23 +1700,34 @@ void Terminal::place_image(uint32_t* px, int w, int h)
         Row& rr = row(y);
         fix_wide_left(rr, x0);
         fix_wide_right(rr, x0 + cols - 1);
+        /* Each cell keeps its style: transparent pixels show its
+         * background, what was there. */
         for (int c = 0; c < cols; c++)
-            rr.cells[x0 + c].set_image(id, c, r, sid);
+            rr.cells[x0 + c].set_image(id, c, r, rr.cells[x0 + c].style);
         rr.flags |= ROW_HAS_IMAGES;
-        if (sid)
-            rr.flags |= ROW_HAS_STYLES;
         rr.damage(x0, x0 + cols - 1);
     }
-    if (display)
-        return;
-    if (modes_.sixel_right) {
-        cur_.x = x0 + cols < cols_ ? x0 + cols : cols_ - 1;
+    if (top_left)
+        return id;
+    if (move == MOVE_NONE) {
+        /* Back where it was; if placing it scrolled, that row moved up. */
+        int scrolled = sy + rows - 1 - cur_.y;
+        cur_.x = sx;
+        cur_.y = sy - scrolled < 0 ? 0 : sy - scrolled;
+    } else if (move == MOVE_KITTY || modes_.sixel_right) {
+        if (x0 + cols < cols_) {
+            cur_.x = x0 + cols;
+        } else {
+            cur_.x = cols_ - 1;
+            cur_.pending_wrap = move == MOVE_KITTY;
+        }
     } else {
         index();
         cur_.x = x0;
     }
     damage_cursor();
     prev_valid_ = false;
+    return id;
 }
 
 void Terminal::osc_dispatch(const uint8_t* s, size_t n, bool truncated)

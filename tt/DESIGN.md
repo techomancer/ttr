@@ -41,6 +41,10 @@ A pane is assembled from three of ttr's libraries:
   - Paste asks for UTF8_STRING first and falls back to STRING (Latin-1)
     for IRIX's own clients.
 - The bell can be off, audible, or visual (reverse video for 100 ms).
+- Images: the pane tells tl its cell size in pixels (for placing images
+  and for size reports) and decodes for it what tl does not, PNG and
+  zlib for kitty's graphics protocol, with ti. The shell gets
+  `TERM_PROGRAM=ttrt`.
 
 ## What the host does
 

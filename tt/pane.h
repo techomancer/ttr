@@ -161,6 +161,9 @@ private:
         void write_pty(const uint8_t* data, size_t n) { pane->write_pty(data, n); }
         void bell() { pane->bell(); }
         void title_changed(tl::TitleKind kind, const char* utf8) { pane->title(kind, utf8); }
+        /* Images for the kitty graphics protocol, through ti. */
+        bool decode_image(const uint8_t* data, size_t n, uint32_t** px, int* w, int* h);
+        bool inflate(const uint8_t* data, size_t n, uint8_t* out, size_t out_n);
     };
 
     PaneHost* host_;

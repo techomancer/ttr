@@ -323,6 +323,14 @@ static void test_encoders()
     CHECK(ends(k, "\033\\"));
     /* 140 bytes: 188 of base64. */
     CHECK(k.n == strlen("\033_Ga=T,f=32,s=7,v=5,c=4,r=2,i=9,q=2,C=1,m=0;") + 188 + 2);
+    k.clear();
+    ti::encode_kitty(im, 0, 0, 9, &k);
+    CHECK(starts(k, "\033_Ga=T,f=32,s=7,v=5,i=9,q=2,C=1,m=0;"));
+    k.clear();
+    ti::encode_kitty(im, 4, 0, 9, &k);
+    CHECK(starts(k, "\033_Ga=T,f=32,s=7,v=5,c=4,i=9,q=2,C=1,m=0;"));
+    k.clear();
+    ti::encode_kitty(im, 4, 2, 9, &k);
     ti::Image wide;
     CHECK(ti::scale(im, 70, 50, &wide));
     k.clear();

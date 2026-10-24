@@ -1,5 +1,7 @@
 #include "pane.h"
 
+#include "../ti/ti.h"
+
 #include "../tw/surface.h"
 
 #include <signal.h>
@@ -1055,6 +1057,31 @@ void font_path(const char* argv0, const char* datadir, char* out, size_t len)
     const char* pd = prog_dir[0] ? prog_dir : ".";
     snprintf(out, len, "%.200s%s%.400s/../third_party/misc-misc:%.400s/../share/ttr/fonts:%.200s/fonts",
              env ? env : "", env ? ":" : "", pd, pd, datadir);
+}
+
+bool TermPane::Host::decode_image(const uint8_t* data, size_t n, uint32_t** px, int* w, int* h)
+{
+    ti::Image im;
+    char err[200];
+    if (!ti::decode(data, n, &im, 0, err, sizeof(err)))
+        return false;
+    size_t np = (size_t)im.w * (size_t)im.h;
+    uint32_t* out = (uint32_t*)malloc(np * 4);
+    if (!out)
+        return false;
+    for (size_t i = 0; i < np; i++) {
+        const unsigned char* p = im.rgba + i * 4;
+        out[i] = (uint32_t)p[3] << 24 | (uint32_t)p[0] << 16 | (uint32_t)p[1] << 8 | p[2];
+    }
+    *px = out;
+    *w = im.w;
+    *h = im.h;
+    return true;
+}
+
+bool TermPane::Host::inflate(const uint8_t* data, size_t n, uint8_t* out, size_t out_n)
+{
+    return ti::inflate(data, n, out, out_n);
 }
 
 } /* namespace tt */

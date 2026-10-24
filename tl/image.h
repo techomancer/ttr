@@ -59,6 +59,79 @@ private:
     ImageStore& operator=(const ImageStore&);
 };
 
+/* Images sent with the kitty graphics protocol, by the client's id, kept
+ * until deleted (or dropped, oldest first, past the budget) so they can
+ * be placed again. Placing one copies it into the ImageStore. */
+class KittyImages {
+public:
+    enum { MAX = 256 };
+    struct Entry {
+        uint32_t id;        /* the client's i=, or one we chose */
+        uint32_t number;    /* I=, 0: none */
+        uint32_t* px;       /* 0xAARRGGBB */
+        int w, h;
+        uint32_t age;
+    };
+
+    KittyImages();
+    ~KittyImages();
+    /* Take px; an image with the same id is replaced. False if refused. */
+    bool add(uint32_t id, uint32_t number, uint32_t* px, int w, int h);
+    const Entry* get(uint32_t id) const;
+    /* The newest image with this number. */
+    const Entry* by_number(uint32_t number) const;
+    void remove(uint32_t id);
+    void clear();
+    /* An id no image has, for images sent with only a number. */
+    uint32_t free_id() const;
+    size_t bytes() const { return bytes_; }
+    int count() const { return n_; }
+    void set_budget(size_t b) { budget_ = b; }
+
+private:
+    void drop(int i);
+
+    Entry e_[MAX];
+    int n_;
+    uint32_t age_;
+    size_t bytes_, budget_;
+
+    KittyImages(const KittyImages&);
+    KittyImages& operator=(const KittyImages&);
+};
+
+/* The keys of a kitty graphics command (APC G keys ; payload). */
+struct KittyCommand {
+    char action;            /* a: t T p d q (and f a c, not supported) */
+    char medium;            /* t: d (direct; f, t and s are refused) */
+    char compression;       /* o: z or 0 */
+    char del;               /* d: what a=d deletes */
+    int format;             /* f: 24, 32, 100 */
+    uint32_t id, number, placement;     /* i, I, p */
+    int src_w, src_h;       /* s, v: size of raw pixels */
+    int x, y, w, h;         /* the source rectangle; for a=d, a cell (1-based) */
+    int off_x, off_y;       /* X, Y: pixels into the first cell */
+    int cols, rows;         /* c, r: the box of cells to show it in */
+    int more;               /* m: more chunks follow */
+    int quiet;              /* q: 1 no OK, 2 no errors either */
+    int cursor;             /* C: 1 leaves the cursor */
+    int z;
+
+    void clear();
+    /* "a=T,f=32,..." (the bytes before ';'); false if malformed. */
+    bool parse(const uint8_t* s, size_t n);
+};
+
+/* src (sw x sh), the rectangle x, y, w, h of it scaled to tw x th by area
+ * average, placed pad_x, pad_y pixels into a new malloc'd image of
+ * (pad_x + tw) x (pad_y + th) with transparency around it. 0 on failure. */
+uint32_t* resample(const uint32_t* src, int sw, int sh, int x, int y, int w, int h, int tw,
+                   int th, int pad_x, int pad_y);
+
+/* Standard base64 into out (at most n * 3 / 4 bytes); returns the
+ * length. Characters outside the alphabet are skipped. */
+size_t base64_decode(const uint8_t* s, size_t n, uint8_t* out);
+
 /* DEC sixel graphics, from the bytes of a DCS ... q string. */
 class SixelDecoder {
 public:

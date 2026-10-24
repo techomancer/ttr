@@ -15,8 +15,8 @@ namespace ti {
 enum Protocol {
     PROTO_OFF,          /* no images: the viewer shows the bytes */
     PROTO_BLOCKS,       /* half blocks in the program's own cells */
-    PROTO_KITTY,        /* kitty's graphics protocol (kitty, ghostty) */
-    PROTO_SIXEL,        /* DEC sixels (ttrt, xterm -ti vt340, foot, mlterm, konsole) */
+    PROTO_KITTY,        /* kitty's graphics protocol (kitty, ghostty, ttrt) */
+    PROTO_SIXEL,        /* DEC sixels (xterm -ti vt340, foot, mlterm, konsole) */
     PROTO_ITERM,        /* iTerm2's inline images (iTerm2, WezTerm) */
     PROTO_COUNT
 };
@@ -48,9 +48,10 @@ private:
     Bytes& operator=(const Bytes&);
 };
 
-/* The image shown in cols x rows cells at the cursor, which stays
- * where it is. 'id' names it, for kitty_delete. Pixels at the size they
- * should show; the terminal scales them to the cells. */
+/* The image shown at the cursor, which stays where it is. 'id' names it,
+ * for kitty_delete. cols x rows cells: the terminal stretches the image
+ * to fill them; with only one of them (the other 0) it keeps the aspect;
+ * with neither it shows the pixels one for one. */
 void encode_kitty(const Image& im, int cols, int rows, unsigned id, Bytes* out);
 void kitty_delete(unsigned id, Bytes* out);
 /* Sixels at the image's own pixel size, from the cursor down; 216

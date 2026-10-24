@@ -8,6 +8,7 @@ extern "C" {
 unsigned char* ti_stbi_load(const unsigned char* d, int n, int* w, int* h);
 int ti_stbi_info(const unsigned char* d, int n, int* w, int* h);
 const char* ti_stbi_failure(void);
+int ti_stbi_zlib(unsigned char* out, int out_n, const unsigned char* in, int n);
 }
 
 namespace ti {
@@ -46,4 +47,12 @@ bool builtin_decode(Ctx& c, Format f)
 }
 
 } /* namespace internal */
+
+bool inflate(const unsigned char* in, size_t n, unsigned char* out, size_t out_n)
+{
+    if (n > 0x7fffffffu || out_n > 0x7fffffffu)
+        return false;
+    return ti_stbi_zlib(out, (int)out_n, in, (int)n) == (int)out_n;
+}
+
 } /* namespace ti */

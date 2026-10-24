@@ -197,13 +197,28 @@ public:
         };
         bool exact = palette_.true_color();
         uint32_t bg = cells[0].style.bg;
+        unsigned long bg_px = palette_.pixel(bg);
         for (int dy = 0; dy < h; dy++) {
-            image_row_over(img, cells[0].image_col, cells[0].image_row, n, g_.cell_w, g_.cell_h,
-                           dy, bg, line_);
+            image_row(img, cells[0].image_col, cells[0].image_row, n, g_.cell_w, g_.cell_h, dy,
+                      line_);
             uint32_t last = ~0u;
             unsigned long p = 0;
             for (int k = 0; k < w; k++) {
-                uint32_t rgb = line_[k];
+                uint32_t v = line_[k];
+                unsigned a = v >> 24;
+                if (a == 0) {
+                    /* The cell's own background, exactly as text cells have it. */
+                    XPutPixel(xi, k, dy, bg_px);
+                    continue;
+                }
+                uint32_t rgb = v & 0xffffff;
+                if (a < 255) {
+                    rgb = 0;
+                    for (int s = 0; s < 24; s += 8) {
+                        unsigned f = (v >> s) & 255, b = (bg >> s) & 255;
+                        rgb |= (uint32_t)((f * a + b * (255 - a) + 127) / 255) << s;
+                    }
+                }
                 if (exact) {
                     if (rgb != last) {
                         last = rgb;

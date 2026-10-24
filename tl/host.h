@@ -31,6 +31,21 @@ public:
      * Return true if the host will resize; it then calls
      * Terminal::resize() itself, now or later. */
     virtual bool request_resize(int /*cols*/, int /*rows*/) { return false; }
+    /* An image file the terminal does not decode itself (PNG, kitty's
+     * f=100) into a malloc'd w * h buffer of 0xAARRGGBB pixels. False:
+     * the host cannot, and the image is refused. */
+    virtual bool decode_image(const uint8_t* /*data*/, size_t /*n*/, uint32_t** /*px*/,
+                              int* /*w*/, int* /*h*/)
+    {
+        return false;
+    }
+    /* zlib data (kitty's o=z) into out, which must come out exactly
+     * out_n bytes long. */
+    virtual bool inflate(const uint8_t* /*data*/, size_t /*n*/, uint8_t* /*out*/,
+                         size_t /*out_n*/)
+    {
+        return false;
+    }
 };
 
 } /* namespace tl */

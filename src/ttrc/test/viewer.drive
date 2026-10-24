@@ -46,6 +46,9 @@ send \r
 send \r
 send \eOB
 send \r
+# The archive's listing first: on a slow machine the search would
+# otherwise run in the directory before it.
+expect big.bin
 send \x13big
 send \r
 send \e[13~

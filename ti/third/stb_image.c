@@ -37,6 +37,11 @@ int ti_stbi_info(const unsigned char* d, int n, int* w, int* h)
     return stbi_info_from_memory(d, n, w, h, &comp);
 }
 
+int ti_stbi_zlib(unsigned char* out, int out_n, const unsigned char* in, int n)
+{
+    return stbi_zlib_decode_buffer((char*)out, out_n, (const char*)in, n);
+}
+
 const char* ti_stbi_failure(void)
 {
     return stbi_failure_reason();

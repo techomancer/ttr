@@ -15,7 +15,40 @@ class TestHost : public Host {
 public:
     Buffer out;
     virtual void write_pty(const uint8_t* d, size_t n) { out.append(d, n); }
+    /* "PNG": a 2 x 2 opaque green image. */
+    virtual bool decode_image(const uint8_t* d, size_t n, uint32_t** px, int* w, int* h)
+    {
+        if (n != 3 || memcmp(d, "PNG", 3) != 0)
+            return false;
+        *px = (uint32_t*)malloc(16);
+        for (int i = 0; i < 4; i++)
+            (*px)[i] = 0xff00ff00u;
+        *w = *h = 2;
+        return true;
+    }
+    /* "Inflating" copies: enough to test the plumbing. */
+    virtual bool inflate(const uint8_t* d, size_t n, uint8_t* out, size_t out_n)
+    {
+        if (n != out_n)
+            return false;
+        memcpy(out, d, n);
+        return true;
+    }
 };
+
+void b64(const uint8_t* p, size_t n, Buffer& out)
+{
+    static const char t[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for (size_t i = 0; i < n; i += 3) {
+        unsigned long v = (unsigned long)p[i] << 16;
+        if (i + 1 < n) v |= (unsigned long)p[i + 1] << 8;
+        if (i + 2 < n) v |= p[i + 2];
+        out.append_byte((uint8_t)t[(v >> 18) & 63]);
+        out.append_byte((uint8_t)t[(v >> 12) & 63]);
+        out.append_byte((uint8_t)(i + 1 < n ? t[(v >> 6) & 63] : '='));
+        out.append_byte((uint8_t)(i + 2 < n ? t[v & 63] : '='));
+    }
+}
 
 bool decode(const char* s, uint32_t** px, int* w, int* h, int p2 = 0, uint32_t bg = 0x102030)
 {
@@ -222,6 +255,129 @@ void test_random()
     TL_CHECK(t.term.images().count() >= 0);
 }
 
+/* An APC G command with raw bytes as its payload. */
+const char* kitty(Buffer& b, const char* keys, const uint8_t* data, size_t n)
+{
+    b.clear();
+    b.append("\x1b_G");
+    b.append(keys);
+    if (data) {
+        b.append_byte(';');
+        b64(data, n, b);
+    }
+    b.append("\x1b\\");
+    return b.c_str();
+}
+
+void test_kitty()
+{
+    /* 4 x 6 RGBA: 2 x 2 cells of 2 x 3 pixels. */
+    uint8_t rgba[4 * 6 * 4];
+    for (int i = 0; i < 24; i++) {
+        rgba[i * 4] = (uint8_t)(i * 10);
+        rgba[i * 4 + 1] = 0x22;
+        rgba[i * 4 + 2] = 0x33;
+        rgba[i * 4 + 3] = 255;
+    }
+    Buffer b;
+    T t(10, 6);
+    t.feed(kitty(b, "a=T,f=32,s=4,v=6,i=7", rgba, sizeof(rgba)));
+    TL_CHECK_STR(t.reply(), "\x1b_Gi=7;OK\x1b\\");
+    TL_CHECK(t.tile(0, 0, 0, 0) && t.tile(1, 1, 1, 1) && !t.cell(2, 0).is_image());
+    /* The cursor right of the image on its last row. */
+    TL_CHECK(t.term.cursor().x == 2 && t.term.cursor().y == 1);
+    const Image* im = t.term.images().get(t.cell(0, 0).image_id());
+    TL_CHECK(im && im->w == 4 && im->h == 6 && im->px[5] == 0xff322233u);
+
+    /* In chunks; quiet. */
+    T u(10, 6);
+    Buffer all;
+    b64(rgba, sizeof(rgba), all);
+    Buffer c1, c2;
+    c1.append("\x1b_Ga=T,f=32,s=4,v=6,i=8,q=1,m=1;");
+    c1.append((const uint8_t*)all.c_str(), 64);
+    c1.append("\x1b\\");
+    c2.append("\x1b_Gm=0;");
+    c2.append(all.c_str() + 64);
+    c2.append("\x1b\\");
+    u.feed(c1.c_str());
+    TL_CHECK(!u.cell(0, 0).is_image());
+    u.feed(c2.c_str());
+    TL_CHECK_STR(u.reply(), "");
+    TL_CHECK(u.tile(0, 0, 0, 0) && u.tile(1, 1, 1, 1));
+    im = u.term.images().get(u.cell(0, 0).image_id());
+    TL_CHECK(im && im->px[23] == 0xffe62233u);
+
+    /* RGB; transmit, then put scaled into 4 columns, as placement 1. */
+    uint8_t rgb[4 * 6 * 3];
+    memset(rgb, 0x80, sizeof(rgb));
+    T v(12, 8);
+    v.feed(kitty(b, "a=t,f=24,s=4,v=6,i=9", rgb, sizeof(rgb)));
+    TL_CHECK_STR(v.reply(), "\x1b_Gi=9;OK\x1b\\");
+    TL_CHECK(!v.cell(0, 0).is_image());
+    v.feed(kitty(b, "a=p,i=9,p=1,c=4", 0, 0));
+    TL_CHECK_STR(v.reply(), "\x1b_Gi=9,p=1;OK\x1b\\");
+    /* 8 px wide, so 12 high: 4 rows. */
+    TL_CHECK(v.tile(3, 3, 3, 3) && !v.cell(4, 0).is_image() && !v.cell(0, 4).is_image());
+    im = v.term.images().get(v.cell(0, 0).image_id());
+    TL_CHECK(im && im->w == 8 && im->h == 12 && im->px[0] == 0xff808080u);
+    /* Placed again with the same id and placement: the first goes. */
+    v.feed("\x1b[6;6H").feed(kitty(b, "a=p,i=9,p=1,c=2,r=1,C=1", 0, 0));
+    TL_CHECK(!v.cell(0, 0).is_image() && v.tile(5, 5, 0, 0) && v.tile(6, 5, 1, 0));
+    TL_CHECK(v.term.cursor().x == 5 && v.term.cursor().y == 5);
+    /* A second placement, then delete by id: both go, the data stays. */
+    v.feed("\x1b[1;1H").feed(kitty(b, "a=p,i=9,p=2,q=1", 0, 0));
+    TL_CHECK(v.tile(0, 0, 0, 0));
+    v.feed(kitty(b, "a=d,d=i,i=9", 0, 0));
+    TL_CHECK(!v.cell(0, 0).is_image() && !v.cell(5, 5).is_image());
+    v.feed("\x1b[1;1H").feed(kitty(b, "a=p,i=9,q=1", 0, 0));
+    TL_CHECK(v.cell(0, 0).is_image());
+    /* Uppercase frees the data too. */
+    v.feed(kitty(b, "a=d,d=I,i=9", 0, 0));
+    TL_CHECK(!v.cell(0, 0).is_image());
+    v.reply();
+    v.feed(kitty(b, "a=p,i=9", 0, 0));
+    TL_CHECK_STR(v.reply(), "\x1b_Gi=9;ENOENT:no such image\x1b\\");
+
+    /* Delete what is at the cursor, and everything visible. */
+    T w(10, 6);
+    w.feed(kitty(b, "a=T,f=24,s=4,v=6,i=1,q=2", rgb, sizeof(rgb)));
+    w.feed("\x1b[1;5H").feed(kitty(b, "a=T,f=24,s=4,v=6,i=2,q=2", rgb, sizeof(rgb)));
+    TL_CHECK(w.tile(0, 0, 0, 0) && w.tile(4, 0, 0, 0));
+    w.feed("\x1b[1;1H").feed(kitty(b, "a=d,d=c", 0, 0));
+    TL_CHECK(!w.cell(0, 0).is_image() && w.tile(4, 0, 0, 0));
+    w.feed(kitty(b, "a=d", 0, 0));
+    TL_CHECK(!w.cell(4, 0).is_image());
+
+    /* PNG through the host; zlib through the host; a query; errors. */
+    T x(10, 6);
+    x.feed(kitty(b, "a=T,f=100,i=3", (const uint8_t*)"PNG", 3));
+    TL_CHECK_STR(x.reply(), "\x1b_Gi=3;OK\x1b\\");
+    im = x.term.images().get(x.cell(0, 0).image_id());
+    TL_CHECK(im && im->w == 2 && im->px[3] == 0xff00ff00u);
+    x.feed("\x1b[3;1H").feed(kitty(b, "a=T,f=24,o=z,s=4,v=6,i=4", rgb, sizeof(rgb)));
+    TL_CHECK_STR(x.reply(), "\x1b_Gi=4;OK\x1b\\");
+    TL_CHECK(x.tile(0, 2, 0, 0));
+    x.feed(kitty(b, "a=q,f=100,i=31", (const uint8_t*)"PNG", 3));
+    TL_CHECK_STR(x.reply(), "\x1b_Gi=31;OK\x1b\\");
+    x.feed(kitty(b, "a=q,f=100,i=32", (const uint8_t*)"GIF", 3));
+    TL_CHECK_STR(x.reply(), "\x1b_Gi=32;EBADPNG:cannot decode the PNG\x1b\\");
+    x.feed(kitty(b, "a=q,t=f,i=33", (const uint8_t*)"/etc/passwd", 11));
+    TL_CHECK_STR(x.reply(), "\x1b_Gi=33;EINVAL:only direct transmission (t=d)\x1b\\");
+    x.feed(kitty(b, "a=T,f=32,s=4,v=6,i=34", rgba, 10));
+    TL_CHECK_STR(x.reply(), "\x1b_Gi=34;ENODATA:too little data\x1b\\");
+    /* Malformed keys: ignored. */
+    x.feed("\x1b_Ga=T,f=32,s=4,v,i=35;AAAA\x1b\\\x1b_G\x1b\\\x1b_Gzz\x1b\\");
+    TL_CHECK_STR(x.reply(), "");
+    /* An image number: the reply carries the id chosen for it. */
+    x.feed(kitty(b, "a=t,f=24,s=4,v=6,I=5", rgb, sizeof(rgb)));
+    const char* r = x.reply();
+    TL_CHECK(strstr(r, ",I=5;OK") != 0);
+    /* Text over a kitty image replaces it, as with sixels. */
+    x.feed("\x1b[1;1HZ");
+    TL_CHECK(x.cell(0, 0).cp() == 'Z');
+}
+
 } /* namespace */
 
 void tl_test_image()
@@ -232,4 +388,5 @@ void tl_test_image()
     test_queries();
     test_store();
     test_random();
+    test_kitty();
 }
