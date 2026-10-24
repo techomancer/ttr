@@ -21,6 +21,7 @@
 
 #include "backgrounds.h"
 #include "glyphs.h"
+#include "sdf.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -98,6 +99,53 @@ private:
     Quads& operator=(const Quads&);
 };
 
+#if !defined(__sgi)
+/* OpenGL 2.0's shader calls, looked up at run time: tw builds against
+ * OpenGL 1.1 headers' worth of API and Mesa gives the rest by name. */
+typedef unsigned int (*PfnCreateShader)(unsigned int);
+typedef void (*PfnShaderSource)(unsigned int, int, const char* const*, const int*);
+typedef void (*PfnCompileShader)(unsigned int);
+typedef void (*PfnGetShaderiv)(unsigned int, unsigned int, int*);
+typedef unsigned int (*PfnCreateProgram)(void);
+typedef void (*PfnAttachShader)(unsigned int, unsigned int);
+typedef void (*PfnLinkProgram)(unsigned int);
+typedef void (*PfnGetProgramiv)(unsigned int, unsigned int, int*);
+typedef void (*PfnUseProgram)(unsigned int);
+typedef int (*PfnGetUniformLocation)(unsigned int, const char*);
+typedef void (*PfnUniform2f)(int, float, float);
+typedef void (*PfnUniform1i)(int, int);
+
+struct ShaderApi {
+    PfnCreateShader create_shader;
+    PfnShaderSource shader_source;
+    PfnCompileShader compile_shader;
+    PfnGetShaderiv get_shaderiv;
+    PfnCreateProgram create_program;
+    PfnAttachShader attach_shader;
+    PfnLinkProgram link_program;
+    PfnGetProgramiv get_programiv;
+    PfnUseProgram use_program;
+    PfnGetUniformLocation get_uniform_location;
+    PfnUniform2f uniform2f;
+    PfnUniform1i uniform1i;
+};
+
+void* gl_proc(const char* name)
+{
+    return (void*)glXGetProcAddressARB((const GLubyte*)name);
+}
+
+/* The distance in the texture's alpha to coverage: a smoothstep between
+ * edge.x and edge.y, times the run's colour. */
+const char* const k_sdf_fragment =
+    "uniform sampler2D tex;\n"
+    "uniform vec2 edge;\n"
+    "void main() {\n"
+    "    float d = texture2D(tex, gl_TexCoord[0].st).a;\n"
+    "    gl_FragColor = vec4(gl_Color.rgb, gl_Color.a * smoothstep(edge.x, edge.y, d));\n"
+    "}\n";
+#endif
+
 void color(uint32_t rgb)
 {
     glColor4ub((GLubyte)(rgb >> 16), (GLubyte)(rgb >> 8), (GLubyte)rgb, 255);
@@ -109,7 +157,11 @@ public:
         : dpy_(0), win_(0), ctx_(0), dbl_(false), impact_(false), atlas_fmt_(GL_ALPHA), atlas_bpp_(1), atlas_cpu_(0), atlas_dirty_(false), fonts_(0), font_serial_(-1),
           atlas_(0), atlas_size_(0), slot_cols_(0), slot_rows_(0), next_slot_(0),
           cache_gen_(-1), bg_(0), last_anim_(0), default_bg_(0), whole_(false), verts_(0), colors_(0), texs_(0), vert_cap_(0),
-          bitmap_text_(false), bm_(0), bm_n_(0), bm_cap_(0), ops_(0), n_ops_(0), ops_cap_(0),
+          text_(TEXT_TEXTURE), sdf_mode_(SDF_BAKED), sdf_edge_(0.5), sdf_weight_(0),
+#if !defined(__sgi)
+          sdf_prog_(0), sdf_edge_loc_(-1),
+#endif
+          bm_(0), bm_n_(0), bm_cap_(0), ops_(0), n_ops_(0), ops_cap_(0),
           use_arrays_(false), rows_(0), order_(0), n_rows_(0), use_lists_(true), blend_glyphs_(false), list_base_(0),
           atlas_epoch_(0),
           recording_(false), full_request_(false)
@@ -138,6 +190,121 @@ public:
     }
 
     const char* name() const { return "gl"; }
+
+    /* How SDF text turns distance into coverage: a fragment shader
+     * (OpenGL 2.0), SGI's texture colour table (VPro, IMPACT, RealityEngine:
+     * a 256-entry table after filtering), or coverage baked into the
+     * atlas at upload, which any board that blends can draw.
+     * TW_GL_SDF=shader|table|baked chooses; TW_GL_SDF_EDGE the edge's
+     * half width in pixels (0.5); TW_GL_SDF_WEIGHT how far outwards the
+     * outline moves (0.15 px: exact coverage reads lighter than the
+     * server's 1-bit glyphs). */
+    void sdf_setup(const char* ext, const char* version)
+    {
+        const char* e = getenv("TW_GL_SDF_EDGE");
+        sdf_edge_ = e && atof(e) > 0.05 ? atof(e) : 0.5;
+        const char* wt = getenv("TW_GL_SDF_WEIGHT");
+        sdf_weight_ = wt ? atof(wt) : 0.15;
+        const char* want = getenv("TW_GL_SDF");
+        bool table_ok = false, shader_ok = false;
+#if defined(__sgi) && defined(GL_TEXTURE_COLOR_TABLE_SGI)
+        table_ok = ext && strstr(ext, "GL_SGI_texture_color_table");
+#endif
+#if !defined(__sgi)
+        shader_ok = version && atoi(version) >= 2 && load_shader();
+#endif
+        (void)ext;
+        (void)version;
+        sdf_mode_ = shader_ok ? SDF_SHADER : table_ok ? SDF_TABLE : SDF_BAKED;
+        if (want && strcmp(want, "baked") == 0)
+            sdf_mode_ = SDF_BAKED;
+        else if (want && strcmp(want, "table") == 0 && table_ok)
+            sdf_mode_ = SDF_TABLE;
+        else if (want && strcmp(want, "shader") == 0 && shader_ok)
+            sdf_mode_ = SDF_SHADER;
+#if defined(__sgi) && defined(GL_TEXTURE_COLOR_TABLE_SGI)
+        if (sdf_mode_ == SDF_TABLE) {
+            /* Alpha through the table: the smoothstep, the colour kept. */
+            GLubyte lut[256];
+            for (int i = 0; i < 256; i++)
+                lut[i] = SdfMaker::coverage((uint8_t)i, sdf_edge_, sdf_weight_);
+            glColorTableSGI(GL_TEXTURE_COLOR_TABLE_SGI, GL_ALPHA, 256, GL_ALPHA, GL_UNSIGNED_BYTE,
+                            lut);
+        }
+#endif
+    }
+
+    void sdf_begin()
+    {
+#if !defined(__sgi)
+        if (sdf_mode_ == SDF_SHADER) {
+            sh_.use_program(sdf_prog_);
+            /* The edge in texture units: 128 is the outline, 127 is SPREAD px. */
+            float half = (float)(sdf_edge_ * 127.0 / SdfMaker::SPREAD / 255.0);
+            float mid = (float)((128.0 - sdf_weight_ * 127.0 / SdfMaker::SPREAD) / 255.0);
+            sh_.uniform2f(sdf_edge_loc_, mid - half, mid + half);
+        }
+#endif
+#if defined(__sgi) && defined(GL_TEXTURE_COLOR_TABLE_SGI)
+        if (sdf_mode_ == SDF_TABLE)
+            glEnable(GL_TEXTURE_COLOR_TABLE_SGI);
+#endif
+    }
+
+    void sdf_end()
+    {
+#if !defined(__sgi)
+        if (sdf_mode_ == SDF_SHADER)
+            sh_.use_program(0);
+#endif
+#if defined(__sgi) && defined(GL_TEXTURE_COLOR_TABLE_SGI)
+        if (sdf_mode_ == SDF_TABLE)
+            glDisable(GL_TEXTURE_COLOR_TABLE_SGI);
+#endif
+    }
+
+#if !defined(__sgi)
+    bool load_shader()
+    {
+        sh_.create_shader = (PfnCreateShader)gl_proc("glCreateShader");
+        sh_.shader_source = (PfnShaderSource)gl_proc("glShaderSource");
+        sh_.compile_shader = (PfnCompileShader)gl_proc("glCompileShader");
+        sh_.get_shaderiv = (PfnGetShaderiv)gl_proc("glGetShaderiv");
+        sh_.create_program = (PfnCreateProgram)gl_proc("glCreateProgram");
+        sh_.attach_shader = (PfnAttachShader)gl_proc("glAttachShader");
+        sh_.link_program = (PfnLinkProgram)gl_proc("glLinkProgram");
+        sh_.get_programiv = (PfnGetProgramiv)gl_proc("glGetProgramiv");
+        sh_.use_program = (PfnUseProgram)gl_proc("glUseProgram");
+        sh_.get_uniform_location = (PfnGetUniformLocation)gl_proc("glGetUniformLocation");
+        sh_.uniform2f = (PfnUniform2f)gl_proc("glUniform2f");
+        sh_.uniform1i = (PfnUniform1i)gl_proc("glUniform1i");
+        if (!sh_.create_shader || !sh_.shader_source || !sh_.compile_shader ||
+            !sh_.get_shaderiv || !sh_.create_program || !sh_.attach_shader ||
+            !sh_.link_program || !sh_.get_programiv || !sh_.use_program ||
+            !sh_.get_uniform_location || !sh_.uniform2f || !sh_.uniform1i)
+            return false;
+        const unsigned int k_fragment = 0x8B30, k_compile_status = 0x8B81,
+                           k_link_status = 0x8B82;
+        unsigned int fs = sh_.create_shader(k_fragment);
+        sh_.shader_source(fs, 1, &k_sdf_fragment, 0);
+        sh_.compile_shader(fs);
+        int ok = 0;
+        sh_.get_shaderiv(fs, k_compile_status, &ok);
+        if (!ok)
+            return false;
+        sdf_prog_ = sh_.create_program();
+        sh_.attach_shader(sdf_prog_, fs);
+        sh_.link_program(sdf_prog_);
+        sh_.get_programiv(sdf_prog_, k_link_status, &ok);
+        if (!ok)
+            return false;
+        sdf_edge_loc_ = sh_.get_uniform_location(sdf_prog_, "edge");
+        sh_.use_program(sdf_prog_);
+        sh_.uniform1i(sh_.get_uniform_location(sdf_prog_, "tex"), 0);
+        sh_.use_program(0);
+        return true;
+    }
+#endif
 
     /* Why the renderer cannot start (the Surface then falls back). */
     static bool fail(const char* why)
@@ -174,8 +341,9 @@ public:
         /* Boards that texture in software draw text as bitmaps:
          * Newport (Indy, Indigo2 XL) and the XZ/Elan family. */
         const char* force = getenv("TW_GL_TEXT");
-        bitmap_text_ = r && (strstr(r, "NEWPORT") || strstr(r, "GR2") || strstr(r, "GR3") ||
-                             strstr(r, "GU1") || strstr(r, "XZ") || strstr(r, "ELAN"));
+        bool soft_tex = r && (strstr(r, "NEWPORT") || strstr(r, "GR2") || strstr(r, "GR3") ||
+                              strstr(r, "GU1") || strstr(r, "XZ") || strstr(r, "ELAN"));
+        text_ = soft_tex ? TEXT_BITMAP : TEXT_TEXTURE;
 #if defined(__sgi)
         use_arrays_ = false;
 #else
@@ -191,9 +359,14 @@ public:
         if (arr)
             use_arrays_ = arr[0] == '1';
         if (force && strcmp(force, "bitmap") == 0)
-            bitmap_text_ = true;
+            text_ = TEXT_BITMAP;
         else if (force && strcmp(force, "texture") == 0)
-            bitmap_text_ = false;
+            text_ = TEXT_TEXTURE;
+        else if (force && strcmp(force, "sdf") == 0)
+            text_ = TEXT_SDF;
+        if (text_ == TEXT_SDF)
+            sdf_setup((const char*)glGetString(GL_EXTENSIONS),
+                      (const char*)glGetString(GL_VERSION));
         GLint max_tex = 256;
         glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_tex);
         atlas_size_ = max_tex >= 1024 ? 1024 : max_tex >= 512 ? 512 : 256;
@@ -251,6 +424,9 @@ public:
         }
         cache_.set_display(dpy, win);
         cache_.configure(fonts, fonts->cell_width(), fonts->cell_height(), fonts->ascent());
+        sdf_.set_display(dpy, win);
+        if (text_ == TEXT_SDF)
+            sdf_.configure(fonts, fonts->cell_width(), fonts->cell_height(), fonts->ascent());
         font_serial_ = fonts->serial();
         return true;
     }
@@ -262,6 +438,8 @@ public:
         current();
         if (cell_changed || font_serial_ != fonts_->serial()) {
             cache_.configure(fonts_, g.cell_w, g.cell_h, g.ascent);
+            if (text_ == TEXT_SDF)
+                sdf_.configure(fonts_, g.cell_w, g.cell_h, g.ascent);
             font_serial_ = fonts_->serial();
             reset_atlas();
         }
@@ -701,7 +879,7 @@ private:
     {
         glDisable(GL_TEXTURE_2D);
         glDisable(GL_BLEND);
-        if (pass == PASS_GLYPH && !bitmap_text_) {
+        if (pass == PASS_GLYPH && text_ != TEXT_BITMAP) {
             glEnable(GL_TEXTURE_2D);
             glBindTexture(GL_TEXTURE_2D, atlas_);
             if (atlas_dirty_) {
@@ -712,7 +890,11 @@ private:
             /* The masks are 1-bit: an alpha test draws the same pixels as
              * blending without reading the frame buffer (IMPACT textured
              * and blended glyphs at 19 Mpixels/s). TW_GL_BLEND=1 blends. */
-            if (blend_glyphs_) {
+            if (text_ == TEXT_SDF) {
+                /* Antialiased: blended, the distance turned to coverage. */
+                glEnable(GL_BLEND);
+                sdf_begin();
+            } else if (blend_glyphs_) {
                 glEnable(GL_BLEND);
             } else {
                 glAlphaFunc(GL_GREATER, 0.5f);
@@ -723,7 +905,9 @@ private:
 
     void pass_end(int pass)
     {
-        if (pass == PASS_GLYPH && !bitmap_text_) {
+        if (pass == PASS_GLYPH && text_ != TEXT_BITMAP) {
+            if (text_ == TEXT_SDF)
+                sdf_end();
             glDisable(GL_TEXTURE_2D);
             glDisable(GL_BLEND);
             glDisable(GL_ALPHA_TEST);
@@ -749,7 +933,7 @@ private:
                     glDisable(GL_BLEND);
             }
         } else if (pass == PASS_GLYPH) {
-            if (bitmap_text_)
+            if (text_ == TEXT_BITMAP)
                 draw_bitmaps(glyphs);
             else
                 draw_quads(glyphs, true);
@@ -948,12 +1132,18 @@ private:
                         if (y > y1) y1 = y;
                     }
             bool ink = x1 >= 0;
+            if (ink && text_ == TEXT_SDF) {
+                /* Antialiased edges reach past the 1-bit ink. */
+                x0 = y0 = 0;
+                x1 = gl->w - 1;
+                y1 = gl->h - 1;
+            }
             gl->ink_x = (int16_t)(ink ? x0 : 0);
             gl->ink_y = (int16_t)(ink ? y0 : 0);
             gl->ink_w = (int16_t)(ink ? x1 - x0 + 1 : 0);      /* 0: nothing to draw */
             gl->ink_h = (int16_t)(ink ? y1 - y0 + 1 : 0);
         }
-        if (bitmap_text_) {
+        if (text_ == TEXT_BITMAP) {
             /* The inked box only, flipped, rows padded to bytes: IRIX's
              * glBitmap ignores GL_UNPACK_SKIP_PIXELS, so the box cannot be
              * cut out of the whole mask at draw time. */
@@ -995,9 +1185,24 @@ private:
         if (!buf)
             return false;
         const uint8_t* bits = cache_.bits(gl);
+        unsigned char* field = 0;
+        if (text_ == TEXT_SDF) {
+            field = (unsigned char*)malloc((size_t)(w * h));
+            if (!field) {
+                free(buf);
+                return false;
+            }
+            sdf_.make(gl->face, gl->cps, gl->n, gl->wide != 0, bits, gl->stride, field);
+        }
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++) {
-                unsigned char a = (bits[y * gl->stride + x / 8] & (0x80 >> (x % 8))) ? 255 : 0;
+                unsigned char a;
+                if (field)
+                    a = sdf_mode_ == SDF_BAKED
+                            ? SdfMaker::coverage(field[y * w + x], sdf_edge_, sdf_weight_)
+                            : field[y * w + x];
+                else
+                    a = (bits[y * gl->stride + x / 8] & (0x80 >> (x % 8))) ? 255 : 0;
                 unsigned char* o = buf + (size_t)(y * w + x) * (size_t)bpp;
                 for (int k = 0; k < bpp - 1; k++)
                     o[k] = 255;         /* white, modulated by the run's colour */
@@ -1007,6 +1212,7 @@ private:
             memcpy(atlas_cpu_ + ((size_t)(sy + y) * (size_t)atlas_size_ + (size_t)sx) * (size_t)bpp,
                    buf + (size_t)y * (size_t)w * (size_t)bpp, (size_t)w * (size_t)bpp);
         atlas_dirty_ = true;
+        free(field);
         free(buf);
         gl->handle_a = sx;
         gl->handle_b = sy;
@@ -1130,7 +1336,18 @@ private:
     GLubyte* colors_;
     GLfloat* texs_;
     int vert_cap_;
-    bool bitmap_text_;          /* glyphs as glBitmap, not textured quads */
+    enum { TEXT_TEXTURE, TEXT_BITMAP, TEXT_SDF };
+    int text_;                  /* how glyphs are drawn */
+    enum { SDF_SHADER, SDF_TABLE, SDF_BAKED };
+    int sdf_mode_;
+    double sdf_edge_;
+    double sdf_weight_;
+    SdfMaker sdf_;
+#if !defined(__sgi)
+    ShaderApi sh_;
+    unsigned int sdf_prog_;
+    int sdf_edge_loc_;
+#endif
     unsigned char* bm_;         /* flipped glyph masks for glBitmap */
     size_t bm_n_, bm_cap_;
     ImageOp* ops_;              /* image runs queued with the lists */

@@ -204,11 +204,12 @@ TW_OBJS = $(B)/tw_backgrounds.o \
 	$(B)/tw_glyphs.o \
 	$(B)/tw_grid_widget.o \
 	$(B)/tw_palette.o \
+	$(B)/tw_sdf.o \
 	$(B)/tw_soft_render.o \
 	$(B)/tw_surface.o \
 	$(B)/tw_visual.o
 TW_H = tw/tw.h tw/bdf.h tw/fonts.h tw/glyphs.h tw/renderer.h tw/palette.h tw/surface.h \
-	tw/backgrounds.h
+	tw/backgrounds.h tw/sdf.h
 
 $(B)/libtw.a: $(TW_OBJS)
 	rm -f $@
@@ -216,6 +217,8 @@ $(B)/libtw.a: $(TW_OBJS)
 
 $(B)/tw_bdf.o: $(B)/.dir tw/bdf.cpp tw/bdf.h tw/tw.h
 	$(COMPILE) -c tw/bdf.cpp -o $@
+$(B)/tw_sdf.o: $(B)/.dir tw/sdf.cpp $(TW_H)
+	$(COMPILE) -c tw/sdf.cpp -o $@
 $(B)/tw_glyphs.o: $(B)/.dir tw/glyphs.cpp $(TW_H)
 	$(COMPILE) -c tw/glyphs.cpp -o $@
 $(B)/tw_core_render.o: $(B)/.dir tw/core_render.cpp $(TW_H)
@@ -272,6 +275,11 @@ $(B)/tw_bench: $(B)/tw_bench_tw.o $(B)/libtw.a
 
 $(B)/tw_bench_tw.o: $(B)/.dir tw/test/bench_tw.cpp $(TW_H)
 	$(COMPILE) $(GL_CPPFLAGS) -c tw/test/bench_tw.cpp -o $@
+
+# sdf_lab: the same text drawn 1-bit, box-filtered and from distance
+# fields, for comparing (tw/DESIGN.md section 4.6; needs a display).
+$(B)/sdf_lab: $(B)/.dir tw/test/sdf_lab.cpp
+	$(CXX) $(CXXFLAGS) $(WARNFLAGS) -o $@ tw/test/sdf_lab.cpp $(LDFLAGS) -lX11 -lm
 
 # tu, the terminal UI library (ttrc/DESIGN.md section 3): libtu.a and its
 # tests. It reads terminfo itself; no curses. "make tu-test" runs them.

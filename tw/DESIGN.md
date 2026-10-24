@@ -307,6 +307,47 @@ Sources:
 
 ---
 
+### 4.6 Signed distance fields (experimental: `TW_GL_TEXT=sdf`)
+
+The GL renderer can draw glyphs antialiased from signed distance fields
+(`tw/sdf.h`). Each glyph's field is made at the cell's resolution: the
+distance from each texel's centre to the outline, from the same face
+drawn 4x larger when the X server scales it (TrueType and Type1 core
+fonts: DejaVu, Ubuntu Mono on Linux, Adobe Courier on IRIX), else from
+the cell's 1-bit mask scaled 4x with EPX (bitmap fonts, characters only
+the bundled BDF fonts have), which keeps the hinted stems and rounds the
+stairs. Bold without a bold face is the regular outline moved 0.4 px
+outwards.
+
+What `tw/test/sdf_lab.cpp` showed (the same text drawn 1-bit, 4x box
+filtered as dash did, from a distance field with several edges, and from
+EPX): at 24 px the field drawn with a smoothstep 0.5 px either side of
+the outline is clearly the best, smooth curves and crisp; the box
+filter is softer. At 13 px the unhinted outlines put stems between
+pixels, two grey columns where the hinted bitmap has one sharp one, so
+there the bitmap wins; EPX keeps the bitmap's stems and only softens its
+corners a little. Exact coverage reads lighter than the server's 1-bit
+glyphs, so the outline moves 0.15 px outwards by default.
+
+Drawn 1:1, a field turned into coverage is just a precise antialiasing
+mask, so the conversion can happen in three places, chosen by what the
+board has (`TW_GL_SDF=shader|table|baked`):
+- a fragment shader (OpenGL 2.0; Linux): smoothstep of the texel's
+  alpha;
+- SGI's texture colour table (VPro, IMPACT, RealityEngine): a 256-entry
+  smoothstep applied to the filtered texel;
+- baked into the atlas at upload: blending only, any board.
+
+All three give the same pixels (compared exactly on a Radeon, an Octane
+VPro and a High IMPACT); on Linux SDF text costs nothing measurable (a
+200x60 frame 0.89 ms either way). Glyphs are blended rather than alpha
+tested and drawn as whole cells, so IMPACT, which is bound by
+primitives, pays about 1.5x. Not done yet: drawing fields scaled
+(double-width and double-height lines, zoom), where the shader and table
+keep edges sharp, and a setting in place of the environment variable.
+`TW_GL_SDF_EDGE` and `TW_GL_SDF_WEIGHT` set the edge and weight in
+pixels.
+
 ## 5. Renderers
 
 ```

@@ -2,7 +2,8 @@
  * tw_bench: frames per second of a renderer on a synthetic screen.
  *
  *   tw_bench [-r core|soft|gl] [-m full|scroll|type|idle] [-dynbg name]
- *            [-g COLSxROWS] [-n frames] [-fn font] [-content text|nobg|blank]
+ *            [-g COLSxROWS] [-n frames] [-fn font] [-content text|nobg|blank|sample]
+ *            [-dump out.ppm]
  *
  * full: every cell changes each frame; scroll: one line in per frame
  * (cat); type: one cell per frame; idle: nothing but the cursor (with
@@ -40,7 +41,7 @@ enum Mode { M_FULL, M_SCROLL, M_TYPE, M_IDLE };
 
 /* What the screen holds: text in colours (some on a background), the
  * same with no backgrounds, or nothing. */
-enum Content { C_TEXT, C_NOBG, C_BLANK };
+enum Content { C_TEXT, C_NOBG, C_BLANK, C_SAMPLE };
 Content g_content = C_TEXT;
 
 class BenchSource : public tw::Source {
@@ -160,6 +161,23 @@ private:
     /* Words of letters in a colour each, some bold, some on a background. */
     void fill_row(int y)
     {
+        if (g_content == C_SAMPLE) {
+            static const char* const lines[] = {
+                "The quick brown fox jumps over the lazy dog. 0123456789",
+                "int main(int argc, char** argv) { return argc > 1 ? 0 : 1; }",
+                "gjpqy |_^~ @#$%&* {}[]() <>=+- ;:,.'\"` /\\ ?!",
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz",
+            };
+            const char* t = lines[y % 4];
+            int n = (int)strlen(t);
+            /* Bold on the third and fourth line of each eight. */
+            unsigned style = (unsigned)((y / 4) % 2 ? 16 : 0) | (y % 8 == 7 ? 32u : 0u);
+            for (int x = 0; x < cols_; x++) {
+                cp_[y * cols_ + x] = x < n ? (uint32_t)(unsigned char)t[x] : ' ';
+                st_[y * cols_ + x] = (unsigned char)(style | 7);    /* white */
+            }
+            return;
+        }
         int x = 0;
         while (x < cols_) {
             int len = 1 + (int)(rnd() % 9);
@@ -190,7 +208,7 @@ void usage()
 {
     fprintf(stderr, "usage: tw_bench [-r core|soft|gl] [-m full|scroll|type|idle] "
                     "[-dynbg name] [-g COLSxROWS] [-n frames] [-fn font]\n"
-                    "                [-content text|nobg|blank]\n");
+                    "                [-content text|nobg|blank|sample] [-dump out.ppm]\n");
     exit(2);
 }
 
@@ -203,6 +221,7 @@ int main(int argc, char** argv)
     const char* dynbg = 0;
     const char* font = "fixed";
     int cols = 120, rows = 40, frames = 200;
+    const char* dump = 0;       /* GL: the last frame as a PPM (TW_GL_NOSWAP=1) */
     for (int i = 1; i < argc; i++) {
         if (i + 1 >= argc)
             usage();
@@ -219,9 +238,14 @@ int main(int argc, char** argv)
             frames = atoi(argv[++i]);
         else if (strcmp(argv[i], "-fn") == 0)
             font = argv[++i];
+        else if (strcmp(argv[i], "-dump") == 0)
+            dump = argv[++i];
         else if (strcmp(argv[i], "-content") == 0) {
             const char* c = argv[++i];
-            g_content = strcmp(c, "blank") == 0 ? C_BLANK : strcmp(c, "nobg") == 0 ? C_NOBG : C_TEXT;
+            g_content = strcmp(c, "blank") == 0  ? C_BLANK
+                      : strcmp(c, "nobg") == 0   ? C_NOBG
+                      : strcmp(c, "sample") == 0 ? C_SAMPLE
+                                                 : C_TEXT;
         }
         else
             usage();
@@ -309,6 +333,24 @@ int main(int argc, char** argv)
     printf("%s %s%s%s %dx%d: %d frames, %.2f ms a frame, %.1f fps, %ld cells a frame\n",
            sp->renderer_name(), mode_name, dynbg ? " +" : "", dynbg ? dynbg : "", cols, rows, frames,
            t / 1000.0 / frames, frames * 1e6 / (double)t, cells / frames);
+#if defined(TTR_HAVE_GL)
+    if (gl && dump) {
+        /* What GL drew, from the back buffer: no compositor or covering
+         * window in the way (needs TW_GL_NOSWAP=1, so it is not swapped). */
+        unsigned char* px = (unsigned char*)malloc((size_t)w * (size_t)h * 3);
+        glReadBuffer(GL_BACK);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels(0, 0, w, h, GL_RGB, GL_UNSIGNED_BYTE, px);
+        FILE* f = fopen(dump, "wb");
+        if (f && px) {
+            fprintf(f, "P6\n%d %d\n255\n", w, h);
+            for (int y = h - 1; y >= 0; y--)
+                fwrite(px + (size_t)y * (size_t)w * 3, 1, (size_t)w * 3, f);
+            fclose(f);
+        }
+        free(px);
+    }
+#endif
     fflush(stdout);
     sp->detach();
     delete sp;
