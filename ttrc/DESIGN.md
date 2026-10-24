@@ -43,7 +43,11 @@ Milestones 3 to 5 implemented 2026-10-22:
   free. Unpacking reports to a progress hook (`tf::set_progress`); ttrc
   shows a dialog and Esc stops it (ECANCELED). The copies F3/F4 make for
   external programs go to `$TMPDIR/ttrc.<pid>`, removed at exit.
-- 5: the viewer (`src/ttrc/viewer.cpp`) on tu, reading through tf. The
+- 5: the viewer (`src/ttrc/viewer.cpp`) on tu, reading through tf. Its
+  go-to takes a line in text and a file offset in hex; search takes text
+  (case folded unless Match case) or hex bytes. The host asks the tool
+  for the dialog's labels and defaults (`goto_label`, `search_defaults`),
+  so a tool decides what its questions mean. The
   editor began inside ttrc and is now ttre, a program of its own
   (`ttre/DESIGN.md`). F4 runs it in the shell, like any `$EDITOR`. A
   command asked for while the shell is still starting is queued until

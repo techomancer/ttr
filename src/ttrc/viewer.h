@@ -22,8 +22,17 @@ namespace ttrc {
 enum ToolRequest {
     REQ_NONE,
     REQ_CLOSE,
-    REQ_SEARCH,         /* ask for text, call search() */
-    REQ_GOTO            /* ask for a line number, call goto_line() */
+    REQ_SEARCH,         /* ask for a SearchQuery, call search() */
+    REQ_GOTO            /* ask for where (goto_label()), call go_to() */
+};
+
+/* What the search dialog asks for. Hex text is bytes: "de ad be ef",
+ * "deadbeef" or "0xde 0xad". */
+struct SearchQuery {
+    ttr::Str text;
+    bool hex;
+    bool match_case;    /* text only */
+    SearchQuery() : hex(false), match_case(false) {}
 };
 
 class FullScreen {
@@ -32,8 +41,13 @@ public:
     virtual void draw(tu::Screen& s, const Theme& t) = 0;
     /* Returns what the host should do next. */
     virtual ToolRequest handle(const tu::Event& ev) = 0;
-    virtual void search(const char* text) = 0;
-    virtual void goto_line(long line) = 0;
+    /* What the search dialog starts with. */
+    virtual void search_defaults(SearchQuery* q) const = 0;
+    virtual void search(const SearchQuery& q) = 0;
+    /* The go-to dialog's title and label, and its answer. */
+    virtual const char* goto_title() const = 0;
+    virtual const char* goto_label() const = 0;
+    virtual void go_to(const char* where) = 0;
     /* A note for the status line until the next key. */
     const char* note() const { return note_; }
     void set_note(const char* n);
@@ -51,8 +65,15 @@ public:
     int load(tf::Fs* fs, const char* path);
     void draw(tu::Screen& s, const Theme& t);
     ToolRequest handle(const tu::Event& ev);
-    void search(const char* text);
-    void goto_line(long line);
+    void search_defaults(SearchQuery* q) const;
+    void search(const SearchQuery& q);
+    /* Repeat the last search ('n', Shift+F7). */
+    void search_again();
+    const char* goto_title() const;
+    const char* goto_label() const;
+    /* A line number in text; a file offset in hex (0x1f40, 1f40h, or
+     * decimal 8000; a-f digits mean hex). */
+    void go_to(const char* where);
 
 private:
     size_t line_start(long i) const;
@@ -60,7 +81,8 @@ private:
     /* The byte offsets where each screen row of line i starts. */
     int rows_of(long i, int width, size_t* starts, int max) const;
     void scroll(int rows);
-    void top_to(size_t off);
+    /* Show off with `above` rows above it. */
+    void top_to(size_t off, int above = 2);
     int width() const { return width_; }
     long line_of(size_t off) const;
 
@@ -76,7 +98,9 @@ private:
     long hex_top_;              /* first hex row */
     int rows_, width_, bpr_;    /* from the last draw */
     size_t hit_, hit_len_;
-    char last_search_[256];
+    SearchQuery last_;
+    char pat_[256];             /* the bytes last_ looks for */
+    size_t pat_len_;
 };
 
 } /* namespace ttrc */

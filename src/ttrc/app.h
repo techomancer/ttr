@@ -87,6 +87,7 @@ private:
     /* Dialogs and commands (commands.cpp) */
     int modal(tu::Dialog& d, const tu::DialogStyle& st, IdleFn idle = 0, void* ctx = 0);
     int ask(const char* title, const char* text, const char* const* buttons, bool alarm);
+    bool ask_search(SearchQuery* q);
     bool ask_text(const char* title, const char* label, ttr::Str* value, tu::StrList* history);
     void show_error(const char* text);
     bool run_job(tf::Job& job, const char* title);

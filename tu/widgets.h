@@ -146,7 +146,6 @@ public:
 
 private:
     StrList labels_;
-    int focus_;
 };
 
 class Button : public Widget {

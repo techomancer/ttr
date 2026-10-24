@@ -370,7 +370,7 @@ bool CheckBox::cursor(int* cx, int* cy) const
 
 /* ------------------------------------------------------------------ */
 
-RadioGroup::RadioGroup() : selected(0), focus_(0) {}
+RadioGroup::RadioGroup() : selected(0) {}
 
 void RadioGroup::add(const char* label)
 {
@@ -382,7 +382,7 @@ void RadioGroup::draw(Screen& s, const DialogStyle& st, int sx, int sy, bool foc
 {
     for (int i = 0; i < labels_.size(); i++) {
         s.fill(sx, sy + i, w, 1, ' ', st.body);
-        const Style& style = focused && i == focus_ ? st.button_focus : st.body;
+        const Style& style = focused && i == selected ? st.button_focus : st.body;
         s.text(sx, sy + i, i == selected ? "(*) " : "( ) ", style);
         draw_hot(s, sx + 4, sy + i, labels_[i], st.body, st.hotkey, w - 4);
     }
@@ -390,24 +390,20 @@ void RadioGroup::draw(Screen& s, const DialogStyle& st, int sx, int sy, bool foc
 
 bool RadioGroup::key(const Event& ev)
 {
-    if (ev.key == KEY_UP && focus_ > 0) {
-        focus_--;
-        selected = focus_;
+    if (ev.key == KEY_UP && selected > 0) {
+        selected--;
         return true;
     }
-    if (ev.key == KEY_DOWN && focus_ < labels_.size() - 1) {
-        focus_++;
-        selected = focus_;
+    if (ev.key == KEY_DOWN && selected < labels_.size() - 1) {
+        selected++;
         return true;
     }
-    if (ev.key == KEY_CHAR && ev.ch == ' ' && !ev.mods) {
-        selected = focus_;
+    if (ev.key == KEY_CHAR && ev.ch == ' ' && !ev.mods)
         return true;
-    }
     if (ev.key == KEY_CHAR && !(ev.mods & MOD_CTRL)) {
         for (int i = 0; i < labels_.size(); i++)
             if (hot_letter(labels_[i]) && hot_letter(labels_[i]) == lower(ev.ch)) {
-                selected = focus_ = i;
+                selected = i;
                 return true;
             }
     }
@@ -417,13 +413,13 @@ bool RadioGroup::key(const Event& ev)
 void RadioGroup::click(int, int ry, bool)
 {
     if (ry >= 0 && ry < labels_.size())
-        selected = focus_ = ry;
+        selected = ry;
 }
 
 bool RadioGroup::cursor(int* cx, int* cy) const
 {
     *cx = x + 1;
-    *cy = y + focus_;
+    *cy = y + selected;
     return true;
 }
 

@@ -12,6 +12,33 @@ send /
 expect Find:
 send two\r
 absent Not found
+# Match case: "TWO" is not there.
+send /
+expect Match case
+send TWO\t\t\x20\r
+expect Not found: TWO
+# Hex: go to an offset, search bytes.
+send \e[14~
+expect offset 0x0
+send g
+expect File offset
+send 0x100\r
+expect Past the end: the file has 0x12 bytes
+send /
+expect Find:
+send 74 77 6f\tx\r
+absent Not found
+send /
+expect Find:
+send zz\tx\r
+expect Hex search: give bytes
+send \e[14~
+expect line 1 of 2
+send g
+expect Line number:
+send \x15
+send 2\r
+expect line 2 of 2
 send q
 expect Menu
 send \x13t.tar

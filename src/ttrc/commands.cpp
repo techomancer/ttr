@@ -270,6 +270,39 @@ bool App::ask_text(const char* title, const char* label, ttr::Str* value, tu::St
     return true;
 }
 
+/* The viewer's search: text or hex bytes. False on Cancel or nothing. */
+bool App::ask_search(SearchQuery* q)
+{
+    int w = screen_.cols() - 10;
+    if (w > 70)
+        w = 70;
+    if (w < 40)
+        w = 40;
+    tu::Dialog d("Search", w, 10);
+    d.add(new tu::Label("Find:"), 3, 2, w - 6);
+    tu::InputLine* in = new tu::InputLine(q->text.c_str());
+    in->set_history(&hist_search_);
+    in->replace_on_type();
+    d.add(in, 3, 3, w - 6);
+    tu::RadioGroup* mode = new tu::RadioGroup();
+    mode->add("&Text");
+    mode->add("He&x bytes");
+    mode->selected = q->hex ? 1 : 0;
+    d.add(mode, 3, 5, 18);
+    tu::CheckBox* mc = new tu::CheckBox("&Match case", q->match_case);
+    d.add(mc, 24, 5, 20);
+    tu::Button* b[2] = { new tu::Button("&Find", 1, true), new tu::Button("&Cancel", 2) };
+    d.add_buttons(7, b, 2);
+    d.focus(in);
+    if (modal(d, theme_.dialog) != 1 || !*in->text())
+        return false;
+    q->text = in->text();
+    q->hex = mode->selected == 1;
+    q->match_case = mc->on;
+    hist_search_.add(in->text());
+    return true;
+}
+
 /* ------------------------------------------------------------------ */
 /* Jobs                                                                */
 
@@ -1351,17 +1384,16 @@ void App::run_tool(FullScreen* tool)
                 done = true;
                 break;
             case REQ_SEARCH: {
-                ttr::Str v("");
-                if (hist_search_.size())
-                    v = hist_search_[hist_search_.size() - 1];
-                if (ask_text("Search", "Find:", &v, &hist_search_) && !v.empty())
-                    tool->search(v.c_str());
+                SearchQuery q;
+                tool->search_defaults(&q);
+                if (ask_search(&q))
+                    tool->search(q);
                 break;
             }
             case REQ_GOTO: {
                 ttr::Str v("");
-                if (ask_text("Go to line", "Line number:", &v, 0) && atol(v.c_str()) > 0)
-                    tool->goto_line(atol(v.c_str()));
+                if (ask_text(tool->goto_title(), tool->goto_label(), &v, 0) && !v.empty())
+                    tool->go_to(v.c_str());
                 break;
             }
             default:

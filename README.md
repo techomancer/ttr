@@ -531,8 +531,10 @@ a file in an archive, the copy they get is in `$TMPDIR/ttrc.<pid>`,
 which ttrc removes when it quits.
 
 **Viewer and editor.** F3 shows a file in ttrc's viewer (text, wrapped
-or not, or hex; F7 or `/` searches, `n` finds the next, `q` quits); it
-also reads files inside archives. F4 edits the file in ttre, ttr's editor
+or not, or hex; F7 or `/` searches for text or, with Hex bytes chosen,
+for bytes such as `de ad be ef`; `n` finds the next; F5 or `g` goes to a
+line, or in hex to a file offset such as `0x1f40`, `1f40h` or `8000`;
+`q` quits); it also reads files inside archives. F4 edits the file in ttre, ttr's editor
 (see "The editor (ttre)" below), and Shift+F4 asks for the name of a new
 file to edit. A file in an archive is edited as a temporary copy. Options
 > Configuration switches F3 and F4 to your `$PAGER` and `$EDITOR` (or

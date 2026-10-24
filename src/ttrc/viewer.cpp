@@ -41,13 +41,96 @@ int char_at(const char* p, const char* end, uint32_t* cp, int col, int* cols, bo
     return used;
 }
 
-bool match_at(const char* d, size_t len, size_t i, const char* t, size_t tl)
+bool match_at(const char* d, size_t len, size_t i, const char* t, size_t tl, bool fold)
 {
     if (i + tl > len)
         return false;
+    if (!fold)
+        return memcmp(d + i, t, tl) == 0;
     for (size_t k = 0; k < tl; k++)
         if (tolower((unsigned char)d[i + k]) != tolower((unsigned char)t[k]))
             return false;
+    return true;
+}
+
+int hex_digit(char c)
+{
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+/* "de ad be ef", "deadbeef", "0xde,0xad": the bytes, or -1 when a
+ * group has an odd number of digits or something else is in it. */
+long parse_hex_bytes(const char* t, char* out, size_t cap)
+{
+    size_t n = 0;
+    const char* p = t;
+    while (*p) {
+        if (*p == ' ' || *p == '\t' || *p == ',') {
+            p++;
+            continue;
+        }
+        if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X'))
+            p += 2;
+        const char* g = p;
+        while (hex_digit(*p) >= 0)
+            p++;
+        size_t digits = (size_t)(p - g);
+        if (!digits || digits % 2 || (*p && *p != ' ' && *p != '\t' && *p != ','))
+            return -1;
+        for (size_t k = 0; k < digits; k += 2) {
+            if (n == cap)
+                return -1;
+            out[n++] = (char)(hex_digit(g[k]) * 16 + hex_digit(g[k + 1]));
+        }
+    }
+    return (long)n;
+}
+
+/* 0x1f40, 1f40h, $1f40, or 8000 (hex if it has a-f in it). False if it
+ * is not a number. */
+bool parse_offset(const char* t, size_t* out)
+{
+    while (*t == ' ')
+        t++;
+    bool hex = false;
+    if (t[0] == '0' && (t[1] == 'x' || t[1] == 'X')) {
+        hex = true;
+        t += 2;
+    } else if (*t == '$') {
+        hex = true;
+        t++;
+    }
+    const char* e = t;
+    while (hex_digit(*e) >= 0) {
+        if (!isdigit((unsigned char)*e))
+            hex = true;
+        e++;
+    }
+    if (e == t)
+        return false;
+    const char* rest = e;
+    if (*rest == 'h' || *rest == 'H') {
+        hex = true;
+        rest++;
+    }
+    while (*rest == ' ')
+        rest++;
+    if (*rest)
+        return false;
+    size_t v = 0;
+    for (const char* p = t; p < e; p++) {
+        int d = hex ? hex_digit(*p) : *p - '0';
+        if (!hex && (d < 0 || d > 9))
+            return false;
+        v = v * (hex ? 16 : 10) + (size_t)d;
+    }
+    *out = v;
     return true;
 }
 
@@ -82,10 +165,9 @@ void FullScreen::set_note(const char* n)
 
 Viewer::Viewer()
     : data_(0), len_(0), truncated_(false), hex_(false), wrap_(true), top_line_(0), top_sub_(0),
-      left_(0), hex_top_(0), rows_(20), width_(80), bpr_(16), hit_(0), hit_len_(0)
+      left_(0), hex_top_(0), rows_(20), width_(80), bpr_(16), hit_(0), hit_len_(0), pat_len_(0)
 {
     name_[0] = 0;
-    last_search_[0] = 0;
 }
 
 Viewer::~Viewer()
@@ -236,10 +318,10 @@ void Viewer::scroll(int rows)
     }
 }
 
-void Viewer::top_to(size_t off)
+void Viewer::top_to(size_t off, int above)
 {
     if (hex_) {
-        hex_top_ = (long)(off / (size_t)bpr_) - 2;
+        hex_top_ = (long)(off / (size_t)bpr_) - above;
         scroll(0);
         return;
     }
@@ -250,7 +332,7 @@ void Viewer::top_to(size_t off)
     for (int i = 0; i < n; i++)
         if (starts[i] <= off)
             top_sub_ = i;
-    scroll(-2);
+    scroll(-above);
 }
 
 void Viewer::draw(tu::Screen& s, const Theme& t)
@@ -262,13 +344,16 @@ void Viewer::draw(tu::Screen& s, const Theme& t)
         rows_ = 1;
     s.fill(0, 0, w, h, ' ', t.text);
     /* The status line. */
-    char st[700];
-    long line = hex_ ? line_of((size_t)hex_top_ * (size_t)bpr_) : top_line_;
+    char st[700], where[80];
     int pct = len_ ? (int)((hex_ ? (double)hex_top_ * bpr_ : (double)line_start(top_line_)) * 100 /
                             (double)len_) : 100;
-    snprintf(st, sizeof(st), " %s   line %ld of %d   %d%%   %lu bytes%s%s%s", name_, line + 1,
-             lines_.size(), pct, (unsigned long)len_, hex_ ? "   [hex]" : "",
-             !hex_ && !wrap_ ? "   [unwrapped]" : "", truncated_ ? "   [first 64 MB]" : "");
+    if (hex_)
+        sprintf(where, "offset 0x%lx", (unsigned long)hex_top_ * (unsigned long)bpr_);
+    else
+        sprintf(where, "line %ld of %d", top_line_ + 1, lines_.size());
+    snprintf(st, sizeof(st), " %s   %s   %d%%   %lu bytes%s%s%s", name_, where, pct,
+             (unsigned long)len_, hex_ ? "   [hex]" : "", !hex_ && !wrap_ ? "   [unwrapped]" : "",
+             truncated_ ? "   [first 64 MB]" : "");
     s.fill(0, 0, w, 1, ' ', t.text_status);
     s.text(0, 0, note_[0] ? note_ : st, t.text_status, w);
 
@@ -399,7 +484,7 @@ ToolRequest Viewer::handle(const tu::Event& ev)
     if (ev.key >= tu::KEY_F1 && ev.key <= tu::KEY_F1 + 9) {
         int n = ev.key - tu::KEY_F1 + 1;
         switch (n) {
-        case 1: set_note("Arrows, PgUp/PgDn, Home/End move. F2 wrap. F4 hex. F7 or / search, n next. q quit."); return REQ_NONE;
+        case 1: set_note("Arrows, PgUp/PgDn, Home/End move. F2 wrap. F4 hex. F5 go to. F7 or / search, n next. q quit."); return REQ_NONE;
         case 2:
             if (!hex_) {
                 wrap_ = !wrap_;
@@ -410,14 +495,13 @@ ToolRequest Viewer::handle(const tu::Event& ev)
         case 4: {
             size_t at = hex_ ? (size_t)hex_top_ * (size_t)bpr_ : line_start(top_line_);
             hex_ = !hex_;
-            top_to(at);
-            scroll(2);
+            top_to(at, 0);
             return REQ_NONE;
         }
         case 5: return REQ_GOTO;
         case 7:
             if (ev.mods & tu::MOD_SHIFT) {
-                search(last_search_);
+                search_again();
                 return REQ_NONE;
             }
             return REQ_SEARCH;
@@ -431,12 +515,11 @@ ToolRequest Viewer::handle(const tu::Event& ev)
         case ' ': scroll(page); return REQ_NONE;
         case 'b': scroll(-page); return REQ_NONE;
         case '/': return REQ_SEARCH;
-        case 'n': search(last_search_); return REQ_NONE;
+        case 'n': search_again(); return REQ_NONE;
         case 'h': case 'H': {
             size_t at = hex_ ? (size_t)hex_top_ * (size_t)bpr_ : line_start(top_line_);
             hex_ = !hex_;
-            top_to(at);
-            scroll(2);
+            top_to(at, 0);
             return REQ_NONE;
         }
         case 'w': wrap_ = !wrap_; top_sub_ = 0; left_ = 0; return REQ_NONE;
@@ -447,18 +530,48 @@ ToolRequest Viewer::handle(const tu::Event& ev)
     return REQ_NONE;
 }
 
-void Viewer::search(const char* text)
+void Viewer::search_defaults(SearchQuery* q) const
 {
-    size_t tl = strlen(text);
+    *q = last_;
+    /* A new search starts in the mode the view is in. */
+    if (last_.text.empty())
+        q->hex = hex_;
+}
+
+void Viewer::search(const SearchQuery& q)
+{
+    long n;
+    if (q.hex) {
+        n = parse_hex_bytes(q.text.c_str(), pat_, sizeof(pat_));
+        if (n <= 0) {
+            set_note(n < 0 ? "Hex search: give bytes as pairs of digits, like de ad be ef."
+                           : "Hex search: no bytes given.");
+            pat_len_ = 0;
+            return;
+        }
+    } else {
+        n = (long)strlen(q.text.c_str());
+        if (n >= (long)sizeof(pat_))
+            n = (long)sizeof(pat_) - 1;
+        memcpy(pat_, q.text.c_str(), (size_t)n);
+    }
+    pat_len_ = (size_t)n;
+    last_ = q;
+    search_again();
+}
+
+void Viewer::search_again()
+{
+    size_t tl = pat_len_;
     if (!tl)
         return;
-    snprintf(last_search_, sizeof(last_search_), "%s", text);
+    bool fold = !last_.hex && !last_.match_case;
     /* From after the last hit, or from the top of the screen. */
     size_t from = hit_len_ ? hit_ + 1
                            : hex_ ? (size_t)hex_top_ * (size_t)bpr_ : line_start(top_line_);
     for (int pass = 0; pass < 2; pass++) {
         for (size_t i = from; i + tl <= len_; i++)
-            if (match_at(data_, len_, i, text, tl)) {
+            if (match_at(data_, len_, i, pat_, tl, fold)) {
                 hit_ = i;
                 hit_len_ = tl;
                 top_to(i);
@@ -470,18 +583,48 @@ void Viewer::search(const char* text)
     }
     hit_len_ = 0;
     char n[300];
-    snprintf(n, sizeof(n), "Not found: %.200s", text);
+    snprintf(n, sizeof(n), "Not found: %.200s%s", last_.text.c_str(), last_.hex ? " (hex)" : "");
     set_note(n);
 }
 
-void Viewer::goto_line(long line)
+const char* Viewer::goto_title() const
 {
+    return hex_ ? "Go to offset" : "Go to line";
+}
+
+const char* Viewer::goto_label() const
+{
+    return hex_ ? "File offset (0x1f40 or 1f40h hex, 8000 decimal):" : "Line number:";
+}
+
+void Viewer::go_to(const char* where)
+{
+    if (hex_) {
+        size_t off;
+        if (!parse_offset(where, &off)) {
+            set_note("Not an offset: give 0x1f40, 1f40h or a decimal number.");
+            return;
+        }
+        if (off >= len_) {
+            char n[100];
+            sprintf(n, "Past the end: the file has 0x%lx bytes.", (unsigned long)len_);
+            set_note(n);
+            if (!len_)
+                return;
+            off = len_ - 1;
+        }
+        /* Mark the byte, so the next search starts after it. */
+        hit_ = off;
+        hit_len_ = 1;
+        top_to(off);
+        return;
+    }
+    long line = atol(where);
     if (line < 1)
-        line = 1;
+        return;
     if (line > lines_.size())
         line = lines_.size();
-    if (hex_)
-        hex_ = false;
+    hit_len_ = 0;
     top_line_ = line - 1;
     top_sub_ = 0;
 }
