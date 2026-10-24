@@ -3,3 +3,4 @@ build-asan/
 ignore/
 build-irix/
 __pycache__/
+core
