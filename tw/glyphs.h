@@ -27,6 +27,7 @@ struct CachedGlyph {
     int w, h, stride;           /* mask: w x h bits, MSB first */
     uint32_t bits;              /* offset in the cache's bit store */
     int handle_a, handle_b;     /* renderer's: -1 until uploaded */
+    int16_t ink_x, ink_y, ink_w, ink_h;     /* renderer's: the mask's inked box */
 };
 
 class GlyphCache {

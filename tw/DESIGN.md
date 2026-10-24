@@ -286,8 +286,9 @@ and what tw takes from it:
 What this means for fixing dash, if it lives on: rasterize from the
 display font itself at 1:1 (`XGetImage` of the glyph drawn with the
 font that sets the cell size, or FreeType at the cell size), drop the
-supersampling and the gamma boost, keep quads on integer pixels, and
-keep IMPACT's `GL_LUMINANCE_ALPHA` texture format.
+supersampling and the gamma boost, and keep quads on integer pixels.
+(Its `GL_LUMINANCE_ALPHA` format for IMPACT turned out to be what its
+backgrounds need; glyphs on a High IMPACT need `GL_ALPHA`.)
 
 Sources:
 [kitty PR #5423 (linear blending, alpha contrast)](https://github.com/kovidgoyal/kitty/pull/5423),
@@ -432,13 +433,22 @@ renderer's (dash's resampled atlas blurred).
 
 **Text, two ways.** The glyph cache rasterizes each glyph once from the
 X server's fonts (1-bit masks); then by board:
-- *Textured quads*: masks in one atlas texture (`GL_ALPHA`; on IMPACT,
-  which does not render `GL_ALPHA`, `GL_LUMINANCE_ALPHA` with luminance
-  255, found in dash), `GL_NEAREST`, `GL_MODULATE` by the run's colour,
-  blended. The atlas starts over when full.
+- *Textured quads*: masks in one atlas texture, `GL_NEAREST`,
+  `GL_MODULATE` by the run's colour, drawn with an alpha test (the masks
+  are 1-bit, so it is exact, and it reads no frame buffer as blending
+  does: 18% faster on IMPACT). The atlas is `GL_ALPHA`, except on IMPACT,
+  which refuses that format (`GL_INVALID_VALUE`): `GL_LUMINANCE_ALPHA`
+  there (`TW_GL_ATLASFMT=alpha|la|rgba` to try). It is kept in memory and
+  loaded whole with `glTexImage2D` before a frame's glyphs when glyphs
+  were added: IMPACT does not show `glTexSubImage2D` changes (a High
+  IMPACT drew no text at all), and glyphs are added only while a screen
+  warms up. IMPACT gets a 512x512 atlas, others 1024x1024. Only each
+  glyph's inked box is drawn. The atlas starts over when full.
 - *`glBitmap`*: boards that texture in software (Newport in the Indy and
   Indigo2 XL, the XZ/Elan family, by `GL_RENDERER`) draw each glyph as a
-  bitmap from masks flipped once at upload. On the Indy a full 80x24
+  bitmap: its inked box, flipped and cut out once at upload (IRIX's
+  `glBitmap` ignores `GL_UNPACK_SKIP_PIXELS`, so it cannot be cut out of
+  the whole mask when drawn). On the Indy a full 80x24
   frame took 857 ms textured and 53 ms as bitmaps; on VPro bitmaps are
   five times slower than textures. `TW_GL_TEXT=bitmap|texture` overrides
   the choice.
@@ -476,12 +486,12 @@ on the VPro walking the model and building quads, before any GL.
 **Measured** with `tw_bench` (`make B=... $(B)/tw_bench`; see the file),
 ms a frame:
 
-| | Indy, emulated (80x24) | Octane VPro (200x60) | Linux, Radeon RX 6600 XT, Mesa (200x60) |
-|---|---|---|---|
-| everything changes | 667 -> 47 | 11.7 -> 12.7 | 2.58 -> 1.47 |
-| one line scrolls in | 29 -> 5.2 | 6.6 | 2.49 -> 0.92 |
-| one cell changes | 2.5 -> 1.1 | 5.4 | 2.36 -> 0.40 |
-| nothing changes (Indy: animated background) | 658 -> 49 | 11.7 -> 5.1 | 2.43 -> 0.32 |
+| | Indy, emulated (80x24) | Octane VPro (200x60) | Indigo2 High IMPACT (150x50) | Linux, Radeon RX 6600 XT, Mesa (200x60) |
+|---|---|---|---|---|
+| everything changes | 667 -> 47 | 11.7 -> 12.7 | 50 | 2.58 -> 1.26 |
+| one line scrolls in | 29 -> 5.2 | 6.6 | 42 | 2.49 -> 0.90 |
+| one cell changes | 2.5 -> 1.1 | 5.4 | 38 | 2.36 -> 0.34 |
+| nothing changes (Indy: animated background) | 658 -> 49 | 11.7 -> 5.1 | 37 | 2.43 -> 0.29 |
 
 (Before -> after bitmaps and retained rows. Indy single-buffered except
 with the background; VPro and Linux double-buffered, timed without
@@ -491,6 +501,19 @@ an unchanged screen three times cheaper.) Single-buffered on the VPro,
 `glCopyPixels` takes 9 ms a scroll, more than redrawing everything
 double-buffered: the default prefers a double-buffered visual.
 `TW_GL_SINGLE=1` asks for a single-buffered one, to measure.
+
+IMPACT is bound by primitives, about 3 us a glyph quad whatever its
+size (its one geometry engine): drawing only inked boxes changed
+nothing there, and a blank frame (clear only) takes 15 ms at 150x50.
+Single-buffered it copies pixels slowly (`glCopyPixels` 226 ms,
+`XCopyArea` 74 ms a scroll at 900x650). Without an animated background
+the core renderer is the better choice there (0.5 ms a typed character
+against a 37 ms GL frame), which is what `auto` picks. Making GL faster
+on IMPACT would take fewer primitives: one textured quad a row.
+
+On IRIX, `glXSwapBuffers` stays in the command buffer until something
+flushes it (VPro): each swap is followed by `glFlush`, or the last frame
+before the output stops is never shown.
 
 ### 5.4 Choosing a renderer
 
@@ -530,8 +553,9 @@ Implementation notes:
   once (`GlyphCache::set_display`), so text has exactly the core
   renderer's pixels. FreeType is still to come.
 - **GLRender** (`gl_render.cpp`) draws each frame as three batches:
-  backgrounds, glyph quads from a texture atlas (`GL_ALPHA`, or
-  `GL_LUMINANCE_ALPHA` on IMPACT), then lines and builtin glyphs.
+  backgrounds, glyph quads from a `GL_ALPHA` texture atlas (or glyph
+  bitmaps on boards without texture hardware), then lines and builtin
+  glyphs; section 5.3.
   - Vertices sit on whole pixels and texels map one to one, so the text
     is as sharp as the other renderers'. On the IRIX guest, GL and soft
     give pixel-identical text.

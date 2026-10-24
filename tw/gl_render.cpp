@@ -22,6 +22,7 @@
 #include "backgrounds.h"
 #include "glyphs.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
@@ -53,7 +54,7 @@ struct Quad {
     int x, y, w, h;
     uint32_t rgb;
     float u0, v0, u1, v1;       /* atlas coordinates (textured text) */
-    int bm, stride;             /* the flipped mask in bm_ (bitmap text) */
+    int bm;                     /* the flipped inked box in bm_ (bitmap text) */
 };
 
 /* An image run for glDrawPixels, drawn with the quads. */
@@ -105,11 +106,11 @@ void color(uint32_t rgb)
 class GLRender : public Renderer {
 public:
     GLRender()
-        : dpy_(0), win_(0), ctx_(0), dbl_(false), impact_(false), fonts_(0), font_serial_(-1),
+        : dpy_(0), win_(0), ctx_(0), dbl_(false), impact_(false), atlas_fmt_(GL_ALPHA), atlas_bpp_(1), atlas_cpu_(0), atlas_dirty_(false), fonts_(0), font_serial_(-1),
           atlas_(0), atlas_size_(0), slot_cols_(0), slot_rows_(0), next_slot_(0),
           cache_gen_(-1), bg_(0), last_anim_(0), default_bg_(0), whole_(false), verts_(0), colors_(0), texs_(0), vert_cap_(0),
           bitmap_text_(false), bm_(0), bm_n_(0), bm_cap_(0), ops_(0), n_ops_(0), ops_cap_(0),
-          use_arrays_(false), rows_(0), order_(0), n_rows_(0), use_lists_(true), list_base_(0),
+          use_arrays_(false), rows_(0), order_(0), n_rows_(0), use_lists_(true), blend_glyphs_(false), list_base_(0),
           atlas_epoch_(0),
           recording_(false), full_request_(false)
     {
@@ -120,6 +121,7 @@ public:
     {
         free_ops(ops_, n_ops_);
         free(ops_);
+        free(atlas_cpu_);
         free(verts_);
         free(colors_);
         free(texs_);
@@ -137,6 +139,13 @@ public:
 
     const char* name() const { return "gl"; }
 
+    /* Why the renderer cannot start (the Surface then falls back). */
+    static bool fail(const char* why)
+    {
+        fprintf(stderr, "tw: the gl renderer cannot start: %s\n", why);
+        return false;
+    }
+
     bool init(Display* dpy, Window win, Visual* visual, Colormap, int, const Fonts* fonts)
     {
         dpy_ = dpy;
@@ -147,7 +156,7 @@ public:
         int n = 0;
         XVisualInfo* vi = XGetVisualInfo(dpy, VisualIDMask, &tmpl, &n);
         if (!vi)
-            return false;
+            return fail("the window's visual is unknown");
         int use_gl = 0, rgba = 0, dbl = 0;
         glXGetConfig(dpy, vi, GLX_USE_GL, &use_gl);
         glXGetConfig(dpy, vi, GLX_RGBA, &rgba);
@@ -156,10 +165,10 @@ public:
             ctx_ = glXCreateContext(dpy, vi, 0, True);
         XFree(vi);
         if (!ctx_)
-            return false;
+            return fail(use_gl && rgba ? "glXCreateContext failed" : "the visual has no RGBA GL");
         dbl_ = dbl != 0;
         if (!glXMakeCurrent(dpy, win, ctx_))
-            return false;
+            return fail("glXMakeCurrent failed");
         const char* r = (const char*)glGetString(GL_RENDERER);
         impact_ = r && strstr(r, "IMPACT");
         /* Boards that texture in software draw text as bitmaps:
@@ -172,6 +181,9 @@ public:
 #else
         use_arrays_ = true;
 #endif
+        const char* blend = getenv("TW_GL_BLEND");
+        if (blend)
+            blend_glyphs_ = blend[0] == '1';
         const char* lists = getenv("TW_GL_LISTS");
         if (lists)
             use_lists_ = lists[0] == '1';
@@ -185,6 +197,9 @@ public:
         GLint max_tex = 256;
         glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_tex);
         atlas_size_ = max_tex >= 1024 ? 1024 : max_tex >= 512 ? 512 : 256;
+        const char* atlas = getenv("TW_GL_ATLAS");     /* to measure */
+        if (atlas && atoi(atlas) >= 64 && atoi(atlas) <= atlas_size_)
+            atlas_size_ = atoi(atlas);
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
         glDisable(GL_DITHER);
@@ -201,14 +216,39 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-        GLenum fmt = impact_ ? GL_LUMINANCE_ALPHA : GL_ALPHA;
-        size_t bytes = (size_t)atlas_size_ * (size_t)atlas_size_ * (impact_ ? 2 : 1);
-        unsigned char* zero = (unsigned char*)calloc(bytes, 1);
+        /* The atlas is GL_ALPHA, except on IMPACT, which refuses it
+         * (GL_INVALID_VALUE): GL_LUMINANCE_ALPHA there, luminance 255.
+         * TW_GL_ATLASFMT=alpha|la|rgba chooses, to try. */
+        atlas_fmt_ = impact_ ? GL_LUMINANCE_ALPHA : GL_ALPHA;
+        /* The atlas is kept here and loaded whole (glTexImage2D) before a
+         * frame's glyphs when glyphs were added: IMPACT does not show
+         * glTexSubImage2D changes (a High IMPACT drew no text), and glyphs
+         * are added only while a screen warms up, so whole loads cost
+         * nothing to speak of anywhere. IMPACT gets a smaller atlas. */
+        if (impact_ && atlas_size_ > 512 && !getenv("TW_GL_ATLAS"))
+            atlas_size_ = 512;
+        const char* af = getenv("TW_GL_ATLASFMT");
+        if (af && strcmp(af, "alpha") == 0)
+            atlas_fmt_ = GL_ALPHA;
+        else if (af && strcmp(af, "la") == 0)
+            atlas_fmt_ = GL_LUMINANCE_ALPHA;
+        else if (af && strcmp(af, "rgba") == 0)
+            atlas_fmt_ = GL_RGBA;
+        atlas_bpp_ = atlas_fmt_ == GL_RGBA ? 4 : atlas_fmt_ == GL_LUMINANCE_ALPHA ? 2 : 1;
+        GLenum fmt = atlas_fmt_;
+        size_t bytes = (size_t)atlas_size_ * (size_t)atlas_size_ * (size_t)atlas_bpp_;
+        atlas_cpu_ = (unsigned char*)calloc(bytes, 1);
+        if (!atlas_cpu_)
+            return fail("no memory for the glyph atlas");
         glTexImage2D(GL_TEXTURE_2D, 0, (GLint)fmt, atlas_size_, atlas_size_, 0, fmt,
-                     GL_UNSIGNED_BYTE, zero);
-        free(zero);
-        if (glGetError() != GL_NO_ERROR)
-            return false;
+                     GL_UNSIGNED_BYTE, atlas_cpu_);
+        GLenum e = glGetError();
+        if (e != GL_NO_ERROR) {
+            char m[80];
+            sprintf(m, "the %dx%d glyph atlas was refused (GL error 0x%x)", atlas_size_, atlas_size_,
+                    (unsigned)e);
+            return fail(m);
+        }
         cache_.set_display(dpy, win);
         cache_.configure(fonts, fonts->cell_width(), fonts->cell_height(), fonts->ascent());
         font_serial_ = fonts->serial();
@@ -340,9 +380,10 @@ public:
     {
         if (w <= 0 || h <= 0)
             return;
-        /* Over an animated background, the window's own colour is the
-         * background showing through. */
-        if (bg_ && whole_ && rgb == default_bg_)
+        /* A whole frame starts cleared to the window's colour (or with
+         * the animated background, which shows through): no need to
+         * paint it again. On IMPACT that was a third of a frame. */
+        if (whole_ && rgb == default_bg_)
             return;
         add(fills_, x, y, w, h, rgb);
     }
@@ -519,6 +560,7 @@ public:
         if (retained()) {
             for (int pass = PASS_FILL; pass <= PASS_SOLID; pass++)
                 replay(pass);
+
         }
         /* What is not in a row: the cursor, and everything when not
          * retained. */
@@ -528,8 +570,13 @@ public:
         static bool noswap = getenv("TW_GL_NOSWAP") != 0;
         if (dbl_ && noswap)
             glFinish();
-        else if (dbl_)
+        else if (dbl_) {
             glXSwapBuffers(dpy_, win_);
+            /* IRIX (VPro) keeps the swap in its command buffer until
+             * something flushes it: without this the last frame before
+             * the output stops is never shown. */
+            glFlush();
+        }
         else
             glFlush();
     }
@@ -630,7 +677,6 @@ private:
     {
         uint32_t rgb = 0;
         bool have = false;
-        int stride = -1;
         for (int i = 0; i < glyphs.size(); i++) {
             const Quad& q = glyphs[i];
             if (!have || q.rgb != rgb) {
@@ -638,16 +684,11 @@ private:
                 rgb = q.rgb;
                 have = true;
             }
-            if (q.stride != stride) {
-                glPixelStorei(GL_UNPACK_ROW_LENGTH, q.stride * 8);
-                stride = q.stride;
-            }
-            /* The raster position is the glyph's bottom left; the mask's
-             * rows were stored bottom first. */
+            /* The raster position is the inked box's bottom left; its
+             * rows were stored bottom first, each padded to a byte. */
             glRasterPos2i(q.x, q.y + q.h);
             glBitmap(q.w, q.h, 0, 0, 0, 0, bm_ + q.bm);
         }
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     }
 
     /* Three passes, each with its GL state set once: backgrounds and
@@ -663,7 +704,20 @@ private:
         if (pass == PASS_GLYPH && !bitmap_text_) {
             glEnable(GL_TEXTURE_2D);
             glBindTexture(GL_TEXTURE_2D, atlas_);
-            glEnable(GL_BLEND);
+            if (atlas_dirty_) {
+                glTexImage2D(GL_TEXTURE_2D, 0, (GLint)atlas_fmt_, atlas_size_, atlas_size_, 0,
+                             atlas_fmt_, GL_UNSIGNED_BYTE, atlas_cpu_);
+                atlas_dirty_ = false;
+            }
+            /* The masks are 1-bit: an alpha test draws the same pixels as
+             * blending without reading the frame buffer (IMPACT textured
+             * and blended glyphs at 19 Mpixels/s). TW_GL_BLEND=1 blends. */
+            if (blend_glyphs_) {
+                glEnable(GL_BLEND);
+            } else {
+                glAlphaFunc(GL_GREATER, 0.5f);
+                glEnable(GL_ALPHA_TEST);
+            }
         }
     }
 
@@ -672,6 +726,7 @@ private:
         if (pass == PASS_GLYPH && !bitmap_text_) {
             glDisable(GL_TEXTURE_2D);
             glDisable(GL_BLEND);
+            glDisable(GL_ALPHA_TEST);
         }
     }
 
@@ -879,8 +934,31 @@ private:
     {
         if (cache_gen_ != cache_.generation())
             reset_atlas();
+        /* Only the inked box is drawn: a letter covers half its cell or
+         * less, and pixels cost on IMPACT and the Indy. */
+        {
+            const uint8_t* bits = cache_.bits(gl);
+            int x0 = gl->w, y0 = gl->h, x1 = -1, y1 = -1;
+            for (int y = 0; y < gl->h; y++)
+                for (int x = 0; x < gl->w; x++)
+                    if (bits[y * gl->stride + x / 8] & (0x80 >> (x % 8))) {
+                        if (x < x0) x0 = x;
+                        if (x > x1) x1 = x;
+                        if (y < y0) y0 = y;
+                        if (y > y1) y1 = y;
+                    }
+            bool ink = x1 >= 0;
+            gl->ink_x = (int16_t)(ink ? x0 : 0);
+            gl->ink_y = (int16_t)(ink ? y0 : 0);
+            gl->ink_w = (int16_t)(ink ? x1 - x0 + 1 : 0);      /* 0: nothing to draw */
+            gl->ink_h = (int16_t)(ink ? y1 - y0 + 1 : 0);
+        }
         if (bitmap_text_) {
-            size_t need = (size_t)gl->stride * (size_t)gl->h;
+            /* The inked box only, flipped, rows padded to bytes: IRIX's
+             * glBitmap ignores GL_UNPACK_SKIP_PIXELS, so the box cannot be
+             * cut out of the whole mask at draw time. */
+            int bw = gl->ink_w, bh = gl->ink_h, bstride = (bw + 7) / 8;
+            size_t need = (size_t)bstride * (size_t)(bh > 0 ? bh : 1);
             if (bm_n_ + need > bm_cap_) {
                 size_t cap = bm_cap_ ? bm_cap_ * 2 : 65536;
                 while (cap < bm_n_ + need)
@@ -892,9 +970,17 @@ private:
                 bm_cap_ = cap;
             }
             const uint8_t* bits = cache_.bits(gl);
-            for (int y = 0; y < gl->h; y++)
-                memcpy(bm_ + bm_n_ + (size_t)y * (size_t)gl->stride,
-                       bits + (size_t)(gl->h - 1 - y) * (size_t)gl->stride, (size_t)gl->stride);
+            unsigned char* out = bm_ + bm_n_;
+            memset(out, 0, need);
+            for (int y = 0; y < bh; y++) {
+                const uint8_t* src = bits + (size_t)(gl->ink_y + bh - 1 - y) * (size_t)gl->stride;
+                unsigned char* dst = out + (size_t)y * (size_t)bstride;
+                for (int x = 0; x < bw; x++) {
+                    int sx = gl->ink_x + x;
+                    if (src[sx / 8] & (0x80 >> (sx % 8)))
+                        dst[x / 8] |= (unsigned char)(0x80 >> (x % 8));
+                }
+            }
             gl->handle_a = (int)bm_n_;
             gl->handle_b = 0;
             bm_n_ += need;
@@ -904,7 +990,7 @@ private:
             return false;
         int slot = next_slot_++;
         int sx = (slot % slot_cols_) * 2 * g_.cell_w, sy = (slot / slot_cols_) * g_.cell_h;
-        int w = gl->w, h = gl->h, bpp = impact_ ? 2 : 1;
+        int w = gl->w, h = gl->h, bpp = atlas_bpp_;
         unsigned char* buf = (unsigned char*)malloc((size_t)(w * h * bpp));
         if (!buf)
             return false;
@@ -912,16 +998,15 @@ private:
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++) {
                 unsigned char a = (bits[y * gl->stride + x / 8] & (0x80 >> (x % 8))) ? 255 : 0;
-                if (impact_) {
-                    buf[(y * w + x) * 2] = 255;
-                    buf[(y * w + x) * 2 + 1] = a;
-                } else {
-                    buf[y * w + x] = a;
-                }
+                unsigned char* o = buf + (size_t)(y * w + x) * (size_t)bpp;
+                for (int k = 0; k < bpp - 1; k++)
+                    o[k] = 255;         /* white, modulated by the run's colour */
+                o[bpp - 1] = a;
             }
-        glBindTexture(GL_TEXTURE_2D, atlas_);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, sx, sy, w, h, impact_ ? GL_LUMINANCE_ALPHA : GL_ALPHA,
-                        GL_UNSIGNED_BYTE, buf);
+        for (int y = 0; y < h; y++)
+            memcpy(atlas_cpu_ + ((size_t)(sy + y) * (size_t)atlas_size_ + (size_t)sx) * (size_t)bpp,
+                   buf + (size_t)y * (size_t)w * (size_t)bpp, (size_t)w * (size_t)bpp);
+        atlas_dirty_ = true;
         free(buf);
         gl->handle_a = sx;
         gl->handle_b = sy;
@@ -953,21 +1038,22 @@ private:
                     return false;
             }
         }
+        if (gl->ink_w <= 0 || gl->ink_h <= 0)
+            return true;            /* nothing to draw */
         Quad* q = glyphs_.add();
         if (!q)
             return true;
         float s = (float)atlas_size_;
-        q->x = x;
-        q->y = y;
-        q->w = gl->w;
-        q->h = gl->h;
+        q->x = x + gl->ink_x;
+        q->y = y + gl->ink_y;
+        q->w = gl->ink_w;
+        q->h = gl->ink_h;
         q->rgb = fg;
-        q->u0 = gl->handle_a / s;
-        q->v0 = gl->handle_b / s;
-        q->u1 = (gl->handle_a + gl->w) / s;
-        q->v1 = (gl->handle_b + gl->h) / s;
+        q->u0 = (gl->handle_a + gl->ink_x) / s;
+        q->v0 = (gl->handle_b + gl->ink_y) / s;
+        q->u1 = (gl->handle_a + gl->ink_x + gl->ink_w) / s;
+        q->v1 = (gl->handle_b + gl->ink_y + gl->ink_h) / s;
         q->bm = gl->handle_a;
-        q->stride = gl->stride;
         return true;
     }
 
@@ -1023,6 +1109,10 @@ private:
     Window win_;
     GLXContext ctx_;
     bool dbl_, impact_;
+    GLenum atlas_fmt_;
+    int atlas_bpp_;
+    unsigned char* atlas_cpu_;  /* the atlas, loaded whole when dirty */
+    bool atlas_dirty_;
     const Fonts* fonts_;
     int font_serial_;
     Geometry g_;
@@ -1050,6 +1140,7 @@ private:
     int* order_;                /* screen row -> rows_ index */
     int n_rows_;
     bool use_lists_;
+    bool blend_glyphs_;
     GLuint list_base_;
     int atlas_epoch_;
     bool recording_;

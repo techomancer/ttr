@@ -2,7 +2,7 @@
  * tw_bench: frames per second of a renderer on a synthetic screen.
  *
  *   tw_bench [-r core|soft|gl] [-m full|scroll|type|idle] [-dynbg name]
- *            [-g COLSxROWS] [-n frames] [-fn font]
+ *            [-g COLSxROWS] [-n frames] [-fn font] [-content text|nobg|blank]
  *
  * full: every cell changes each frame; scroll: one line in per frame
  * (cat); type: one cell per frame; idle: nothing but the cursor (with
@@ -37,6 +37,11 @@ public:
 };
 
 enum Mode { M_FULL, M_SCROLL, M_TYPE, M_IDLE };
+
+/* What the screen holds: text in colours (some on a background), the
+ * same with no backgrounds, or nothing. */
+enum Content { C_TEXT, C_NOBG, C_BLANK };
+Content g_content = C_TEXT;
 
 class BenchSource : public tw::Source {
 public:
@@ -117,6 +122,10 @@ public:
             d.cp = cp_[y * cols_ + x];
             d.width = 1;
             unsigned s = st_[y * cols_ + x];
+            if (g_content != C_TEXT)
+                s &= ~8u;
+            if (g_content == C_BLANK)
+                d.cp = ' ';
             d.style.fg = fg[s & 7];
             d.style.bg = (s & 8) ? 0x203040 : 0x000000;
             d.style.deco = d.style.fg;
@@ -180,7 +189,8 @@ private:
 void usage()
 {
     fprintf(stderr, "usage: tw_bench [-r core|soft|gl] [-m full|scroll|type|idle] "
-                    "[-dynbg name] [-g COLSxROWS] [-n frames] [-fn font]\n");
+                    "[-dynbg name] [-g COLSxROWS] [-n frames] [-fn font]\n"
+                    "                [-content text|nobg|blank]\n");
     exit(2);
 }
 
@@ -209,6 +219,10 @@ int main(int argc, char** argv)
             frames = atoi(argv[++i]);
         else if (strcmp(argv[i], "-fn") == 0)
             font = argv[++i];
+        else if (strcmp(argv[i], "-content") == 0) {
+            const char* c = argv[++i];
+            g_content = strcmp(c, "blank") == 0 ? C_BLANK : strcmp(c, "nobg") == 0 ? C_NOBG : C_TEXT;
+        }
         else
             usage();
     }
