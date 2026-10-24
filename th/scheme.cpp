@@ -194,6 +194,10 @@ void list_schemes(List* out)
 
 bool find_scheme(const char* name, Scheme* out)
 {
+    /* name may be out->name: keep it before out is reset. */
+    char want[sizeof(out->name)];
+    copy_str(want, name ? name : "", sizeof(want));
+    name = want;
     *out = Scheme::light();
     if (!name || !*name || compare_names(name, "Light") == 0)
         return true;
