@@ -1,6 +1,7 @@
 #include "settingsdlg.h"
 
 #include "../../tx/fontchooser.h"
+#include "../../tx/dialog.h"
 
 #include "../../tt/pane.h"
 #include "../../tw/backgrounds.h"
@@ -361,6 +362,7 @@ void SettingsDialog::build()
     XtSetArg(args[n], XmNmarginWidth, scaled(10)); n++;
     XtSetArg(args[n], XmNmarginHeight, scaled(10)); n++;
     dialog_ = XmCreateFormDialog(parent_, (char*)"settingsDialog", args, n);
+    tx::fixed_size(dialog_);
     XmStringFree(title);
 
     /* Two columns, so it fits a 1024x768 screen. */

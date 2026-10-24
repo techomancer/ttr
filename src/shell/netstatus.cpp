@@ -1,4 +1,5 @@
 #include "shell/netstatus.h"
+#include "../../tx/dialog.h"
 #include "core/icon.h"
 #include "core/launch.h"
 #include "core/painter.h"
@@ -193,6 +194,7 @@ void NetStatus::build_dialog()
     XtSetArg(args[n], XmNmarginWidth, scaled(10)); n++;
     XtSetArg(args[n], XmNmarginHeight, scaled(10)); n++;
     dialog_ = XmCreateFormDialog(parent_, (char*)"networkDialog", args, n);
+    tx::fixed_size(dialog_);
     XmStringFree(title);
 
     XmString cl = xmstr("Close");

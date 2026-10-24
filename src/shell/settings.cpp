@@ -1,4 +1,5 @@
 #include "shell/settings.h"
+#include "../../tx/dialog.h"
 #include "../../tx/fontchooser.h"
 #include "shell/colorspage.h"
 #include "shell/shortcutsdlg.h"
@@ -334,6 +335,7 @@ void SettingsDialog::build()
     XtSetArg(args[n], XmNmarginWidth, scaled(10)); n++;
     XtSetArg(args[n], XmNmarginHeight, scaled(10)); n++;
     dialog_ = XmCreateFormDialog(parent_, (char*)"settingsDialog", args, n);
+    tx::fixed_size(dialog_);
     XmStringFree(title);
 
     /* Categories on the left, the chosen page on the right. */

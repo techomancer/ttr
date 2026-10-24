@@ -15,6 +15,7 @@
 
 #include "../../te/file.h"
 #include "../../tw/grid_widget.h"
+#include "../../tx/dialog.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -239,6 +240,7 @@ void App::show_find_in_files(bool replace)
         Arg a[1];
         XtSetArg(a[0], XmNautoUnmanage, False);
         fif_dlg_ = XmCreateFormDialog(top_, (char*)"findInFiles", a, 1);
+        tx::fixed_size(fif_dlg_);
         XtVaSetValues(fif_dlg_, XmNmarginWidth, 10, XmNmarginHeight, 10, (char*)0);
         Widget page = XtVaCreateManagedWidget("page", xmRowColumnWidgetClass, fif_dlg_,
                                               XmNorientation, XmVERTICAL, XmNspacing, 4,

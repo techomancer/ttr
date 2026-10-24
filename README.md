@@ -19,7 +19,10 @@ run as a window manager there yet. A Wayland mode is planned for later
 
 - **Window frames** in the Motif style: title bar, window menu, minimize and
   maximize buttons, resize handles. Double-click the window menu button to
-  close a window, or the title bar to maximize it.
+  close a window, or the title bar to maximize it. A window that cannot be
+  resized (Motif's window manager hints, or the same minimum and maximum
+  size) gets a thin border and no Maximize; ttr's own settings dialogs are
+  such windows.
 - **Focus** by click or by following the mouse.
 - **Alt+Tab** either Windows-style (a list of icons, most recently used
   first) or mwm/CDE-style (cycles through the stack).

@@ -9,6 +9,7 @@
 
 #include "../../tw/grid_widget.h"
 #include "../../tx/fontchooser.h"
+#include "../../tx/dialog.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -211,6 +212,7 @@ void App::show_options()
         Arg a[2];
         XtSetArg(a[0], XmNautoUnmanage, False);
         opt_dlg_ = XmCreateFormDialog(top_, (char*)"optionsDialog", a, 1);
+        tx::fixed_size(opt_dlg_);
         XtVaSetValues(XtParent(opt_dlg_), XmNtitle, "Options", (char*)0);
         XtVaSetValues(opt_dlg_, XmNmarginWidth, 10, XmNmarginHeight, 10, (char*)0);
         Widget page = XtVaCreateManagedWidget("page", xmRowColumnWidgetClass, opt_dlg_,

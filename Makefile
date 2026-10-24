@@ -358,7 +358,7 @@ $(B)/te_test_te.o: $(B)/.dir te/test/test_te.cpp $(TE_H)
 # tx, Motif pieces every ttr program shares (tx/DESIGN.md): the font
 # chooser.
 TX_OBJS = $(B)/tx_fontchooser.o
-TX_H = tx/fontchooser.h src/core/str.h src/core/vector.h
+TX_H = tx/fontchooser.h tx/dialog.h src/core/str.h src/core/vector.h
 
 $(B)/libtx.a: $(TX_OBJS)
 	rm -f $@
@@ -768,14 +768,14 @@ $(B)/core_xdgautostart.o: $(B)/.dir src/core/xdgautostart.cpp $(CORE_H)
 	$(COMPILE) -c src/core/xdgautostart.cpp -o $@
 
 $(B)/shell_colorpicker.o: $(B)/.dir src/shell/colorpicker.cpp $(SHELL_H) \
-		$(CORE_H)
+		$(CORE_H) $(TX_H)
 	$(COMPILE) -c src/shell/colorpicker.cpp -o $@
 
 $(B)/shell_colorspage.o: $(B)/.dir src/shell/colorspage.cpp $(SHELL_H) \
 		$(X11_H)
 	$(COMPILE) -c src/shell/colorspage.cpp -o $@
 
-$(B)/shell_netstatus.o: $(B)/.dir src/shell/netstatus.cpp $(SHELL_H) $(X11_H)
+$(B)/shell_netstatus.o: $(B)/.dir src/shell/netstatus.cpp $(SHELL_H) $(X11_H) $(TX_H)
 	$(COMPILE) -c src/shell/netstatus.cpp -o $@
 
 $(B)/shell_notifier.o: $(B)/.dir src/shell/notifier.cpp $(SHELL_H) $(X11_H)
@@ -821,7 +821,7 @@ $(B)/shell_storagemenu.o: $(B)/.dir src/shell/storagemenu.cpp $(SHELL_H) \
 $(B)/shell_tray.o: $(B)/.dir src/shell/tray.cpp $(SHELL_H) $(X11_H)
 	$(COMPILE) -c src/shell/tray.cpp -o $@
 
-$(B)/shell_volume.o: $(B)/.dir src/shell/volume.cpp $(SHELL_H) $(X11_H)
+$(B)/shell_volume.o: $(B)/.dir src/shell/volume.cpp $(SHELL_H) $(X11_H) $(TX_H)
 	$(COMPILE) -c src/shell/volume.cpp -o $@
 
 $(B)/shell_winmenu.o: $(B)/.dir src/shell/winmenu.cpp $(SHELL_H) $(CORE_H)

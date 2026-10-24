@@ -773,7 +773,10 @@ bool Wm::on_property(XPropertyEvent* ev)
         if (switching_)
             paint_switch();
     } else if (ev->atom == XA_WM_NORMAL_HINTS) {
+        /* A fixed size takes the resize border away (read_size_hints). */
+        read_decor(c);
         read_size_hints(c);
+        apply_state(c, false);
     } else if (ev->atom == XA_WM_HINTS) {
         read_wm_hints(c);
         if (!c->icon) {     /* an icon pixmap may have been added */
@@ -1454,6 +1457,15 @@ void Wm::read_size_hints(Client* c)
     }
     if (h.flags & PWinGravity)
         c->gravity = h.win_gravity;
+    /* Minimum and maximum the same: a window that cannot be resized (the
+     * ICCCM's way; Xt, GTK and Qt say it so). No resize border, no
+     * maximizing, no docking, as in mwm. */
+    if ((h.flags & PMinSize) && (h.flags & PMaxSize) && h.min_width > 0 && h.min_height > 0 &&
+        h.min_width == h.max_width && h.min_height == h.max_height) {
+        c->decor.resizeh = false;
+        c->decor.maximize = false;
+        c->actions &= ~((1u << ACT_SIZE) | (1u << ACT_MAXIMIZE));
+    }
     int min_w = theme_.min_client_w(c->decor);
     if (c->size.min_w < min_w)
         c->size.min_w = min_w;

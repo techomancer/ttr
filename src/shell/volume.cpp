@@ -1,4 +1,5 @@
 #include "shell/volume.h"
+#include "../../tx/dialog.h"
 #include "shell/runcmd.h"
 #include "core/icon.h"
 #include "core/launch.h"
@@ -249,6 +250,7 @@ void VolumeControl::build_dialog()
     XtSetArg(args[n], XmNmarginWidth, scaled(10)); n++;
     XtSetArg(args[n], XmNmarginHeight, scaled(10)); n++;
     dialog_ = XmCreateFormDialog(parent_, (char*)"volumeDialog", args, n);
+    tx::fixed_size(dialog_);
     XmStringFree(title);
 
     n = 0;

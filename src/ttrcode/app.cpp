@@ -1,5 +1,6 @@
 #include "app.h"
 
+#include "../../tx/dialog.h"
 #include "../../tx/fontchooser.h"
 
 #include "../../te/file.h"
@@ -1280,6 +1281,7 @@ void App::show_find(bool replace)
         Arg a[2];
         XtSetArg(a[0], XmNautoUnmanage, False);
         find_dlg_ = XmCreateTemplateDialog(top_, (char*)"findDialog", a, 1);
+        tx::fixed_size(find_dlg_);
         Widget work = XtVaCreateManagedWidget("work", xmFormWidgetClass, find_dlg_, (char*)0);
         Widget l1 = XtVaCreateManagedWidget("Find what:", xmLabelWidgetClass, work,
                                             XmNtopAttachment, XmATTACH_FORM, XmNtopOffset, 6,

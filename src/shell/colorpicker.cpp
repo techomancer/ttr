@@ -1,4 +1,5 @@
 #include "shell/colorpicker.h"
+#include "../../tx/dialog.h"
 #include "core/scale.h"
 #include "core/theme.h"     /* parse_hex_color() */
 
@@ -115,6 +116,7 @@ void ColorPicker::build(Widget parent)
     XtSetArg(args[n], XmNmarginWidth, scaled(10)); n++;
     XtSetArg(args[n], XmNmarginHeight, scaled(10)); n++;
     dialog_ = XmCreateFormDialog(parent, (char*)"colorPicker", args, n);
+    tx::fixed_size(dialog_);
     XtAddCallback(dialog_, XmNdestroyCallback, destroyed_cb, (XtPointer)this);
 
     n = 0;
