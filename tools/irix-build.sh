@@ -16,14 +16,18 @@ ROOT=`dirname "$0"`/..
 # XtSetArg of a pointer triggers.
 CXXFLAGS=${IRIX_CXXFLAGS:-"-n32 -O2 -LANG:exceptions=OFF -no_prelink -ptused -woff 3970"}
 # IRIX 6.5's /usr/include/Xm is Motif 1.2; Motif 2.1 (IRIX IM 2.1, libXm.so.2)
-# is in /usr/Motif-2.1, which is the ttr floor. No PNG: IRIX 6.5 ships libpng
-# 1.2.5 and src/x11/iconload.cpp uses the simplified API of libpng 1.6.
+# is in /usr/Motif-2.1, which is the ttr floor. ti's image libraries: IRIX 6.5
+# has libpng 1.2.5, libjpeg 6a and libtiff 3.4 but no giflib (ti's built-in
+# decoder reads GIF); stb_image needs C99 mode for <stdint.h>.
 CPPFLAGS=${IRIX_CPPFLAGS:-"-Isrc -I/usr/Motif-2.1/include -DTTR_HAVE_XPM -DTTR_HAVE_SVG"}
 LDFLAGS=${IRIX_LDFLAGS:-"-L/usr/Motif-2.1/lib32"}
 LIBS=${IRIX_LIBS:-"-lXm -lXt -lXpm -lX11 -lm"}
+TI_CPPFLAGS=${IRIX_TI_CPPFLAGS:-"-DTTR_HAVE_PNG -DTTR_HAVE_JPEG -DTTR_HAVE_TIFF"}
+TI_LIBS=${IRIX_TI_LIBS:-"-lpng -ljpeg -ltiff -lz"}
 TARGETS=${*:-all}
 
 exec python3 "$ROOT/tools/irix-sh.py" --timeout 7200 run \
     "cd /shared && make B=build-irix CXX=CC CXXFLAGS='$CXXFLAGS' WARNFLAGS= \
      CPPFLAGS='$CPPFLAGS' DBUS_CFLAGS= LDFLAGS='$LDFLAGS' LIBS='$LIBS' \
+     TI_CPPFLAGS='$TI_CPPFLAGS' TI_LIBS='$TI_LIBS' STB_CFLAGS=-c99 \
      TP_SYS=build-irix/tp_sys_irix.o TF_SYS=build-irix/tf_sys_irix.o CC=cc CFLAGS='-n32 -O2' $TARGETS 2>&1"

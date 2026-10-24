@@ -14,9 +14,10 @@
 #        CC=cc CFLAGS=-n32
 #                                     (IRIX 6.5, MIPSpro; see README "Building on IRIX")
 #
-# TTR_HAVE_PNG, TTR_HAVE_XPM and TTR_HAVE_SVG enable icon files in those
-# formats; drop the define (and library) to build without one. SVG uses the
-# nanosvg submodule: git submodule update --init
+# TTR_HAVE_XPM and TTR_HAVE_SVG enable icon files in those formats; drop
+# the define (and library) to build without one. SVG uses the nanosvg
+# submodule: git submodule update --init. PNG icons and the viewer's
+# images go through ti, whose libraries are TI_CPPFLAGS and TI_LIBS.
 #
 # Every object has an explicit rule. When you add a source file, add its
 # object to OBJS and give it a rule listing the headers it includes.
@@ -27,14 +28,14 @@ CXXFLAGS = -std=c++98 -O2 -g -fno-exceptions -fno-rtti
 CC = cc
 CFLAGS = -O2 -g
 WARNFLAGS = -pedantic -Wall -Wextra
-CPPFLAGS = -Isrc -DTTR_HAVE_PNG -DTTR_HAVE_XPM -DTTR_HAVE_SVG -DTTR_HAVE_DBUS
+CPPFLAGS = -Isrc -DTTR_HAVE_XPM -DTTR_HAVE_SVG -DTTR_HAVE_DBUS
 # libdbus-1 for desktop notifications. Its include directories differ per
 # distribution: make DBUS_CFLAGS="`pkg-config --cflags dbus-1`" if these
 # are wrong, or drop -DTTR_HAVE_DBUS and -ldbus-1 to build without it.
 DBUS_CFLAGS = -I/usr/include/dbus-1.0 -I/usr/lib64/dbus-1.0/include \
 	-I/usr/lib/dbus-1.0/include -I/usr/lib/x86_64-linux-gnu/dbus-1.0/include
 LDFLAGS =
-LIBS = -lXm -lXt -lXpm -lpng -ldbus-1 -lX11 -lm
+LIBS = -lXm -lXt -lXpm -ldbus-1 -lX11 -lm
 # tw's renderers: the soft one uses MIT-SHM (libXext), the GL one OpenGL
 # 1.1 through GLX. Without OpenGL: make GL_CPPFLAGS= GL_LIBS= (the gl
 # renderer is then absent and -renderer gl falls back to soft).
@@ -121,8 +122,8 @@ CORE_H = $(TH_H) src/core/port.h src/core/vector.h src/core/str.h src/core/geom.
 
 all: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode
 
-$(B)/ttr: $(OBJS) $(B)/libth.a
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(B)/libth.a $(LIBS)
+$(B)/ttr: $(OBJS) $(B)/libth.a $(B)/libti.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(B)/libth.a $(B)/libti.a $(TI_LIBS) $(LIBS)
 
 $(B)/.dir:
 	mkdir -p $(B)
@@ -365,6 +366,58 @@ th-test: $(B)/th_test
 $(B)/th_test_th.o: $(B)/.dir th/test/test_th.cpp $(TH_H)
 	$(COMPILE) -c th/test/test_th.cpp -o $@
 
+# ti, ttr's images (ti/DESIGN.md): decoders and terminal encodings.
+# TI_CPPFLAGS names the image libraries the build has and TI_LIBS links
+# them; a format without its library uses the built-in decoder
+# (stb_image, third_party/stb), and TIFF has none. STB_CFLAGS: extra C
+# flags for stb_image (-fwrapv: its IDCT overflows on damaged files;
+# IRIX: STB_CFLAGS=-c99). "make ti-test" runs its tests.
+TI_CPPFLAGS = -DTTR_HAVE_PNG -DTTR_HAVE_JPEG -DTTR_HAVE_GIF -DTTR_HAVE_TIFF
+TI_LIBS = -lpng -ljpeg -lgif -ltiff
+STB_CFLAGS = -fwrapv
+TI_OBJS = $(B)/ti_image.o \
+	$(B)/ti_png.o \
+	$(B)/ti_jpeg.o \
+	$(B)/ti_gif.o \
+	$(B)/ti_tiff.o \
+	$(B)/ti_sgi.o \
+	$(B)/ti_builtin.o \
+	$(B)/ti_stb_image.o \
+	$(B)/ti_term.o
+TI_H = ti/ti.h ti/term.h ti/internal.h
+
+$(B)/libti.a: $(TI_OBJS)
+	rm -f $@
+	$(AR) rc $@ $(TI_OBJS)
+
+$(B)/ti_image.o: $(B)/.dir ti/image.cpp $(TI_H)
+	$(COMPILE) $(TI_CPPFLAGS) -c ti/image.cpp -o $@
+$(B)/ti_png.o: $(B)/.dir ti/png.cpp $(TI_H)
+	$(COMPILE) $(TI_CPPFLAGS) -c ti/png.cpp -o $@
+$(B)/ti_jpeg.o: $(B)/.dir ti/jpeg.cpp $(TI_H)
+	$(COMPILE) $(TI_CPPFLAGS) -c ti/jpeg.cpp -o $@
+$(B)/ti_gif.o: $(B)/.dir ti/gif.cpp $(TI_H)
+	$(COMPILE) $(TI_CPPFLAGS) -c ti/gif.cpp -o $@
+$(B)/ti_tiff.o: $(B)/.dir ti/tiff.cpp $(TI_H)
+	$(COMPILE) $(TI_CPPFLAGS) -c ti/tiff.cpp -o $@
+$(B)/ti_sgi.o: $(B)/.dir ti/sgi.cpp $(TI_H)
+	$(COMPILE) -c ti/sgi.cpp -o $@
+$(B)/ti_builtin.o: $(B)/.dir ti/builtin.cpp $(TI_H)
+	$(COMPILE) -c ti/builtin.cpp -o $@
+$(B)/ti_stb_image.o: $(B)/.dir ti/third/stb_image.c third_party/stb/stb_image.h
+	$(CC) $(CFLAGS) $(STB_CFLAGS) -c ti/third/stb_image.c -o $@
+$(B)/ti_term.o: $(B)/.dir ti/term.cpp $(TI_H)
+	$(COMPILE) -c ti/term.cpp -o $@
+
+$(B)/ti_test: $(B)/ti_test_ti.o $(B)/libti.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/ti_test_ti.o $(B)/libti.a $(TI_LIBS) -lm
+
+ti-test: $(B)/ti_test
+	$(B)/ti_test
+
+$(B)/ti_test_ti.o: $(B)/.dir ti/test/test_ti.cpp $(TI_H)
+	$(COMPILE) -c ti/test/test_ti.cpp -o $@
+
 # tf, ttrc's file systems (ttrc/DESIGN.md section 5): libtf.a and its
 # tests. TF_SYS is the per-system part: tf_sys_linux.o or tf_sys_irix.o
 # (IRIX: make TF_SYS=$(B)/tf_sys_irix.o).
@@ -434,13 +487,13 @@ TTRC_OBJS = $(B)/ttrc_main.o \
 	$(B)/core_str.o
 TTRC_H = src/ttrc/app.h src/ttrc/cmdline.h src/ttrc/config.h src/ttrc/panel.h src/ttrc/shell.h \
 	src/ttrc/theme.h src/ttrc/viewer.h $(TU_H) $(TF_H) $(TL_TERMINAL_H) tp/tp.h \
-	src/core/str.h src/core/vector.h
+	src/core/str.h src/core/vector.h ti/ti.h ti/term.h
 
 ttrc: $(B)/ttrc
 
-$(B)/ttrc: $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a $(B)/libtl.a $(B)/libtp.a
+$(B)/ttrc: $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a $(B)/libtl.a $(B)/libtp.a $(B)/libti.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRC_OBJS) $(B)/libtu.a $(B)/libtf.a \
-		$(B)/libtl.a $(B)/libtp.a
+		$(B)/libtl.a $(B)/libtp.a $(B)/libti.a $(TI_LIBS)
 
 $(B)/ttrc_main.o: $(B)/.dir src/ttrc/main.cpp $(TTRC_H)
 	$(COMPILE) -c src/ttrc/main.cpp -o $@
@@ -733,7 +786,7 @@ $(B)/x11_config.o: $(B)/.dir src/x11/config.cpp $(X11_H)
 $(B)/x11_hints.o: $(B)/.dir src/x11/hints.cpp $(X11_H)
 	$(COMPILE) -c src/x11/hints.cpp -o $@
 
-$(B)/x11_iconload.o: $(B)/.dir src/x11/iconload.cpp $(X11_H)
+$(B)/x11_iconload.o: $(B)/.dir src/x11/iconload.cpp $(X11_H) ti/ti.h
 	$(COMPILE) -c src/x11/iconload.cpp -o $@
 
 # Vendored code: our flags, but not our warnings.

@@ -5,9 +5,7 @@
 #if defined(TTR_HAVE_XPM)
 #include <X11/xpm.h>
 #endif
-#if defined(TTR_HAVE_PNG)
-#include <png.h>
-#endif
+#include "../../ti/ti.h"
 #if defined(TTR_HAVE_SVG)
 #include "x11/svg.h"
 #endif
@@ -103,40 +101,36 @@ Icon* icon_from_ximage(Display* dpy, XImage* img, XImage* mask,
 
 static const int k_max_file_icon = 1024;
 
-#if defined(TTR_HAVE_PNG)
+/* PNG through ti (libpng's classic API, from 1.2 on, or stb_image). */
 static Icon* load_png(const char* path)
 {
-    png_image image;
-    memset(&image, 0, sizeof(image));
-    image.version = PNG_IMAGE_VERSION;
-    if (!png_image_begin_read_from_file(&image, path))
+    FILE* f = fopen(path, "rb");
+    if (!f)
         return 0;
-    if (image.width == 0 || image.height == 0 ||
-        image.width > (unsigned)k_max_file_icon ||
-        image.height > (unsigned)k_max_file_icon) {
-        png_image_free(&image);
+    /* A 1024x1024 icon fits in this many bytes uncompressed. */
+    const size_t max = 4u << 20;
+    unsigned char* d = (unsigned char*)malloc(max);
+    size_t n = d ? fread(d, 1, max, f) : 0;
+    fclose(f);
+    ti::Image im;
+    ti::Info info;
+    char err[200];
+    bool ok = d && n < max && ti::sniff(d, n) == ti::FMT_PNG &&
+              ti::decode(d, n, &im, &info, err, sizeof(err)) && im.w <= k_max_file_icon &&
+              im.h <= k_max_file_icon;
+    free(d);
+    if (!ok)
         return 0;
-    }
-    /* Byte order RGBA, packed by hand so it works on either endianness. */
-    image.format = PNG_FORMAT_RGBA;
-    unsigned char* buf = new unsigned char[PNG_IMAGE_SIZE(image)];
-    if (!png_image_finish_read(&image, 0, buf, 0, 0)) {
-        png_image_free(&image);
-        delete [] buf;
-        return 0;
-    }
-    Icon* ic = new Icon(image.width, image.height);
+    Icon* ic = new Icon(im.w, im.h);
     uint32_t* px = ic->pixels();
-    unsigned long i, n = (unsigned long)image.width * image.height;
-    for (i = 0; i < n; i++) {
-        const unsigned char* p = buf + i * 4;
+    unsigned long i, np = (unsigned long)im.w * im.h;
+    for (i = 0; i < np; i++) {
+        const unsigned char* p = im.rgba + i * 4;
         px[i] = ((uint32_t)p[3] << 24) | ((uint32_t)p[0] << 16) |
                 ((uint32_t)p[1] << 8) | (uint32_t)p[2];
     }
-    delete [] buf;
     return ic;
 }
-#endif
 
 #if defined(TTR_HAVE_XPM)
 static Icon* load_xpm(Display* dpy, const char* path)
@@ -212,10 +206,8 @@ Icon* IconLoader::load_file(const char* path, int size)
         return 0;
     }
 #endif
-#if defined(TTR_HAVE_PNG)
     if (ends_with(path, ".png"))
         return load_png(path);
-#endif
 #if defined(TTR_HAVE_XPM)
     if (ends_with(path, ".xpm"))
         return load_xpm(dpy_, path);
@@ -235,9 +227,7 @@ static const char* const k_contexts[] = {
     "legacy", 0
 };
 static const char* const k_bitmap_exts[] = {
-#if defined(TTR_HAVE_PNG)
     ".png",
-#endif
 #if defined(TTR_HAVE_XPM)
     ".xpm",
 #endif
@@ -303,9 +293,7 @@ bool IconLoader::find(const char* name, int size, char* path, int len)
 
     /* <datadir>/pixmaps, next to each <datadir>/icons. */
     static const char* const pixmap_exts[] = {
-#if defined(TTR_HAVE_PNG)
         ".png",
-#endif
 #if defined(TTR_HAVE_XPM)
         ".xpm",
 #endif

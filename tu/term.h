@@ -60,6 +60,9 @@ public:
     int cols() const { return cols_; }
     int rows() const { return rows_; }
     bool update_size();
+    /* A cell's size in pixels, where the terminal tells (most that show
+     * images do); false if it does not. */
+    bool cell_pixels(int* w, int* h) const;
     /* For tests and non-terminals: a fixed size. */
     void set_size(int cols, int rows) { cols_ = cols; rows_ = rows; }
 

@@ -10,6 +10,7 @@ namespace ttrc {
 namespace {
 
 const size_t k_max_view = 64u << 20;
+const unsigned k_kitty_id = 4711;
 const int k_tab = 8;
 
 /* One character at p: its bytes, columns and what to draw. Control
@@ -165,7 +166,9 @@ void FullScreen::set_note(const char* n)
 
 Viewer::Viewer()
     : data_(0), len_(0), truncated_(false), hex_(false), wrap_(true), top_line_(0), top_sub_(0),
-      left_(0), hex_top_(0), rows_(20), width_(80), bpr_(16), hit_(0), hit_len_(0), pat_len_(0)
+      left_(0), hex_top_(0), rows_(20), width_(80), bpr_(16), hit_(0), hit_len_(0), pat_len_(0),
+      proto_(ti::PROTO_OFF), term_(0), image_(false), img_x_(0), img_y_(0), img_cols_(0),
+      img_rows_(0), img_bg_(0), over_dirty_(true), over_shown_(false)
 {
     name_[0] = 0;
 }
@@ -173,6 +176,12 @@ Viewer::Viewer()
 Viewer::~Viewer()
 {
     free(data_);
+}
+
+void Viewer::set_images(ti::Protocol p, const tu::Term* term)
+{
+    proto_ = p;
+    term_ = term;
 }
 
 int Viewer::load(tf::Fs* fs, const char* path)
@@ -223,6 +232,21 @@ int Viewer::load(tf::Fs* fs, const char* path)
             bad++;
     }
     hex_ = look > 0 && bad > look / 20;
+    if (proto_ != ti::PROTO_OFF && !truncated_ &&
+        ti::sniff((const unsigned char*)data_, len_) != ti::FMT_UNKNOWN) {
+        char err[200];
+        ti::DecodeOptions o;
+        /* No terminal shows more; JPEG decodes this much faster. */
+        o.reduce_to = 2048;
+        if (ti::decode((const unsigned char*)data_, len_, &img_, &img_info_, err, sizeof(err), o)) {
+            image_ = true;
+        } else {
+            char n[260];
+            snprintf(n, sizeof(n), "%.200s Showing the bytes.", err);
+            set_note(n);
+            hex_ = true;
+        }
+    }
     return 0;
 }
 
@@ -347,17 +371,26 @@ void Viewer::draw(tu::Screen& s, const Theme& t)
     char st[700], where[80];
     int pct = len_ ? (int)((hex_ ? (double)hex_top_ * bpr_ : (double)line_start(top_line_)) * 100 /
                             (double)len_) : 100;
-    if (hex_)
+    if (image_)
+        sprintf(where, "%s %d x %d (%s)", ti::format_name(img_info_.format), img_info_.width,
+                img_info_.height, img_info_.decoder);
+    else if (hex_)
         sprintf(where, "offset 0x%lx", (unsigned long)hex_top_ * (unsigned long)bpr_);
     else
         sprintf(where, "line %ld of %d", top_line_ + 1, lines_.size());
-    snprintf(st, sizeof(st), " %s   %s   %d%%   %lu bytes%s%s%s", name_, where, pct,
-             (unsigned long)len_, hex_ ? "   [hex]" : "", !hex_ && !wrap_ ? "   [unwrapped]" : "",
+    char pcts[16] = "";
+    if (!image_)
+        sprintf(pcts, "%d%%   ", pct);
+    snprintf(st, sizeof(st), " %s   %s   %s%lu bytes%s%s%s", name_, where, pcts,
+             (unsigned long)len_, image_ ? "   [image]" : hex_ ? "   [hex]" : "",
+             !image_ && !hex_ && !wrap_ ? "   [unwrapped]" : "",
              truncated_ ? "   [first 64 MB]" : "");
     s.fill(0, 0, w, 1, ' ', t.text_status);
     s.text(0, 0, note_[0] ? note_ : st, t.text_status, w);
 
-    if (hex_) {
+    if (image_) {
+        draw_image(s, t);
+    } else if (hex_) {
         bpr_ = w >= 75 ? 16 : 8;
         for (int r = 0; r < rows_; r++) {
             size_t off = (size_t)(hex_top_ + r) * (size_t)bpr_;
@@ -429,9 +462,9 @@ void Viewer::draw(tu::Screen& s, const Theme& t)
             sub = 0;
         }
     }
-    static const char* const keys[10] = {
-        "Help", wrap_ ? "UnWrap" : "Wrap", "Quit", hex_ ? "Ascii" : "Hex", "Goto", "",
-        "Search", "", "", "Quit"
+    const char* const keys[10] = {
+        "Help", image_ ? "" : wrap_ ? "UnWrap" : "Wrap", "Quit", hex_ && !image_ ? "Ascii" : "Hex",
+        "Goto", img_.empty() ? "" : image_ ? "Text" : "Image", "Search", "", "", "Quit"
     };
     key_bar(s, t, keys);
     s.set_cursor(0, 0, false);
@@ -440,6 +473,36 @@ void Viewer::draw(tu::Screen& s, const Theme& t)
 ToolRequest Viewer::handle(const tu::Event& ev)
 {
     note_[0] = 0;
+    if (image_) {
+        /* Only leaving the image means anything here. */
+        bool fkey = ev.key >= tu::KEY_F1 && ev.key <= tu::KEY_F1 + 9;
+        int n = fkey ? ev.key - tu::KEY_F1 + 1 : 0;
+        int ch = ev.key == tu::KEY_CHAR && !(ev.mods & tu::MOD_CTRL) ? (int)ev.ch : 0;
+        if (n == 1) {
+            set_note("F4 or h: the bytes in hex. F6 or i: the image again from text or hex. q quits.");
+            return REQ_NONE;
+        }
+        if (n == 4 || ch == 'h' || ch == 'H') {
+            image_to_hex();
+            return REQ_NONE;
+        }
+        if (n == 6 || ch == 'i') {
+            image_to_hex();
+            hex_ = false;
+            return REQ_NONE;
+        }
+        if (n == 5 || ch == 'g') {
+            image_to_hex();
+            return REQ_GOTO;
+        }
+        if (n == 7 || ch == '/') {
+            image_to_hex();
+            return REQ_SEARCH;
+        }
+        if (n == 3 || n == 10 || ch == 'q' || ev.key == tu::KEY_ESC)
+            return REQ_CLOSE;
+        return REQ_NONE;
+    }
     if (ev.key == tu::KEY_MOUSE) {
         if (ev.action == tu::MOUSE_WHEEL_UP)
             scroll(-3);
@@ -484,7 +547,7 @@ ToolRequest Viewer::handle(const tu::Event& ev)
     if (ev.key >= tu::KEY_F1 && ev.key <= tu::KEY_F1 + 9) {
         int n = ev.key - tu::KEY_F1 + 1;
         switch (n) {
-        case 1: set_note("Arrows, PgUp/PgDn, Home/End move. F2 wrap. F4 hex. F5 go to. F7 or / search, n next. q quit."); return REQ_NONE;
+        case 1: set_note("Arrows, PgUp/PgDn, Home/End move. F2 wrap. F4 hex. F5 go to. F6 image. F7 or / search, n next. q quit."); return REQ_NONE;
         case 2:
             if (!hex_) {
                 wrap_ = !wrap_;
@@ -499,6 +562,12 @@ ToolRequest Viewer::handle(const tu::Event& ev)
             return REQ_NONE;
         }
         case 5: return REQ_GOTO;
+        case 6:
+            if (!img_.empty()) {
+                image_ = true;
+                over_dirty_ = true;
+            }
+            return REQ_NONE;
         case 7:
             if (ev.mods & tu::MOD_SHIFT) {
                 search_again();
@@ -524,10 +593,141 @@ ToolRequest Viewer::handle(const tu::Event& ev)
         }
         case 'w': wrap_ = !wrap_; top_sub_ = 0; left_ = 0; return REQ_NONE;
         case 'g': return REQ_GOTO;
+        case 'i':
+            if (!img_.empty()) {
+                image_ = true;
+                over_dirty_ = true;
+            }
+            return REQ_NONE;
         default: return REQ_NONE;
         }
     }
     return REQ_NONE;
+}
+
+void Viewer::image_to_hex()
+{
+    if (!image_)
+        return;
+    image_ = false;
+    hex_ = true;
+    hex_top_ = 0;
+    if (over_shown_)
+        redraw_ = true;
+}
+
+void Viewer::draw_image(tu::Screen& s, const Theme& t)
+{
+    int w = s.cols(), area = rows_;
+    if (term_ && term_->tier() == tu::TIER_BASIC && proto_ == ti::PROTO_BLOCKS) {
+        const char* m = "This terminal has no colours for the image: F4 shows its bytes.";
+        s.text(2, 1 + area / 2, m, t.text, w - 4);
+        return;
+    }
+    unsigned long bg = 0;
+    if (t.text.bg != tu::COLOR_DEFAULT && !tu::is_indexed(t.text.bg))
+        bg = t.text.bg & 0xffffffUL;
+    /* A cell's pixels: the terminal's, or the usual 1:2. */
+    int cw = 8, ch = 16;
+    if (term_ && !term_->cell_pixels(&cw, &ch)) {
+        cw = 8;
+        ch = 16;
+    }
+    bool blocks = proto_ == ti::PROTO_BLOCKS || proto_ == ti::PROTO_OFF;
+    bool half = !term_ || term_->utf8();
+    int vp = blocks && half ? 2 : 1;    /* image rows a cell */
+    int tw, th, cols, rows;
+    if (blocks) {
+        ti::fit(img_.w, img_.h, w, area * vp, (double)cw * vp / ch, false, &tw, &th);
+        cols = tw;
+        rows = (th + vp - 1) / vp;
+    } else {
+        ti::fit(img_.w, img_.h, w * cw, area * ch, 1.0, false, &tw, &th);
+        cols = (tw + cw - 1) / cw;
+        rows = (th + ch - 1) / ch;
+    }
+    if (cols > w)
+        cols = w;
+    if (rows > area)
+        rows = area;
+    int x0 = (w - cols) / 2, y0 = 1 + (area - rows) / 2;
+    if (shown_.w != tw || shown_.h != th || bg != img_bg_ || shown_.empty()) {
+        if (!ti::scale(img_, tw, th, &shown_)) {
+            s.text(2, 1 + area / 2, "Not enough memory to scale the image.", t.text, w - 4);
+            return;
+        }
+        ti::flatten(&shown_, bg);
+        img_bg_ = bg;
+        over_dirty_ = true;
+    }
+    if (x0 != img_x_ || y0 != img_y_ || cols != img_cols_ || rows != img_rows_)
+        over_dirty_ = true;
+    img_x_ = x0;
+    img_y_ = y0;
+    img_cols_ = cols;
+    img_rows_ = rows;
+    if (!blocks)
+        return;     /* paint_over sends it */
+    for (int r = 0; r < rows; r++) {
+        int top = r * vp, bot = top + 1;
+        for (int x = 0; x < cols && x < shown_.w; x++) {
+            const unsigned char* a = shown_.row(top) + x * 4;
+            tu::Color ca = (tu::Color)a[0] << 16 | (tu::Color)a[1] << 8 | a[2];
+            if (vp == 2) {
+                tu::Color cb = (tu::Color)bg;
+                if (bot < shown_.h) {
+                    const unsigned char* b = shown_.row(bot) + x * 4;
+                    cb = (tu::Color)b[0] << 16 | (tu::Color)b[1] << 8 | b[2];
+                }
+                /* U+2580 UPPER HALF BLOCK: the top pixel in front. */
+                s.text(x0 + x, y0 + r, "\xe2\x96\x80", tu::Style(ca, cb));
+            } else {
+                s.put(x0 + x, y0 + r, ' ', tu::Style(ca, ca));
+            }
+        }
+    }
+}
+
+void Viewer::paint_over(tu::Term& term, bool all)
+{
+    bool graphics = proto_ == ti::PROTO_KITTY || proto_ == ti::PROTO_SIXEL || proto_ == ti::PROTO_ITERM;
+    if (!graphics)
+        return;
+    if (!image_ || shown_.empty()) {
+        if (over_shown_)
+            hide_over(term);
+        return;
+    }
+    if (!all && !over_dirty_ && over_shown_)
+        return;
+    ti::Bytes b;
+    if (proto_ == ti::PROTO_KITTY && over_shown_)
+        ti::kitty_delete(k_kitty_id, &b);
+    b.addf("\033[%d;%dH", img_y_ + 1, img_x_ + 1);
+    if (proto_ == ti::PROTO_KITTY)
+        ti::encode_kitty(shown_, img_cols_, img_rows_, k_kitty_id, &b);
+    else if (proto_ == ti::PROTO_SIXEL)
+        ti::encode_sixel(shown_, &b);
+    else
+        ti::encode_iterm(shown_, img_cols_, img_rows_, &b);
+    if (b.failed) {
+        set_note("Not enough memory to send the image.");
+        return;
+    }
+    term.write_raw(b.d, b.n);
+    over_shown_ = true;
+    over_dirty_ = false;
+}
+
+void Viewer::hide_over(tu::Term& term)
+{
+    if (over_shown_ && proto_ == ti::PROTO_KITTY) {
+        ti::Bytes b;
+        ti::kitty_delete(k_kitty_id, &b);
+        term.write_raw(b.d, b.n);
+    }
+    over_shown_ = false;
+    over_dirty_ = true;
 }
 
 void Viewer::search_defaults(SearchQuery* q) const

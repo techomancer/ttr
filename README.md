@@ -64,7 +64,8 @@ run as a window manager there yet. A Wayland mode is planned for later
 
 - A C++98 compiler: gcc, clang, or MIPSpro on IRIX.
 - Motif 2.1 or later (Open Motif 2.3 on Linux), Xt and Xlib.
-- libXpm and libpng, for icons.
+- libXpm and libpng, for icons; libjpeg, giflib and libtiff for images in
+  ttrc's viewer. Each but libXpm is optional (see below).
 - libdbus-1, for desktop notifications. This is optional (see below).
 - `make`: GNU make, BSD make and IRIX smake all work.
 
@@ -72,9 +73,9 @@ Package names on some distributions:
 
 | Distribution | Packages |
 |---|---|
-| Gentoo | `x11-libs/motif x11-libs/libXt x11-libs/libXpm media-libs/libpng sys-apps/dbus` |
-| Debian, Ubuntu | `libmotif-dev libxt-dev libxpm-dev libpng-dev libdbus-1-dev` |
-| Arch, CachyOS | `openmotif libxt libxpm libpng dbus` |
+| Gentoo | `x11-libs/motif x11-libs/libXt x11-libs/libXpm media-libs/libpng media-libs/libjpeg-turbo media-libs/giflib media-libs/tiff sys-apps/dbus` |
+| Debian, Ubuntu | `libmotif-dev libxt-dev libxpm-dev libpng-dev libjpeg-dev libgif-dev libtiff-dev libdbus-1-dev` |
+| Arch, CachyOS | `openmotif libxt libxpm libpng libjpeg-turbo giflib libtiff dbus` |
 
 ### Build
 
@@ -89,7 +90,7 @@ make
 
 In a checkout made without `--recursive`, run
 `git submodule update --init` first (the submodules bring nanosvg and
-ttrt's Unicode fonts). The programs are `build/ttr`,
+ttrt's Unicode fonts, and stb_image, ttr's built-in image decoder). The programs are `build/ttr`,
 `build/ttrt` (the terminal), `build/ttrc` (the file manager), `build/ttre`
 (the text editor) and `build/ttrcode` (the code editor).
 
@@ -105,8 +106,13 @@ make clean
 
 To build without D-Bus (no desktop notifications from applications), remove
 `-DTTR_HAVE_DBUS` from `CPPFLAGS` and `-ldbus-1` from `LIBS`. Similarly,
-leave out `TTR_HAVE_PNG`, `TTR_HAVE_XPM` or `TTR_HAVE_SVG` (and the
-matching library) to drop an icon format. The top of the
+leave out `TTR_HAVE_XPM` or `TTR_HAVE_SVG` (and the matching library) to
+drop an icon format. The image libraries are named by `TI_CPPFLAGS`
+(`-DTTR_HAVE_PNG -DTTR_HAVE_JPEG -DTTR_HAVE_GIF -DTTR_HAVE_TIFF`) and
+`TI_LIBS` (`-lpng -ljpeg -lgif -ltiff`); drop one and PNG, JPEG or GIF
+are read by the built-in decoder instead, while TIFF is not read at all
+(see [ti/DESIGN.md](ti/DESIGN.md)). `make ti-test` decodes the test
+images with both. The top of the
 [Makefile](Makefile) has an example command line for IRIX with MIPSpro.
 
 ### Building on IRIX
@@ -119,6 +125,8 @@ make B=build-irix CXX=CC WARNFLAGS= DBUS_CFLAGS= \
      CXXFLAGS="-n32 -O2 -LANG:exceptions=OFF -no_prelink -ptused -woff 3970" \
      CPPFLAGS="-Isrc -I/usr/Motif-2.1/include -DTTR_HAVE_XPM -DTTR_HAVE_SVG" \
      LDFLAGS=-L/usr/Motif-2.1/lib32 LIBS="-lXm -lXt -lXpm -lX11 -lm" \
+     TI_CPPFLAGS="-DTTR_HAVE_PNG -DTTR_HAVE_JPEG -DTTR_HAVE_TIFF" \
+     TI_LIBS="-lpng -ljpeg -ltiff -lz" STB_CFLAGS=-c99 \
      TP_SYS=build-irix/tp_sys_irix.o
 ```
 
@@ -126,9 +134,10 @@ make B=build-irix CXX=CC WARNFLAGS= DBUS_CFLAGS= \
 
 IRIX 6.5 installs Motif 1.2 as the default `Xm` headers and library; ttr
 needs Motif 2.1 (the `motif21_dev` product), which lives in
-`/usr/Motif-2.1`, hence the include and library paths. PNG icons are left
-out because the libpng in IRIX 6.5 (1.2.5) lacks the simplified API that
-ttr's PNG loader uses; XPM and SVG icons work. `-woff 3970` silences
+`/usr/Motif-2.1`, hence the include and library paths. IRIX 6.5's own
+libpng 1.2.5, libjpeg 6a and libtiff read images; it has no giflib, so
+GIF goes to the built-in decoder, whose source needs C99 mode
+(`STB_CFLAGS=-c99`). `-woff 3970` silences
 MIPSpro's warning about the pointer cast inside every `XtSetArg`.
 `B=build-irix` keeps the IRIX objects apart from a Linux build of the same
 tree, which matters when the tree is shared over NFS. `-no_prelink
@@ -534,7 +543,18 @@ which ttrc removes when it quits.
 or not, or hex; F7 or `/` searches for text or, with Hex bytes chosen,
 for bytes such as `de ad be ef`; `n` finds the next; F5 or `g` goes to a
 line, or in hex to a file offset such as `0x1f40`, `1f40h` or `8000`;
-`q` quits); it also reads files inside archives. F4 edits the file in ttre, ttr's editor
+`q` quits); it also reads files inside archives.
+
+Images (PNG, JPEG, GIF, TIFF, BMP, PNM and SGI `.rgb`) show as pictures,
+fitted to the screen: through kitty's graphics protocol in kitty and
+ghostty, iTerm2's in iTerm2 and WezTerm, sixels in foot, mlterm, konsole
+and Windows Terminal, and in half blocks (two coloured pixels a cell)
+everywhere else, including inside tmux. F4 or `h` shows the bytes and F6
+or `i` the picture again. Options > Appearance > "Images in the viewer"
+picks the way, or Off to always see the bytes; ttrc's settings call it
+`viewerImages` (`auto`, `blocks`, `kitty`, `sixel`, `iterm`, `off`).
+
+F4 edits the file in ttre, ttr's editor
 (see "The editor (ttre)" below), and Shift+F4 asks for the name of a new
 file to edit. A file in an archive is edited as a temporary copy. Options
 > Configuration switches F3 and F4 to your `$PAGER` and `$EDITOR` (or

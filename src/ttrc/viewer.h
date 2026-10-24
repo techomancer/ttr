@@ -11,8 +11,11 @@
 #include "theme.h"
 
 #include "../../tf/tf.h"
+#include "../../ti/term.h"
+#include "../../ti/ti.h"
 #include "../../tu/input.h"
 #include "../../tu/screen.h"
+#include "../../tu/term.h"
 #include "core/str.h"
 #include "core/vector.h"
 
@@ -48,20 +51,39 @@ public:
     virtual const char* goto_title() const = 0;
     virtual const char* goto_label() const = 0;
     virtual void go_to(const char* where) = 0;
+    /* Graphics the tool sends straight to the terminal after the screen
+     * is flushed (images through kitty, sixel or iTerm2); 'all': the
+     * screen was redrawn or a dialog covered it, so send them again. */
+    virtual void paint_over(tu::Term&, bool all) { (void)all; }
+    /* Take them away: before a dialog, and when the tool closes. */
+    virtual void hide_over(tu::Term&) {}
     /* A note for the status line until the next key. */
     const char* note() const { return note_; }
     void set_note(const char* n);
+    /* The tool asks for the whole screen to be redrawn (to clear what
+     * paint_over left there). */
+    bool take_redraw()
+    {
+        bool r = redraw_;
+        redraw_ = false;
+        return r;
+    }
 
 protected:
-    FullScreen() { note_[0] = 0; }
+    FullScreen() : redraw_(false) { note_[0] = 0; }
     char note_[256];
+    bool redraw_;
 };
 
 class Viewer : public FullScreen {
 public:
     Viewer();
     ~Viewer();
-    /* Read the file (up to 64 MB). 0 or an errno value. */
+    /* How to show images (PROTO_OFF: as bytes) on this terminal; before
+     * load(). */
+    void set_images(ti::Protocol p, const tu::Term* term);
+    /* Read the file (up to 64 MB). 0 or an errno value. An image is
+     * decoded and shown as one; F4 shows its bytes. */
     int load(tf::Fs* fs, const char* path);
     void draw(tu::Screen& s, const Theme& t);
     ToolRequest handle(const tu::Event& ev);
@@ -74,6 +96,8 @@ public:
     /* A line number in text; a file offset in hex (0x1f40, 1f40h, or
      * decimal 8000; a-f digits mean hex). */
     void go_to(const char* where);
+    void paint_over(tu::Term& term, bool all);
+    void hide_over(tu::Term& term);
 
 private:
     size_t line_start(long i) const;
@@ -85,6 +109,9 @@ private:
     void top_to(size_t off, int above = 2);
     int width() const { return width_; }
     long line_of(size_t off) const;
+    void draw_image(tu::Screen& s, const Theme& t);
+    /* Leave the image for the bytes (search, go to). */
+    void image_to_hex();
 
     char* data_;
     size_t len_;
@@ -101,6 +128,17 @@ private:
     SearchQuery last_;
     char pat_[256];             /* the bytes last_ looks for */
     size_t pat_len_;
+
+    /* Images */
+    ti::Protocol proto_;
+    const tu::Term* term_;
+    ti::Image img_;             /* decoded; empty if not an image */
+    ti::Info img_info_;
+    bool image_;                /* showing it */
+    ti::Image shown_;           /* scaled for the last layout */
+    int img_x_, img_y_, img_cols_, img_rows_;   /* its cells */
+    unsigned long img_bg_;
+    bool over_dirty_, over_shown_;
 };
 
 } /* namespace ttrc */

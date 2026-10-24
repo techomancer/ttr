@@ -23,6 +23,7 @@ struct Config {
     bool internal_editor;       /* F4: ttrc's editor, or $EDITOR */
     ttr::Str theme;             /* "" (automatic), or a theme_names() entry */
     ttr::Str tier;              /* "" (automatic), basic, ansi, 256, modern */
+    ttr::Str images;            /* the viewer's: "" (automatic), off, blocks, kitty, sixel, iterm */
     /* Saved state */
     ttr::Str left_dir, right_dir;
     int left_mode, right_mode;  /* ListMode */

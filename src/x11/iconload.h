@@ -2,9 +2,10 @@
  * Loading icons: from X images (window icon pixmaps, XPM files) and from
  * icon files looked up by name in the XDG icon theme directories.
  *
- * Optional formats, enabled by defines so other platforms can leave the
- * libraries out: TTR_HAVE_PNG (libpng 1.6+), TTR_HAVE_XPM (libXpm),
- * TTR_HAVE_SVG (vendored nanosvg, no library needed).
+ * PNG always (through ti: libpng when the build has it, else its built-in
+ * decoder). Optional formats, enabled by defines so other platforms can
+ * leave the libraries out: TTR_HAVE_XPM (libXpm), TTR_HAVE_SVG (vendored
+ * nanosvg, no library needed).
  */
 #ifndef TTR_X11_ICONLOAD_H
 #define TTR_X11_ICONLOAD_H

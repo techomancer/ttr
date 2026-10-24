@@ -1118,6 +1118,7 @@ void App::cmd_view()
         return;
     if (config_.internal_viewer) {
         Viewer v;
+        v.set_images(ti::protocol_from_setting(config_.images.c_str()), &term_);
         int err = v.load(tf::vfs(), active_path().child(e->name.c_str()).c_str());
         if (err) {
             char m[600];
@@ -1303,7 +1304,7 @@ void App::cmd_config()
 
 void App::cmd_appearance()
 {
-    tu::Dialog d("Appearance", 56, 16);
+    tu::Dialog d("Appearance", 78, 16);
     d.add(new tu::Label("Theme:"), 4, 2, 20);
     tu::RadioGroup* th = new tu::RadioGroup();
     th->add("&Automatic");
@@ -1327,14 +1328,28 @@ void App::cmd_appearance()
     for (int i = 0; i < 5; i++)
         if (strcmp(tiers[i], config_.tier.c_str()) == 0)
             tr->selected = i;
-    d.add(tr, 28, 3, 26, tr->h);
-    d.add(new tu::Label("Automatic: what the terminal says it can do."), 4, 10, 48);
+    d.add(tr, 28, 3, 24, tr->h);
+    d.add(new tu::Label("Images in the viewer:"), 54, 2, 22);
+    tu::RadioGroup* im = new tu::RadioGroup();
+    static const char* const images[] = { "", "blocks", "kitty", "sixel", "iterm", "off" };
+    im->add("Auto&matic");
+    im->add("&Half blocks");
+    im->add("&kitty graphics");
+    im->add("&Sixel");
+    im->add("iTerm&2 inline");
+    im->add("O&ff (the bytes)");
+    for (int i = 0; i < 6; i++)
+        if (strcmp(images[i], config_.images.c_str()) == 0)
+            im->selected = i;
+    d.add(im, 54, 3, 22, im->h);
+    d.add(new tu::Label("Automatic: what the terminal says it can do."), 4, 10, 70);
     tu::Button* b[2] = { new tu::Button("&OK", 1, true), new tu::Button("&Cancel", 2) };
     d.add_buttons(13, b, 2);
     if (modal(d, theme_.dialog) != 1)
         return;
     config_.theme = th->selected > 0 ? names[th->selected - 1] : "";
     config_.tier = tiers[tr->selected];
+    config_.images = images[im->selected];
     if (config_.tier.empty()) {
         /* Back to what the terminal said. */
         tu::Term probe;
@@ -1368,17 +1383,32 @@ void App::run_tool(FullScreen* tool)
     tool_ = tool;
     screen_.invalidate();
     bool done = false;
+    bool repaint = true;        /* the tool's graphics, after a full redraw */
     while (!quit_ && !done) {
         draw();
         screen_.flush();
+        tool->paint_over(term_, repaint);
+        repaint = false;
+        int cols = screen_.cols(), rows = screen_.rows();
         bool timed_out = false;
         if (!wait_input(input_.pending() ? input_.timeout_ms() : -1, &timed_out)) {
             quit_ = true;
             break;
         }
+        if (cols != screen_.cols() || rows != screen_.rows())
+            repaint = true;
         tu::Event ev;
         while (!done && input_.next(&ev, timed_out)) {
             ToolRequest r = tool->handle(ev);
+            if (tool->take_redraw()) {
+                screen_.invalidate();
+                repaint = true;
+            }
+            if (r == REQ_SEARCH || r == REQ_GOTO) {
+                /* Dialogs go over the tool's graphics: take them away. */
+                tool->hide_over(term_);
+                repaint = true;
+            }
             switch (r) {
             case REQ_CLOSE:
                 done = true;
@@ -1401,6 +1431,7 @@ void App::run_tool(FullScreen* tool)
             }
         }
     }
+    tool->hide_over(term_);
     tool_ = 0;
     screen_.invalidate();
     panels_[0]->reload();

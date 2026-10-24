@@ -19,6 +19,8 @@ for sh in /bin/sh /bin/bash /bin/zsh /bin/ksh /usr/bin/ksh /bin/csh /usr/bin/tcs
         printf 'line one\nline two\n' > $W/note.txt
         mkdir -p $W/other
         cp $T/../../../tf/test/data/t.tar.gz $W/
+        cp $T/../../../ti/test/data/rgba.png $W/pic.png
+        cp $T/../../../ti/test/data/short.png $W/broken.png
         SHELL=$sh HOME=$W TERM=xterm LANG=C $B/ttrc_drive -s 80x20 $B/ttrc $W $W/other \
             < $d > $W/out 2>&1
         rc=$?

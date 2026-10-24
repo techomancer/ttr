@@ -78,6 +78,7 @@ void Config::load()
     internal_editor = flag(f, "internalEditor", true);
     theme = text(f, "theme", "");
     tier = text(f, "terminal", "");
+    images = text(f, "viewerImages", "");
     left_dir = text(f, "leftDirectory", "");
     right_dir = text(f, "rightDirectory", "");
     left_mode = number(f, "leftListing", 0);
@@ -103,6 +104,7 @@ bool Config::save() const
     f.set("internalEditor", internal_editor ? "true" : "false");
     f.set("theme", theme.c_str());
     f.set("terminal", tier.c_str());
+    f.set("viewerImages", images.c_str());
     if (remember_dirs) {
         f.set("leftDirectory", left_dir.c_str());
         f.set("rightDirectory", right_dir.c_str());

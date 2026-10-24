@@ -281,6 +281,17 @@ int Term::signal_fd() const
     return g_sig_pipe[0];
 }
 
+bool Term::cell_pixels(int* w, int* h) const
+{
+    struct winsize ws;
+    if (ioctl(out_fd_, TIOCGWINSZ, &ws) != 0 || !ws.ws_col || !ws.ws_row || !ws.ws_xpixel ||
+        !ws.ws_ypixel)
+        return false;
+    *w = ws.ws_xpixel / ws.ws_col;
+    *h = ws.ws_ypixel / ws.ws_row;
+    return *w > 0 && *h > 0;
+}
+
 bool Term::update_size()
 {
     int c = 0, r = 0;

@@ -47,7 +47,10 @@ Milestones 3 to 5 implemented 2026-10-22:
   go-to takes a line in text and a file offset in hex; search takes text
   (case folded unless Match case) or hex bytes. The host asks the tool
   for the dialog's labels and defaults (`goto_label`, `search_defaults`),
-  so a tool decides what its questions mean. The
+  so a tool decides what its questions mean. Images are decoded with ti
+  and shown in half blocks through the screen, or sent to the terminal
+  after each flush (`paint_over`), taken away before dialogs
+  (`hide_over`); the setting `viewerImages` picks the protocol. The
   editor began inside ttrc and is now ttre, a program of its own
   (`ttre/DESIGN.md`). F4 runs it in the shell, like any `$EDITOR`. A
   command asked for while the shell is still starting is queued until
@@ -243,8 +246,9 @@ On the modern tier, and partly on 256, tu uses:
   focus events (mode 1004) to re-read the panels when the window comes
   back, SGR mouse with exact cells (1006), styled underlines.
 - **Later effects**, kept in mind but not built now: fading dialogs in
-  and out, smooth scrolling by half-cells with block elements, and
-  images in the viewer through sixel or the kitty graphics protocol.
+  and out, smooth scrolling by half-cells with block elements. Images
+  in the viewer are built: half blocks, kitty, sixel or iTerm2, through
+  ti (`ti/DESIGN.md`).
 
 The application never asks which tier it runs on. It draws "a frame in
 style X", "a shadow", "the theme's colour for selected files", and tu

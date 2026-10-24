@@ -1,0 +1,29 @@
+# F3 on an image: shown as one, F4 its bytes, F6 back; a damaged one
+# shows its bytes with the reason.
+expect Menu
+send \x13pic
+send \r
+send \e[13~
+expect PNG 7 x 5 (libpng
+expect [image]
+expect 6Text
+send \e[14~
+expect 89 50 4e 47
+expect 6Image
+send \e[17~
+expect [image]
+send /
+expect Find:
+send \x1b
+wait 600
+expect [hex]
+send q
+expect Menu
+send \x13broken
+send \r
+send \e[13~
+expect Showing the bytes
+expect 4Ascii
+send q
+expect Menu
+send \e0
