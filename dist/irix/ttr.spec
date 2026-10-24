@@ -1,5 +1,5 @@
 product ttr
-    id "To The Roots: window manager, desktop, terminal and commander"
+    id "To The Roots: window manager, desktop, terminal, commander and code editor"
     image sw
         id "ttr Software"
         version VERSION
@@ -18,6 +18,11 @@ product ttr
             id "ttrc To The Roots Commander (tc)"
             replaces ttr.sw.commander 0 VERSION
             exp ttr.sw.commander
+        endsubsys
+        subsys code default
+            id "ttrcode Code Editor"
+            replaces ttr.sw.code 0 VERSION
+            exp ttr.sw.code
         endsubsys
     endimage
 endproduct

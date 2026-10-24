@@ -199,10 +199,11 @@ tools/irix-dist.sh                      # writes build-irix/ttr-VERSION.tardist
 inst -f ttr-VERSION.tardist             # on IRIX, as root
 ```
 
-The package has three subsystems: `ttr.sw.wm` (ttr and its themes),
-`ttr.sw.term` (ttrt, its fonts and a Desktop toolchest entry) and
-`ttr.sw.commander` (ttrc, with `/usr/bin/tc` as a link to it, since IRIX has
-no other `tc`). Installing it compiles ttrt's terminfo entry into
+The package has four subsystems: `ttr.sw.wm` (ttr and its themes),
+`ttr.sw.term` (ttrt, its fonts and a Desktop toolchest entry),
+`ttr.sw.commander` (ttrc and its editor ttre, with `/usr/bin/tc` as a link to
+ttrc, since IRIX has no other `tc`) and `ttr.sw.code` (ttrcode and its color
+schemes). Installing it compiles ttrt's terminfo entry into
 `/usr/share/lib/terminfo` with `tic`, and removing it deletes the entry.
 
 ## Running
