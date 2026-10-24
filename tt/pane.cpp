@@ -622,7 +622,7 @@ void TermPane::key(TwGridCallbackStruct* cb)
     if (k != tl::KEY_NONE)
         sent = term_.key(k, mods);
     if (!sent && cb->text_len > 0)
-        term_.text_input(cb->text, (size_t)cb->text_len, (mods & tl::MOD_ALT) != 0);
+        term_.text_input(cb->text, (size_t)cb->text_len, mods);
     else if (!sent)
         return;
     /* Typing brings the view back to the bottom. */
