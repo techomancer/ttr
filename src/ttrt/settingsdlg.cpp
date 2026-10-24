@@ -363,28 +363,39 @@ void SettingsDialog::build()
     dialog_ = XmCreateFormDialog(parent_, (char*)"settingsDialog", args, n);
     XmStringFree(title);
 
+    /* Two columns, so it fits a 1024x768 screen. */
     n = 0;
-    XtSetArg(args[n], XmNorientation, XmVERTICAL); n++;
+    XtSetArg(args[n], XmNorientation, XmHORIZONTAL); n++;
     XtSetArg(args[n], XmNmarginWidth, 0); n++;
     XtSetArg(args[n], XmNmarginHeight, 0); n++;
-    XtSetArg(args[n], XmNspacing, scaled(8)); n++;
+    XtSetArg(args[n], XmNspacing, scaled(10)); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
     Widget page = XmCreateRowColumn(dialog_, (char*)"page", args, n);
+    Widget column[2];
+    for (i = 0; i < 2; i++) {
+        n = 0;
+        XtSetArg(args[n], XmNorientation, XmVERTICAL); n++;
+        XtSetArg(args[n], XmNmarginWidth, 0); n++;
+        XtSetArg(args[n], XmNmarginHeight, 0); n++;
+        XtSetArg(args[n], XmNspacing, scaled(8)); n++;
+        column[i] = XmCreateRowColumn(page, (char*)"column", args, n);
+        XtManageChild(column[i]);
+    }
 
     /* Font: the chooser every ttr program shares (tx). */
-    Widget f = frame(page, "Font");
+    Widget f = frame(column[0], "Font");
     Widget r = row(f, "Font:");
     font_ = new tx::FontChooser(r, "font", tx::FontChooser::FIXED | tx::FontChooser::UNICODE |
                                                tx::FontChooser::AUTOMATIC);
     font_->set_automatic_preview(tt::pick_font(dpy_));
     font_->set(orig_[S_FONT].c_str());
-    label(row(f, ""), "Fixed-width fonts only; * scalable. Characters a "
-                      "font lacks come from ttrt's own fonts.");
+    label(row(f, ""), "Fixed-width fonts only; * scalable.");
+    label(row(f, ""), "Characters a font lacks come from ttrt's.");
 
     /* Colours */
-    f = frame(page, "Colors");
+    f = frame(column[0], "Colors");
     schemes_.clear();
     th::list_schemes(&schemes_);
     {
@@ -423,7 +434,7 @@ void SettingsDialog::build()
                           is_true(orig_[S_BOLD_IS_BRIGHT].c_str()));
 
     /* Window and keys */
-    f = frame(page, "Window and keys");
+    f = frame(column[1], "Window and keys");
     r = row(f, "Scrollback:");
     save_lines_ = drop_down(r, "saveLines", k_save_lines, k_nsave_lines,
                             k_nsave_lines, 6);
@@ -435,11 +446,9 @@ void SettingsDialog::build()
     XmStringFree(cur);
     select_item(save_lines_, orig_[S_SAVE_LINES].c_str());
 
-    login_ = toggle(row(f, "Shell:"), "Start the shell as a login shell "
-                                      "(new windows)",
+    login_ = toggle(row(f, "Shell:"), "Login shell (new windows)",
                     is_true(orig_[S_LOGIN_SHELL].c_str()));
-    menu_bar_ = toggle(row(f, "Menu bar:"), "Show the menu bar "
-                                            "(Ctrl+right click opens the menu)",
+    menu_bar_ = toggle(row(f, "Menu bar:"), "Show (or Ctrl+right click)",
                        is_true(orig_[S_MENU_BAR].c_str()));
     radio(row(f, "Backspace sends:"), "DEL (^?)", "BS (^H)", &backspace_del_);
     bool del = strcmp(orig_[S_BACKSPACE].c_str(), "bs") != 0;
@@ -455,7 +464,7 @@ void SettingsDialog::build()
     select_item(bell_, k_bell_labels[b]);
 
     /* Drawing: tw's renderers and dash's animated backgrounds. */
-    f = frame(page, "Drawing");
+    f = frame(column[1], "Drawing");
     r = row(f, "Renderer:");
     renderer_w_ = drop_down(r, "renderer", k_renderer_labels, k_nrenderers, k_nrenderers, 20);
     label(r, "(new windows)");
@@ -466,12 +475,13 @@ void SettingsDialog::build()
     select_item(renderer_w_, k_renderer_labels[rp]);
     r = row(f, "Text:");
     text_w_ = drop_down(r, "textRendering", k_text_labels, k_ntexts, k_ntexts, 12);
-    label(r, "smooth needs OpenGL; automatic: smooth from 18 pixels");
+    label(r, "smooth needs OpenGL");
     int tp = 0;
     for (i = 0; i < k_ntexts; i++)
         if (strcmp(orig_[S_TEXT_RENDERING].c_str(), k_text_values[i]) == 0)
             tp = i;
     select_item(text_w_, k_text_labels[tp]);
+    label(row(f, ""), "Automatic: smooth from 18 pixels.");
     {
         const char* labels[17];
         const char* values[17];
@@ -483,7 +493,7 @@ void SettingsDialog::build()
             if (strcmp(orig_[S_DYNAMIC_BACKGROUND].c_str(), values[i]) == 0)
                 bp = i;
         select_item(dynbg_w_, labels[bp]);
-        label(r, "animated, with OpenGL (Automatic picks it)");
+        label(r, "animated, with OpenGL");
     }
     XtManageChild(page);
 
