@@ -32,6 +32,10 @@ const char* const k_shape_labels[3] = { "Bar", "Block", "Underline" };
 /* Text: tw's sharp (the font's pixels) or smooth (distance fields, GL). */
 const char* const k_texts[3] = { "auto", "sharp", "smooth" };
 const char* const k_text_labels[3] = { "Automatic", "Sharp", "Smooth" };
+/* TwGrid's renderers, as ttrt's settings name them. */
+const char* const k_renderers[4] = { "auto", "core", "soft", "gl" };
+const char* const k_renderer_labels[4] = { "Automatic", "Core X11", "Software (TrueColor)",
+                                           "OpenGL" };
 
 /* An option menu of n labels into buttons[]. */
 Widget option_menu(Widget parent, const char* name, const char* const* labels, int n,
@@ -219,6 +223,9 @@ void App::show_options()
                                                        tx::FontChooser::UNICODE |
                                                        tx::FontChooser::AUTOMATIC);
         opt_font_->set_automatic_preview(tt::pick_font(XtDisplay(top_)));
+        r = row(page, "Renderer:");
+        opt_renderer_ = option_menu(r, "renderer", k_renderer_labels, 4, opt_renderers_);
+        note(r, "(next start; the terminal too)");
         r = row(page, "Text:");
         opt_text_ = option_menu(r, "text", k_text_labels, 3, opt_texts_);
         note(r, "smooth needs OpenGL; automatic: smooth from 18 pixels");
@@ -290,6 +297,11 @@ void App::show_options()
     opt_font_->set(font_ ? font_ : "");
     opt_term_font_->set_automatic_preview(font_ ? font_ : opt_.font);
     opt_term_font_->set(term_font_ ? term_font_ : "");
+    int rp = 0;
+    for (int i = 0; i < 4; i++)
+        if (opt_.renderer && strcmp(opt_.renderer, k_renderers[i]) == 0)
+            rp = i;
+    XtVaSetValues(opt_renderer_, XmNmenuHistory, opt_renderers_[rp], (char*)0);
     XtVaSetValues(opt_text_, XmNmenuHistory, opt_texts_[text_index(opt_.text_rendering)],
                   (char*)0);
     XtVaSetValues(opt_term_text_, XmNmenuHistory,
@@ -324,6 +336,12 @@ void App::options_button(int which)
     ttr::Str tf = opt_term_font_->get();
     if (strcmp(tf.c_str(), term_font_ ? term_font_ : "") != 0)
         set_terminal_font(tf.c_str());
+    /* Takes effect at the next start: the grids chose theirs when made. */
+    const char* rend = k_renderers[option_index(opt_renderer_, opt_renderers_, 4)];
+    if (!opt_.renderer || strcmp(rend, opt_.renderer) != 0) {
+        opt_.renderer = rend;
+        renderer_chosen_ = true;
+    }
     set_text_rendering(k_texts[option_index(opt_text_, opt_texts_, 3)],
                        k_texts[option_index(opt_term_text_, opt_term_texts_, 3)]);
     opt_.tab_width = get_number(opt_tab_, opt_.tab_width, 1, 32);

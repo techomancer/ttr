@@ -302,6 +302,8 @@ App::App(Widget top, const Options& o)
       bottom_tabs_(0), results_box_(0), results_(0), bottom_page_(0), cur_result_(-1),
       scanned_(0), result_files_(0), fif_case_on_(false), fif_word_on_(false)
 {
+    opt_renderer_ = 0;
+    renderer_chosen_ = false;
     text_ = o.text_rendering && *o.text_rendering ? o.text_rendering : "auto";
     term_text_ = o.terminal_text_rendering && *o.terminal_text_rendering
                      ? o.terminal_text_rendering : "auto";
@@ -2191,6 +2193,8 @@ void App::save_settings()
         f.set("terminalFont", term_font_);
     else
         f.remove("terminalFont");
+    if (renderer_chosen_)
+        f.set("renderer", opt_.renderer);
     f.set("textRendering", text_.c_str());
     f.set("terminalTextRendering", term_text_.c_str());
     ttr::make_parent_dirs(path.c_str());

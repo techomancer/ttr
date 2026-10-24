@@ -815,6 +815,8 @@ included, and Ctrl+Z takes it back. Other files are saved at once,
 through a new file that replaces the old one.
 
 **Options.** Tools > Options... sets:
+- the renderer for the editor and the terminal pane (Automatic, Core X11,
+  Software or OpenGL, as ttrt's; it takes effect at the next start);
 - the editor's font and the terminal pane's (the same as the editor's
   unless you choose another), and for each whether text is sharp or
   smooth (as ttrt's: smooth needs OpenGL);
@@ -837,6 +839,7 @@ the file wins over them:
 | `uiTheme` | a theme's name; left out: the same as ttr | |
 | `font` | an X font name | the best fixed-width font the server has |
 | `terminalFont` | the terminal pane's font; left out: the editor's | |
+| `renderer` | `auto`, `core`, `soft`, `gl`; `auto` uses OpenGL when the text is smooth or the terminal has an animated background, else core (`-renderer` sets it for one run) | `auto` |
 | `textRendering`, `terminalTextRendering` | the editor's and the terminal's text: `sharp`, `smooth`, `auto`, as ttrt's (`-text` sets the editor's) | `auto` |
 | `tabWidth` | columns a tab character shows as | `8` |
 | `indentWidth` | columns Tab indents by with spaces | `4` |

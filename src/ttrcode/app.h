@@ -276,6 +276,8 @@ private:
     tx::FontChooser* opt_term_font_;
     Widget opt_text_, opt_term_text_;
     Widget opt_texts_[3], opt_term_texts_[3];
+    Widget opt_renderer_, opt_renderers_[4];
+    bool renderer_chosen_;      /* in Options: saved (else -renderer stays out of the file) */
     Widget opt_dlg_, opt_tab_, opt_indent_, opt_spaces_, opt_auto_, opt_ws_,
         opt_line_, opt_numbers_, opt_ruler_, opt_shape_, opt_blink_, opt_ccolor_;
     Widget opt_shapes_[3];
