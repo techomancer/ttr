@@ -4,8 +4,9 @@
  * breakpoints, stepping by line and by instruction, and the call stack.
  * Both user interfaces (ttrdb, later ttrcode) talk only to this.
  *
- * The prototype: one thread, and calls that block until the program
- * stops. Shared objects are read when the program reaches its entry point
+ * The prototype: one thread, and calls that return when the program
+ * stops. While it runs they call the idle function, if one is set, so a
+ * user interface can go on handling its events and call interrupt(). Shared objects are read when the program reaches its entry point
  * (the dynamic linker has loaded those it starts with) and again at every
  * stop after that.
  */
@@ -56,9 +57,19 @@ public:
 
     /* Start the program (argv[0] its path) and stop at its first
      * instruction; or attach to a process. */
-    bool start(char* const* argv, ttr::Str* err);
+    bool start(char* const* argv, ttr::Str* err,
+               const LaunchOptions& o = LaunchOptions());
     bool attach(int pid, ttr::Str* err);
     bool running() const { return alive_; }
+    /* Called over and over while the program runs (it should wait a
+     * little, say for its own events). */
+    typedef void (*IdleFn)(void* ctx);
+    void set_idle(IdleFn fn, void* ctx);
+    /* True while one of the calls below is waiting for the program. */
+    bool busy() const { return busy_; }
+    /* From the idle function: stop the program; the call returns with
+     * EV_PAUSED. */
+    void interrupt();
     Target* target() { return target_; }
 
     /* The executable first, then the shared objects in load order. */
@@ -103,6 +114,7 @@ private:
     void set_loader_hook();
     Stop run_to(Addr a, Addr min_sp);
     Stop cont_once();
+    bool wait_event(Event* e);
 
     const char* func_at(Addr pc, Addr* start, Addr* end) const;
     bool place_at(Addr pc, Place* p) const;
@@ -113,6 +125,10 @@ private:
     bool started_;          /* past the entry point: shared objects read */
     int next_id_;
     int pending_sig_;       /* a signal it stopped with, for the next run */
+    IdleFn idle_;
+    void* idle_ctx_;
+    bool busy_;
+    bool interrupted_;      /* interrupt() asked: its stop is a pause */
     ttr::Vector<Breakpoint> bps_;
 };
 

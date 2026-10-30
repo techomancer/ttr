@@ -28,7 +28,7 @@ public:
     LinuxTarget() : pid_(-1), mem_(-1), alive_(false), attached_(false) {}
     ~LinuxTarget();
 
-    bool launch(char* const* argv, ttr::Str* err);
+    bool launch(char* const* argv, const LaunchOptions& o, ttr::Str* err);
     bool attach(int pid, ttr::Str* err);
     const Arch* arch() const { return arch_x86_64(); }
     int pid() const { return pid_; }
@@ -38,6 +38,8 @@ public:
     bool loader_hook(Addr dynamic, SharedObject* loader, Addr* addr, ttr::Str* symbol);
     bool resume(bool step, int sig);
     bool wait(Event* ev);
+    bool poll(Event* ev, bool* got);
+    bool interrupt();
     void kill();
     void detach();
     bool get_regs(Regs* r);
@@ -48,6 +50,7 @@ public:
 private:
     bool open_mem();
     void gone();
+    bool decode(int st, Event* ev);
 
     pid_t pid_;
     int mem_;           /* /proc/<pid>/mem */
@@ -84,7 +87,7 @@ bool LinuxTarget::open_mem()
     return mem_ >= 0;
 }
 
-bool LinuxTarget::launch(char* const* argv, ttr::Str* err)
+bool LinuxTarget::launch(char* const* argv, const LaunchOptions& o, ttr::Str* err)
 {
     pid_t p = fork();
     if (p < 0) {
@@ -93,6 +96,7 @@ bool LinuxTarget::launch(char* const* argv, ttr::Str* err)
     }
     if (p == 0) {
         ptrace(PTRACE_TRACEME, 0, 0, 0);
+        setup_child(o);
         /* The same addresses every run, as gdb does. */
         personality(ADDR_NO_RANDOMIZE);
         execvp(argv[0], argv);
@@ -240,6 +244,38 @@ bool LinuxTarget::wait(Event* ev)
         gone();
         return false;
     }
+    return decode(st, ev);
+}
+
+bool LinuxTarget::poll(Event* ev, bool* got)
+{
+    memset(ev, 0, sizeof(*ev));
+    *got = false;
+    if (!alive_) {
+        ev->kind = EV_ERROR;
+        *got = true;
+        return false;
+    }
+    int st = 0;
+    pid_t r = waitpid(pid_, &st, __WALL | WNOHANG);
+    if (r == 0 || (r < 0 && errno == EINTR))
+        return true;
+    *got = true;
+    if (r != pid_) {
+        ev->kind = EV_ERROR;
+        gone();
+        return false;
+    }
+    return decode(st, ev);
+}
+
+bool LinuxTarget::interrupt()
+{
+    return alive_ && ::kill(pid_, SIGSTOP) == 0;
+}
+
+bool LinuxTarget::decode(int st, Event* ev)
+{
     if (WIFEXITED(st)) {
         ev->kind = EV_EXITED;
         ev->status = WEXITSTATUS(st);

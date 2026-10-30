@@ -4,6 +4,7 @@
 
 #include "../tw/surface.h"
 
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -224,6 +225,7 @@ TermPane::TermPane(Widget parent, const char* name, const PaneOptions& o, PaneHo
       env_(dup_list(o.env)), cwd_(dup_str(o.cwd)), login_(o.login), font_(0),
       name_(dup_str(name)), fallback_(dup_str(o.fallback_fonts)), renderer_(dup_str(o.renderer)),
       dynbg_(dup_str(o.dynamic_background)), text_(0), want_scroll_(o.scroll_bar),
+      external_(o.no_program), hold_fd_(-1),
       started_(false), running_(false), in_scroll_update_(false), outq_off_(0), in_id_(0),
       out_id_(0), bell_id_(0), bell_(o.bell), selecting_(false), sel_moved_(false),
       click_count_(0), last_click_(0), last_col_(-1), last_row_(-1), drag_col_(0), drag_row_(0),
@@ -250,6 +252,30 @@ TermPane::TermPane(Widget parent, const char* name, const PaneOptions& o, PaneHo
     if (o.text_rendering && *o.text_rendering)
         set_text_rendering(o.text_rendering);   /* only remembers it: no grid yet */
     make_widgets(parent);
+    if (external_)
+        open_external();
+}
+
+/* A terminal for other programs: the pty at once (its size follows the
+ * grid's), and a slave of our own held open, so the master does not end
+ * when the last program closes its side. */
+void TermPane::open_external()
+{
+    tp::WinSize ws;
+    ws.cols = 80;
+    ws.rows = 24;
+    ws.width_px = 0;
+    ws.height_px = 0;
+    if (!pty_.open(ws)) {
+        char m[300];
+        snprintf(m, sizeof(m), "tt: %.250s\r\n", pty_.error());
+        term_.feed((const uint8_t*)m, strlen(m));
+        return;
+    }
+    hold_fd_ = ::open(pty_.slave_name(), O_RDWR | O_NOCTTY);
+    running_ = true;
+    in_id_ = XtAppAddInput(XtWidgetToApplicationContext(form_), pty_.fd(),
+                           (XtPointer)XtInputReadMask, in_ready, (XtPointer)this);
 }
 
 void TermPane::make_widgets(Widget parent)
@@ -337,7 +363,7 @@ Widget TermPane::rebuild(Widget parent)
 
 TermPane::~TermPane()
 {
-    if (running_)
+    if (running_ && !external_)
         hangup(500);
     if (in_id_)
         XtRemoveInput(in_id_);
@@ -346,6 +372,8 @@ TermPane::~TermPane()
     if (bell_id_)
         XtRemoveTimeOut(bell_id_);
     drop_widgets();
+    if (hold_fd_ >= 0)
+        ::close(hold_fd_);
     pty_.close();
     free_list(argv_);
     free_list(env_);
@@ -380,6 +408,11 @@ void TermPane::spawn(int cols, int rows)
     ws.rows = rows;
     ws.width_px = cols * cw;
     ws.height_px = rows * ch;
+    if (external_) {
+        if (pty_.is_open())
+            pty_.resize(ws);
+        return;
+    }
     if (!pty_.open(ws)) {
         char m[300];
         snprintf(m, sizeof(m), "\r\ntt: %.250s\r\n", pty_.error());
@@ -450,7 +483,7 @@ bool TermPane::at_prompt() const
 
 void TermPane::hangup(int ms)
 {
-    if (!running_)
+    if (!running_ || external_)
         return;
     proc_.signal_group(SIGHUP);
     proc_.wait(ms);

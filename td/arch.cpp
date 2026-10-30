@@ -1,7 +1,10 @@
 #include "td.h"
 #include "target.h"
 
+#include <fcntl.h>
+#include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 namespace td {
 
@@ -164,6 +167,22 @@ bool Arch::entry_return_address(const Regs& r, Target* t, Addr* ra) const
         return false;
     *ra = ptr_size == 4 ? (Addr)(uint32_t)r.r[31] : r.r[31];
     return true;
+}
+
+void Target::setup_child(const LaunchOptions& o)
+{
+    if (o.cwd && *o.cwd && chdir(o.cwd) != 0)
+        fprintf(stderr, "cannot change to %s\n", o.cwd);
+    if (o.tty && *o.tty) {
+        int fd = open(o.tty, O_RDWR);
+        if (fd >= 0) {
+            dup2(fd, 0);
+            dup2(fd, 1);
+            dup2(fd, 2);
+            if (fd > 2)
+                close(fd);
+        }
+    }
 }
 
 bool Target::read_string(Addr a, char* buf, size_t n)

@@ -26,7 +26,7 @@ bool same(const tw::CellData& a, const tw::CellData& b)
 } /* namespace */
 
 EditSource::EditSource()
-    : v_(0), numbers_(true), cols_(0), rows_(0), gutter_(0), cur_(0), prev_(0), line_(0), lo_(0),
+    : v_(0), marks_(0), numbers_(true), cols_(0), rows_(0), gutter_(0), cur_(0), prev_(0), line_(0), lo_(0),
       hi_(0), full_(true), scroll_(0), prev_valid_(false), prev_top_(0), prev_left_(0),
       prev_gutter_(0), prev_cx_(-1), prev_cy_(-1)
 {
@@ -81,10 +81,17 @@ void EditSource::set_line_numbers(bool on)
     set_size(cols_, rows_);
 }
 
+void EditSource::set_marks(const LineMarks* m)
+{
+    marks_ = m;
+    set_size(cols_, rows_);
+    full_ = true;
+}
+
 int EditSource::gutter_for(long lines) const
 {
     if (!numbers_)
-        return 0;
+        return marks_ ? 2 : 0;      /* the mark and a space */
     int d = 1;
     for (long n = lines; n >= 10; n /= 10)
         d++;
@@ -132,10 +139,16 @@ void EditSource::layout()
     for (int y = 0; y < rows_; y++) {
         tw::CellData* row = cur_ + (size_t)y * (size_t)cols_;
         bool have = v_ && v_->row(y, line_);
+        int marks = have && marks_ ? marks_->line_marks(v_, v_->top() + y) : 0;
         /* The caret's line, unless a selection covers it. */
         tw::CellStyle base = text;
         if (have && y == caret_row && !v_->has_selection())
             base.bg = colors_.current_line;
+        /* Where the program stopped: VC6's yellow. */
+        if (marks & MARK_CURRENT) {
+            base.bg = 0xffff80;
+            base.fg = 0x000000;
+        }
         /* The gutter: the line number, right-aligned. */
         char num[24];
         num[0] = 0;
@@ -148,6 +161,20 @@ void EditSource::layout()
             row[x].width = 1;
             row[x].cluster = 0;
             row[x].style = gut;
+        }
+        /* The margin: a red dot for a breakpoint, an arrow for where the
+         * program is (yellow) or a caller chosen in Call Stack (green). */
+        if (marks && gutter_ > 0) {
+            tw::CellData& m = row[0];
+            if (marks & (MARK_CURRENT | MARK_FRAME)) {
+                m.cp = 0x25b6;                  /* black right-pointing triangle */
+                m.style.fg = marks & MARK_CURRENT ? 0xc0a000 : 0x00a000;
+                if (marks & MARK_BREAKPOINT)
+                    m.style.bg = 0xd00000;
+            } else if (marks & MARK_BREAKPOINT) {
+                m.cp = 0x25cf;                  /* black circle */
+                m.style.fg = 0xd00000;
+            }
         }
         for (int x = 0; x < tcols; x++) {
             tw::CellData& c = row[gutter_ + x];

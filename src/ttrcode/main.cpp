@@ -39,7 +39,7 @@ struct Resources {
     int ruler;
     String cursor_shape, cursor_color;
     String terminal_font, text_rendering, terminal_text_rendering;
-    String layout;
+    String layout, debug_layout, debug_program, debug_args, debug_dir;
 };
 
 #define ROFF(f) XtOffsetOf(Resources, f)
@@ -79,7 +79,11 @@ XtResource k_resources[] = {
     RSTR("terminalFont", "TerminalFont", terminal_font, ""),
     RSTR("textRendering", "TextRendering", text_rendering, "auto"),
     RSTR("terminalTextRendering", "TerminalTextRendering", terminal_text_rendering, "auto"),
-    RSTR("layout", "Layout", layout, "")
+    RSTR("layout", "Layout", layout, ""),
+    RSTR("debugLayout", "DebugLayout", debug_layout, ""),
+    RSTR("debugProgram", "DebugProgram", debug_program, ""),
+    RSTR("debugArgs", "DebugArgs", debug_args, ""),
+    RSTR("debugDir", "DebugDir", debug_dir, "")
 };
 #undef RSTR
 #undef ROFF
@@ -187,6 +191,10 @@ int main(int argc, char** argv)
     o.text_rendering = res.text_rendering ? res.text_rendering : "auto";
     o.terminal_text_rendering = res.terminal_text_rendering ? res.terminal_text_rendering : "auto";
     o.layout = res.layout ? res.layout : "";
+    o.debug_layout = res.debug_layout ? res.debug_layout : "";
+    o.debug_program = res.debug_program ? res.debug_program : "";
+    o.debug_args = res.debug_args ? res.debug_args : "";
+    o.debug_dir = res.debug_dir ? res.debug_dir : "";
 
     /* The UI theme, for every widget made from here on. */
     th::Theme theme;

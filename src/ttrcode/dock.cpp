@@ -347,13 +347,6 @@ void Docks::layout_area(Area* a)
     bool vert = vertical_side(a->side);
     int n = a->groups.size();
     int i;
-    /* The last group takes the rest: say how much, or the form keeps its
-     * old size and squeezes the others to make room. */
-    Dimension aw = 0, ah = 0;
-    XtVaGetValues(a->form, XmNwidth, &aw, XmNheight, &ah, (char*)0);
-    int rest = (vert ? (int)ah : (int)aw);
-    for (i = 0; i < n - 1; i++)
-        rest -= a->groups[i]->size + k_sash;
     for (i = 0; i < n; i++) {
         Group* g = a->groups[i];
         bool last = i == n - 1;
@@ -365,8 +358,6 @@ void Docks::layout_area(Area* a)
                           XmNbottomAttachment, last ? XmATTACH_FORM : XmATTACH_NONE, (char*)0);
             if (!last)
                 XtVaSetValues(g->form, XmNheight, (Dimension)g->size, (char*)0);
-            else if (rest > 1)
-                XtVaSetValues(g->form, XmNheight, (Dimension)rest, (char*)0);
         } else {
             XtVaSetValues(g->form, XmNtopAttachment, XmATTACH_FORM,
                           XmNbottomAttachment, XmATTACH_FORM,
@@ -375,8 +366,6 @@ void Docks::layout_area(Area* a)
                           XmNrightAttachment, last ? XmATTACH_FORM : XmATTACH_NONE, (char*)0);
             if (!last)
                 XtVaSetValues(g->form, XmNwidth, (Dimension)g->size, (char*)0);
-            else if (rest > 1)
-                XtVaSetValues(g->form, XmNwidth, (Dimension)rest, (char*)0);
         }
         XtVaSetValues(g->sash, XmNuserData, (XtPointer)sash_code(a->side, i + 1), (char*)0);
         if (last) {

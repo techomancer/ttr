@@ -305,7 +305,8 @@ void separator(Widget menu)
 App::App(Widget top, const Options& o)
     : top_(top), form_(0), bar_(0), body_(0), tree_(0), edit_box_(0), tabs_(0), grid_(0),
       scroll_(0), status_(0), docks_(0), pane_workspace_(0), pane_terminal_(0), pane_results_(0),
-      ncascades_(0), term_(0), opt_(o), cur_(-1), untitled_(0), fullscreen_(false),
+      pane_program_(0),
+      ncascades_(0), term_(0), prog_term_(0), opt_(o), cur_(-1), untitled_(0), fullscreen_(false),
       close_pixmap_(0), save_w_(0), save_h_(0), save_x_(0), save_y_(0),
       in_scroll_update_(false), selecting_(false), last_click_(0), click_count_(0),
       last_col_(-1), last_row_(-1), autoscroll_(0), autoscroll_id_(0), match_case_(false),
@@ -313,7 +314,9 @@ App::App(Widget top, const Options& o)
       primary_(0), primary_len_(0), clipboard_(0), clipboard_len_(0), answer_(-1),
       scheme_items_(0), theme_items_(0), font_(0), term_font_(0), opt_font_(0), opt_term_font_(0),
       opt_text_(0), opt_term_text_(0), opt_dlg_(0), fif_dlg_(0), fif_replace_(false),
-      results_(0), searched_(false), cur_result_(-1),
+      dbg_(0), stop_line_(-1), frame_line_(-1), cur_frame_(0), have_last_regs_(false),
+      dbg_kill_req_(false), callstack_(0), registers_(0), threads_(0), dbg_dlg_(0), dbg_prog_(0),
+      dbg_args_w_(0), dbg_dir_w_(0), results_(0), searched_(false), cur_result_(-1),
       scanned_(0), result_files_(0), fif_case_on_(false), fif_word_on_(false)
 {
     opt_renderer_ = 0;
@@ -334,6 +337,11 @@ App::App(Widget top, const Options& o)
     opt_.cursor_color = cursor_color_.c_str();
     g_app = this;
     g_answer = &answer_;
+    dbg_program_ = o.debug_program ? o.debug_program : "";
+    dbg_args_ = o.debug_args ? o.debug_args : "";
+    dbg_dir_ = o.debug_dir ? o.debug_dir : "";
+    debug_layout_ = o.debug_layout ? o.debug_layout : "";
+    src_.set_marks(this);
     root_ = o.workspace;
     Display* dpy = XtDisplay(top);
     a_clipboard_ = XInternAtom(dpy, "CLIPBOARD", False);
@@ -377,7 +385,13 @@ App::~App()
 
 void App::build_menus()
 {
-    bar_ = XmCreateMenuBar(form_, (char*)"menuBar", 0, 0);
+    /* F10 is Step Over (VC6), not Motif's key for the menu bar, which
+     * moves to a combination nobody uses (an empty one is ignored, and the
+     * key must exist on the keyboard); the menus' Alt+letter keys still
+     * open them. */
+    Arg ba[1];
+    XtSetArg(ba[0], XmNmenuAccelerator, "Ctrl Shift Alt<Key>F12");
+    bar_ = XmCreateMenuBar(form_, (char*)"menuBar", ba, 1);
     XtVaSetValues(bar_, XmNtopAttachment, XmATTACH_FORM, XmNleftAttachment, XmATTACH_FORM,
                   XmNrightAttachment, XmATTACH_FORM, (char*)0);
     struct Title {
@@ -388,19 +402,19 @@ void App::build_menus()
     static const Title titles[] = {
         { "fileMenu", "File", 'F' }, { "editMenu", "Edit", 'E' },
         { "searchMenu", "Search", 'S' }, { "viewMenu", "View", 'V' },
-        { "toolsMenu", "Tools", 'T' }, { "windowMenu", "Window", 'W' },
-        { "helpMenu", "Help", 'H' }
+        { "toolsMenu", "Tools", 'T' }, { "debugMenu", "Debug", 'D' },
+        { "windowMenu", "Window", 'W' }, { "helpMenu", "Help", 'H' }
     };
-    Widget menus[7];
-    for (int i = 0; i < 7; i++) {
+    Widget menus[8];
+    for (int i = 0; i < 8; i++) {
         menus[i] = XmCreatePulldownMenu(bar_, (char*)titles[i].name, 0, 0);
         cascades_[i] = XtVaCreateManagedWidget(titles[i].label, xmCascadeButtonWidgetClass, bar_,
                                                XmNsubMenuId, menus[i], XmNmnemonic,
                                                titles[i].mnemonic, (char*)0);
         mnemonics_[i] = titles[i].mnemonic;
     }
-    ncascades_ = 7;
-    XtVaSetValues(bar_, XmNmenuHelpWidget, cascades_[6], (char*)0);
+    ncascades_ = 8;
+    XtVaSetValues(bar_, XmNmenuHelpWidget, cascades_[7], (char*)0);
 
     Widget m = menus[0];
     menu_item(m, "New", 'N', "Ctrl+N", CMD_NEW);
@@ -443,6 +457,7 @@ void App::build_menus()
     menu_item(m, "Bottom Area", 'B', "Alt+2", CMD_VIEW_BOTTOM);
     menu_item(m, "Terminal", 'T', "Ctrl+`", CMD_TERMINAL);
     menu_item(m, "Find Results", 'R', 0, CMD_VIEW_RESULTS);
+    menu_item(m, "Program Output", 'P', 0, CMD_VIEW_PROGRAM);
     {
         Widget dm = XmCreatePulldownMenu(m, (char*)"debugWindows", 0, 0);
         XtVaCreateManagedWidget("Debug Windows", xmCascadeButtonWidgetClass, m, XmNsubMenuId, dm,
@@ -456,19 +471,34 @@ void App::build_menus()
     separator(m);
     build_color_menus(m);
     separator(m);
-    menu_item(m, "Full Screen", 'F', "F11", CMD_VIEW_FULLSCREEN);
+    menu_item(m, "Full Screen", 'F', "Shift+Alt+Enter", CMD_VIEW_FULLSCREEN);
 
     m = menus[4];
     menu_item(m, "Options...", 'O', 0, CMD_OPTIONS);
 
+    /* Debug (debug.cpp): VC6's keys. */
     m = menus[5];
+    menu_item(m, "Go", 'G', "F5", CMD_DEBUG_GO);
+    menu_item(m, "Restart", 'R', "Ctrl+Shift+F5", CMD_DEBUG_RESTART);
+    menu_item(m, "Stop Debugging", 'S', "Shift+F5", CMD_DEBUG_STOP);
+    menu_item(m, "Break", 'k', 0, CMD_DEBUG_BREAK);
+    separator(m);
+    menu_item(m, "Step Into", 'I', "F11", CMD_DEBUG_STEP_INTO);
+    menu_item(m, "Step Over", 'O', "F10", CMD_DEBUG_STEP_OVER);
+    menu_item(m, "Step Out", 'u', "Shift+F11", CMD_DEBUG_STEP_OUT);
+    menu_item(m, "Run to Cursor", 'C', "Ctrl+F10", CMD_DEBUG_RUN_TO_CURSOR);
+    separator(m);
+    menu_item(m, "Toggle Breakpoint", 'B', "F9", CMD_DEBUG_TOGGLE_BP);
+    menu_item(m, "Settings...", 't', 0, CMD_DEBUG_SETTINGS);
+
+    m = menus[6];
     menu_item(m, "Next Document", 'N', "Ctrl+Tab", CMD_NEXT_DOC);
     menu_item(m, "Previous Document", 'P', "Ctrl+Shift+Tab", CMD_PREV_DOC);
     menu_item(m, "Terminal", 'T', "Ctrl+`", CMD_TERMINAL);
     separator(m);
     menu_item(m, "Close", 'C', "Ctrl+W", CMD_CLOSE);
 
-    m = menus[6];
+    m = menus[7];
     menu_item(m, "About ttrcode", 'A', 0, CMD_ABOUT);
     XtManageChild(bar_);
 }
@@ -547,9 +577,11 @@ void App::make_panes()
     pane_workspace_ = new Pane("workspace", "Workspace", SIDE_LEFT);
     pane_terminal_ = new Pane("terminal", "Terminal", SIDE_BOTTOM);
     pane_results_ = new Pane("results", "Find Results", SIDE_BOTTOM);
+    pane_program_ = new Pane("program", "Program", SIDE_BOTTOM);
     docks_->add(pane_workspace_);
     docks_->add(pane_terminal_);
     docks_->add(pane_results_);
+    docks_->add(pane_program_);
     int i;
     for (i = 0; k_debug_panes[i].id; i++) {
         Pane* p = new Pane(k_debug_panes[i].id, k_debug_panes[i].title, k_debug_panes[i].home);
@@ -601,14 +633,18 @@ Widget App::build_pane(Pane* p, Widget parent)
     }
     if (p == pane_results_)
         return build_results(parent);
-    /* A debugger window, until the debugger is in. */
-    Widget f = XtVaCreateManagedWidget(p->id(), xmFormWidgetClass, parent, (char*)0);
-    XmString l = XmStringCreateLocalized((char*)"Not debugging.");
-    XtVaCreateManagedWidget("note", xmLabelWidgetClass, f, XmNlabelString, l,
-                            XmNtopAttachment, XmATTACH_FORM, XmNleftAttachment, XmATTACH_FORM,
-                            XmNtopOffset, 6, XmNleftOffset, 6, (char*)0);
-    XmStringFree(l);
-    return f;
+    if (p == pane_program_) {
+        if (!prog_term_) {
+            tt::PaneOptions po = term_opt_;
+            po.no_program = true;
+            prog_term_ = new tt::TermPane(parent, "program", po, this);
+            if (XtIsRealized(parent))
+                prog_term_->start();
+            return prog_term_->widget();
+        }
+        return prog_term_->rebuild(parent);
+    }
+    return build_debug_pane(p, parent);     /* debug.cpp */
 }
 
 void App::drop_pane(Pane* p)
@@ -623,11 +659,21 @@ void App::drop_pane(Pane* p)
         if (term_)
             term_->rebuild(docks_->parking());
         XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
+    } else if (p == pane_program_) {
+        if (prog_term_)
+            prog_term_->rebuild(docks_->parking());
+        XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
     } else if (p == pane_results_) {
         if (results_)
             XtDestroyWidget(XtParent(results_));
         results_ = 0;
     } else if (p->widget) {
+        if (!strcmp(p->id(), "callstack"))
+            callstack_ = 0;
+        else if (!strcmp(p->id(), "registers"))
+            registers_ = 0;
+        else if (!strcmp(p->id(), "threads"))
+            threads_ = 0;
         XtDestroyWidget(p->widget);
     }
 }
@@ -902,6 +948,13 @@ void App::quit()
         if (cancelled)
             return;
     }
+    if (dbg_ && dbg_->busy()) {
+        /* td is waiting in debug_idle below us: stop it there first. */
+        dbg_kill_req_ = true;
+        dbg_->interrupt();
+        return;
+    }
+    debug_end();
     if (term_)
         term_->hangup(500);
     exit(0);
@@ -979,9 +1032,9 @@ void App::update_ui()
     char st[800];
     if (d) {
         te::Pos c = d->view.cursor();
-        snprintf(st, sizeof(st), "Ln %ld, Col %d     %s     %s     %s", c.line + 1,
-                 d->view.column_of(c) + 1, te::language_name(d->syntax.language()),
-                 d->text.crlf() ? "CRLF" : "LF",
+        snprintf(st, sizeof(st), "%s%sLn %ld, Col %d     %s     %s     %s", dbg_msg_.c_str(),
+                 dbg_msg_.empty() ? "" : "     ", c.line + 1, d->view.column_of(c) + 1,
+                 te::language_name(d->syntax.language()), d->text.crlf() ? "CRLF" : "LF",
                  d->path.empty() ? d->name.c_str() : d->path.c_str());
         if (d->shown_modified != d->text.modified())
             update_tab(d);
@@ -1571,6 +1624,11 @@ void App::command(int cmd)
     case CMD_VIEW_RESULTS:
         show_pane(pane_results_);
         break;
+    case CMD_VIEW_PROGRAM:
+        show_pane(pane_program_);
+        if (prog_term_)
+            prog_term_->focus();
+        break;
     case CMD_VIEW_LINE_NUMBERS:
         opt_.line_numbers = !opt_.line_numbers;
         src_.set_line_numbers(opt_.line_numbers);
@@ -1623,6 +1681,18 @@ void App::command(int cmd)
         XtManageChild(dlg);
         break;
     }
+    case CMD_DEBUG_GO:
+    case CMD_DEBUG_STOP:
+    case CMD_DEBUG_RESTART:
+    case CMD_DEBUG_BREAK:
+    case CMD_DEBUG_STEP_INTO:
+    case CMD_DEBUG_STEP_OVER:
+    case CMD_DEBUG_STEP_OUT:
+    case CMD_DEBUG_RUN_TO_CURSOR:
+    case CMD_DEBUG_TOGGLE_BP:
+    case CMD_DEBUG_SETTINGS:
+        debug_command(cmd);
+        break;
     default:
         if (cmd >= CMD_VIEW_DEBUG && cmd - CMD_VIEW_DEBUG < debug_panes_.size())
             show_pane(debug_panes_[cmd - CMD_VIEW_DEBUG]);
@@ -1635,7 +1705,13 @@ bool App::global_key(KeySym ks, unsigned state)
 {
     bool ctrl = (state & ControlMask) != 0, shift = (state & ShiftMask) != 0;
     bool alt = (state & Mod1Mask) != 0;
-    if (ks == XK_F11 && !ctrl && !alt) {
+    /* Full screen: Shift+Alt+Enter (F11 is VC6's Step Into); F11 still
+     * leaves it. */
+    if (alt && shift && !ctrl && (ks == XK_Return || ks == XK_KP_Enter)) {
+        command(CMD_VIEW_FULLSCREEN);
+        return true;
+    }
+    if (ks == XK_F11 && fullscreen_ && !ctrl && !alt) {
         command(CMD_VIEW_FULLSCREEN);
         return true;
     }
@@ -1688,6 +1764,22 @@ void App::editor_key(TwGridCallbackStruct* cb)
     if (ks == XK_F4 && !ctrl && !alt) {
         command(shift ? CMD_PREV_RESULT : CMD_NEXT_RESULT);
         return;
+    }
+    /* The debugger's keys (VC6). */
+    if (!alt) {
+        int dc = -1;
+        if (ks == XK_F5)
+            dc = ctrl && shift ? CMD_DEBUG_RESTART : shift ? CMD_DEBUG_STOP : ctrl ? -1 : CMD_DEBUG_GO;
+        else if (ks == XK_F9 && !ctrl && !shift)
+            dc = CMD_DEBUG_TOGGLE_BP;
+        else if (ks == XK_F10 && !shift)
+            dc = ctrl ? CMD_DEBUG_RUN_TO_CURSOR : CMD_DEBUG_STEP_OVER;
+        else if (ks == XK_F11 && !ctrl)
+            dc = shift ? CMD_DEBUG_STEP_OUT : CMD_DEBUG_STEP_INTO;
+        if (dc >= 0) {
+            command(dc);
+            return;
+        }
     }
     if (ctrl && !alt) {
         switch (ks) {
@@ -2179,8 +2271,18 @@ void App::save_settings()
     else
         f.set("uiTheme", theme_name_.c_str());
     /* The docks' layout replaces the two sizes older versions saved. */
-    if (docks_)
-        f.set("layout", docks_->layout().c_str());
+    /* While debugging the docks show the debugging layout. */
+    if (docks_) {
+        f.set("layout", dbg_ ? edit_layout_.c_str() : docks_->layout().c_str());
+        ttr::Str dl = dbg_ ? docks_->layout() : debug_layout_;
+        if (dl.empty())
+            f.remove("debugLayout");
+        else
+            f.set("debugLayout", dl.c_str());
+    }
+    f.set("debugProgram", dbg_program_.c_str());
+    f.set("debugArgs", dbg_args_.c_str());
+    f.set("debugDir", dbg_dir_.c_str());
     f.remove("treeWidth");
     f.remove("bottomHeight");
     sprintf(v, "%d", opt_.tab_width);

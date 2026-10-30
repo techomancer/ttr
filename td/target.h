@@ -22,6 +22,7 @@ enum EventKind {
     EV_SIGNAL,      /* stopped with a signal (sig) */
     EV_EXITED,      /* exited (status) */
     EV_KILLED,      /* killed by a signal (sig) */
+    EV_PAUSED,      /* stopped because the debugger asked (Session::interrupt) */
     EV_ERROR        /* the target is gone or cannot be waited for */
 };
 
@@ -34,6 +35,13 @@ struct Event {
 
 /* A shared object the dynamic linker loaded: its file, and how far it
  * was moved from its link addresses. */
+/* How to start a program. */
+struct LaunchOptions {
+    const char* cwd;    /* 0: the debugger's */
+    const char* tty;    /* a terminal for stdin, stdout and stderr; 0: the debugger's */
+    LaunchOptions() : cwd(0), tty(0) {}
+};
+
 struct SharedObject {
     ttr::Str path;
     Addr bias;
@@ -47,7 +55,7 @@ public:
 
     /* Start argv[0] (searched in PATH) stopped at its first instruction,
      * or attach to a running process and stop it. */
-    virtual bool launch(char* const* argv, ttr::Str* err) = 0;
+    virtual bool launch(char* const* argv, const LaunchOptions& o, ttr::Str* err) = 0;
     virtual bool attach(int pid, ttr::Str* err) = 0;
 
     virtual const Arch* arch() const = 0;
@@ -71,6 +79,11 @@ public:
     virtual bool resume(bool step, int sig) = 0;
     /* Wait until it stops or ends. */
     virtual bool wait(Event* ev) = 0;
+    /* The same without waiting: *got false if it is still running. */
+    virtual bool poll(Event* ev, bool* got) = 0;
+    /* Ask a running program to stop; wait() or poll() then report it as
+     * a signal (SIGSTOP on Linux, none on IRIX). */
+    virtual bool interrupt() = 0;
     virtual void kill() = 0;
     virtual void detach() = 0;
 
@@ -82,6 +95,8 @@ public:
 
     /* An unsigned value of n bytes (1, 2, 4, 8) in the target's order. */
     bool read_uint(Addr a, int n, uint64_t* v);
+    /* In the child, before exec: LaunchOptions' directory and terminal. */
+    static void setup_child(const LaunchOptions& o);
     /* A NUL-terminated string, at most n - 1 bytes. */
     bool read_string(Addr a, char* buf, size_t n);
     /* A dynamic section entry's value by tag (one of a pointer size's

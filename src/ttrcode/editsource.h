@@ -28,6 +28,20 @@ struct EditColors {
 };
 
 /* How the editor looks beyond its colours (Tools > Options). */
+/* What the debugger marks in the margin (the gutter's first cell). */
+enum {
+    MARK_BREAKPOINT = 1,    /* a red dot */
+    MARK_CURRENT = 2,       /* where the program stopped: a yellow arrow, the line yellow */
+    MARK_FRAME = 4          /* a caller's line, chosen in Call Stack: a green arrow */
+};
+
+class LineMarks {
+public:
+    virtual ~LineMarks() {}
+    /* MARK_* bits for a line (from 0) of the document v shows. */
+    virtual int line_marks(const te::View* v, long line) const = 0;
+};
+
 struct EditLook {
     bool highlight_line;        /* the caret's line in current_line */
     int ruler;                  /* a line left of this column (from 0); <= 0: none */
@@ -48,6 +62,9 @@ public:
     void set_colors(const EditColors& c);
     void set_line_numbers(bool on);
     void set_look(const EditLook& l);
+    /* 0: no marks. With marks there is a margin even without line
+     * numbers. */
+    void set_marks(const LineMarks* m);
     /* The grid is cols x rows cells; the view gets what the gutter leaves. */
     void set_size(int cols, int rows);
     int gutter() const { return gutter_; }
@@ -75,6 +92,7 @@ private:
     int gutter_for(long lines) const;
 
     te::View* v_;
+    const LineMarks* marks_;
     EditColors colors_;
     EditLook look_;
     bool numbers_;

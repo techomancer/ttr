@@ -9,6 +9,8 @@
 #include "dock.h"
 #include "editsource.h"
 
+#include "../../td/session.h"
+
 #include "../../te/syntax.h"
 #include "../../te/view.h"
 #include "../../th/scheme.h"
@@ -38,6 +40,10 @@ struct Options {
     const char* ui_theme;       /* UI theme; "" follows ttr's */
     int tree_width, bottom_height;  /* older settings: the first layout's sizes */
     const char* layout;         /* the docks (dock.h), "" for the default */
+    const char* debug_layout;   /* while debugging, "" for the default */
+    const char* debug_program;  /* Debug > Settings */
+    const char* debug_args;
+    const char* debug_dir;
     bool auto_indent;           /* Enter keeps the previous line's indentation */
     bool show_whitespace;
     bool highlight_line;
@@ -90,6 +96,12 @@ ttr::Str settings_path();
 /* The UI theme ttr uses (its settings file), or "". */
 const char* ttr_theme();
 
+/* A breakpoint set in the editor: a file and a line (from 0). */
+struct SourceBreakpoint {
+    ttr::Str path;
+    long line;
+};
+
 /* A match of Find in Files. */
 struct Result {
     char* path;
@@ -105,11 +117,15 @@ enum Command {
     CMD_FIND_IN_FILES, CMD_REPLACE_IN_FILES, CMD_NEXT_RESULT, CMD_PREV_RESULT, CMD_OPTIONS,
     CMD_VIEW_WORKSPACE, CMD_VIEW_BOTTOM, CMD_VIEW_FULLSCREEN, CMD_VIEW_LINE_NUMBERS,
     CMD_TERMINAL, CMD_NEXT_DOC, CMD_PREV_DOC, CMD_ABOUT, CMD_VIEW_RESULTS,
+    /* Debug (debug.cpp). */
+    CMD_DEBUG_GO, CMD_DEBUG_STOP, CMD_DEBUG_RESTART, CMD_DEBUG_BREAK, CMD_DEBUG_STEP_INTO,
+    CMD_DEBUG_STEP_OVER, CMD_DEBUG_STEP_OUT, CMD_DEBUG_RUN_TO_CURSOR, CMD_DEBUG_TOGGLE_BP,
+    CMD_DEBUG_SETTINGS, CMD_VIEW_PROGRAM,
     /* View > Debug Windows: one per pane in k_debug_panes (app.cpp). */
     CMD_VIEW_DEBUG
 };
 
-class App : public tt::PaneHost, public PaneBuilder {
+class App : public tt::PaneHost, public PaneBuilder, public LineMarks {
 public:
     App(Widget top, const Options& o);
     ~App();
@@ -158,10 +174,29 @@ public:
     void drop_pane(Pane* p);
     void layout_changed();
 
+    /* LineMarks: breakpoints and the program's place in the margin. */
+    int line_marks(const te::View* v, long line) const;
+    /* Debugger panes' callbacks (debug.cpp). */
+    void frame_chosen(int i);
+    void debug_settings_button(int which);
+
 private:
     void build_menus();
     void build_layout();
     void make_terminal(Widget parent);
+    /* The debugger (debug.cpp). */
+    void debug_command(int cmd);
+    bool debug_start();
+    void debug_end();
+    void debug_stopped(const td::Stop& s);
+    void debug_show_frame(int i, bool focus_editor);
+    void debug_fill();
+    void debug_status(const char* msg);
+    void show_debug_settings();
+    void toggle_breakpoint();
+    void goto_source(const char* path, long line);
+    Widget build_debug_pane(Pane* p, Widget parent);
+    static void debug_idle(void* ctx);
     void make_panes();
     ttr::Str default_layout() const;
     /* Open the pane (where it was last) and give it the focus. */
@@ -231,11 +266,13 @@ private:
     Pane* pane_workspace_;
     Pane* pane_terminal_;
     Pane* pane_results_;
+    Pane* pane_program_;        /* the debugged program's terminal */
     ttr::Vector<Pane*> debug_panes_;
     Widget cascades_[8];
     int ncascades_;
     char mnemonics_[8];
     tt::TermPane* term_;
+    tt::TermPane* prog_term_;   /* no program of its own (PaneOptions::no_program) */
     Options opt_;
     tt::PaneOptions term_opt_;
     EditSource src_;
@@ -295,6 +332,23 @@ private:
     Widget fif_dlg_, fif_what_, fif_with_, fif_with_label_, fif_folder_, fif_types_, fif_case_,
         fif_word_, fif_find_btn_, fif_replace_btn_;
     bool fif_replace_;
+    /* The debugger. */
+    td::Session* dbg_;
+    ttr::Vector<SourceBreakpoint> bps_;
+    ttr::Str dbg_program_, dbg_args_, dbg_dir_;
+    ttr::Str stop_path_;        /* where the program stopped, "": nowhere */
+    long stop_line_;
+    ttr::Str frame_path_;       /* the caller chosen in Call Stack */
+    long frame_line_;
+    int cur_frame_;
+    ttr::Vector<td::Frame> frames_;
+    td::Regs last_regs_;        /* to mark the registers that changed */
+    bool have_last_regs_;
+    bool dbg_kill_req_;         /* Stop Debugging while it runs */
+    ttr::Str edit_layout_, debug_layout_;
+    Widget callstack_, registers_, threads_;    /* 0 while their panes are closed */
+    Widget dbg_dlg_, dbg_prog_, dbg_args_w_, dbg_dir_w_;
+    ttr::Str dbg_msg_;          /* the status bar's first words */
     /* Find Results (0 while its pane is closed). */
     Widget results_;
     bool searched_;             /* a search has run: the list has something to say */

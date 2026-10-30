@@ -58,8 +58,8 @@ run as a window manager there yet. A Wayland mode is planned for later
 - **ttre**, a text editor for any terminal: ttrc's F4, and usable as your
   `$EDITOR` (see "The editor" below).
 - **ttrcode**, a Motif code editor in the spirit of Visual Studio 6:
-  a workspace tree, tabs, a terminal pane and full screen with F11
-  (early; see "The code editor" below).
+  a workspace tree, tabs, dockable panes, a terminal, and a debugger with
+  VC6's keys (early; see "The code editor" below).
 
 ## Building
 
@@ -836,15 +836,18 @@ are not shown in the tree.
 | Alt+0, Alt+2 | show or hide the workspace, the bottom area |
 | Alt+3, Alt+4, Alt+5, Alt+6, Alt+7 | Watch, Variables, Registers, Memory, Call Stack (VC6's keys) |
 | Ctrl+` | to the terminal and back |
-| F11 | full screen with only the text (F11 or Esc to come back); on window managers without full-screen support, such as 4Dwm and mwm, the window drops its frame and covers the screen |
+| Shift+Alt+Enter | full screen with only the text (again, Esc or F11 to come back); on window managers without full-screen support, such as 4Dwm and mwm, the window drops its frame and covers the screen |
+| F5, Shift+F5, Ctrl+Shift+F5 | debug: go or continue, stop, restart |
+| F9 | set or clear a breakpoint on the caret's line |
+| F10, F11, Shift+F11, Ctrl+F10 | step over, step into, step out, run to the caret |
 
 With the mouse: click to place the caret, drag to select (past the edge
 scrolls), double-click selects a word, triple-click or a click in the line
 numbers selects the line, Shift+click extends, the middle button pastes
 the X selection, and the wheel scrolls.
 
-In the terminal pane every key goes to the shell except F11, Alt+0,
-Alt+2 to Alt+7, Ctrl+` and Ctrl+Tab; the menus' Alt+letter keys are off while it
+In the terminal pane every key goes to the shell except Shift+Alt+Enter,
+Alt+0, Alt+2 to Alt+7, Ctrl+` and Ctrl+Tab; the menus' Alt+letter keys are off while it
 has the focus. When the shell ends, Enter starts a new one.
 
 Files are saved through a new file that replaces the old one, so a full
@@ -869,6 +872,22 @@ left out is derived. View > UI Theme colors the menus, panes and dialogs
 with ttr's themes and the 30 IRIX color schemes, at once and without a
 restart. Its default, "Same as ttr", follows the theme chosen in ttr's
 Settings; any other choice is ttrcode's own.
+
+**Debugging.** Debug > Settings names the program to debug, its
+arguments and its working directory (the workspace if empty); a relative
+program is in the workspace. F9 puts a breakpoint (a red dot in the
+margin) on the caret's line; F5 starts the program, which then runs in
+the Program pane with its own terminal, and stops at a breakpoint with a
+yellow arrow on its line. F10, F11 and Shift+F11 step over, into and out
+of functions, Ctrl+F10 runs to the caret, F5 continues, Debug > Break
+stops a running program and Shift+F5 ends debugging. F10 or F11 before
+the program has started runs it to the start of `main`. While debugging,
+the window switches to its debugging layout: Call Stack (double-click a
+frame to show its line, with a green arrow), Registers (a `*` marks those
+that changed since the last stop) and Threads; Variables, Watch and
+Memory follow when the debugger reads types. The debugging layout is
+remembered separately (`debugLayout`). The debugger is td, shared with
+ttrdb (`td/DESIGN.md`).
 
 **Find and replace in files.** Search > Find in Files (Ctrl+Shift+F)
 searches every text file of the workspace, or of another folder, for a
@@ -919,6 +938,8 @@ the file wins over them:
 | `cursorBlink` | `true`, `false` | `true` |
 | `cursorColor` | `#rrggbb`; left out: the color scheme's | |
 | `layout` | where the tool panes are: `left:220=workspace;bottom:220=terminal,results;right:240=` (each area's size, its groups split by `\|`, a group's panes by `,`, a group's size after `@`); older `treeWidth` and `bottomHeight` set the first one | |
+| `debugLayout` | the same while debugging | |
+| `debugProgram`, `debugArgs`, `debugDir` | Debug > Settings: the program, its arguments, its directory | |
 | `renderer` | `auto`, `core`, `soft`, `gl`, as for ttrt (`-renderer`) | `auto` |
 | `terminalBackground` | an animated background for the terminal pane, as ttrt's (`-dynbg`) | none |
 

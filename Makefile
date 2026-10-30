@@ -785,6 +785,7 @@ $(B)/ttrt_settingsdlg.o: $(B)/.dir src/ttrt/settingsdlg.cpp $(TTRT_H) \
 # ttrcode, the code editor (ttrcode/DESIGN.md): te + tw + tt in Motif.
 TTRCODE_OBJS = $(B)/ttrcode_main.o \
 	$(B)/ttrcode_app.o \
+	$(B)/ttrcode_debug.o \
 	$(B)/ttrcode_dock.o \
 	$(B)/ttrcode_editsource.o \
 	$(B)/ttrcode_findfiles.o \
@@ -792,16 +793,16 @@ TTRCODE_OBJS = $(B)/ttrcode_main.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
 TTRCODE_H = src/ttrcode/app.h src/ttrcode/dock.h src/ttrcode/editsource.h $(TE_H) $(TT_H) \
-	$(TH_H) $(TX_H) \
+	$(TH_H) $(TX_H) $(TD_H) \
 	src/core/settings.h src/core/str.h src/core/vector.h
 
 ttrcode: $(B)/ttrcode
 
 $(B)/ttrcode: $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a $(B)/libtw.a $(B)/libtl.a \
-		$(B)/libtp.a $(B)/libth.a $(B)/libti.a $(B)/libtx.a
+		$(B)/libtp.a $(B)/libth.a $(B)/libti.a $(B)/libtx.a $(B)/libtd.a $(B)/libdwarf.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a \
-		$(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(B)/libti.a $(B)/libtx.a $(TI_LIBS) \
-		$(TW_LIBS) $(LIBS)
+		$(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(B)/libti.a $(B)/libtx.a \
+		$(B)/libtd.a $(B)/libdwarf.a $(TI_LIBS) $(TW_LIBS) $(LIBS)
 
 $(B)/ttrcode_main.o: $(B)/.dir src/ttrcode/main.cpp $(TTRCODE_H)
 	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrcode/main.cpp -o $@
@@ -809,6 +810,8 @@ $(B)/ttrcode_app.o: $(B)/.dir src/ttrcode/app.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/app.cpp -o $@
 $(B)/ttrcode_dock.o: $(B)/.dir src/ttrcode/dock.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/dock.cpp -o $@
+$(B)/ttrcode_debug.o: $(B)/.dir src/ttrcode/debug.cpp $(TTRCODE_H)
+	$(COMPILE) -c src/ttrcode/debug.cpp -o $@
 $(B)/ttrcode_findfiles.o: $(B)/.dir src/ttrcode/findfiles.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/findfiles.cpp -o $@
 $(B)/ttrcode_options.o: $(B)/.dir src/ttrcode/options.cpp $(TTRCODE_H)

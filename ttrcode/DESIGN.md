@@ -63,7 +63,8 @@ output does.
   (section 4.1).
 - **Tabs** are toggle buttons kept as radio buttons by ttrcode, each
   with a close button (or a middle click) beside it.
-- **Distraction-free mode** (F11):
+- **Distraction-free mode** (Shift+Alt+Enter; F11 until the debugger
+  took it for Step Into, td/DESIGN.md section 11):
   - Hides everything except the current editor: the menu bar, the
     tree, the tabs, the bottom pane and the status bar.
   - Asks the window manager for full screen through
@@ -72,7 +73,7 @@ output does.
     mapped: there the window is withdrawn, loses its decorations, takes
     the screen's geometry and is mapped again, and the reverse on the
     way back.
-  - F11 or Esc brings everything back exactly as it was.
+  - Shift+Alt+Enter, Esc or F11 brings everything back exactly as it was.
 
 ## 2. Editors
 
@@ -116,7 +117,8 @@ output does.
 | Ctrl+G | go to line |
 | Ctrl+N, Ctrl+O, Ctrl+S | new, open, save |
 | Ctrl+F4, Ctrl+Tab, Ctrl+Shift+Tab | close the document, next and previous document |
-| F11 | distraction-free full screen |
+| Shift+Alt+Enter | distraction-free full screen |
+| F5, F9, F10, F11 | the debugger (td/DESIGN.md section 8.2) |
 | Alt+0, Alt+2 | show or hide the workspace, the bottom pane |
 | Ctrl+` | to the terminal and back |
 
@@ -202,13 +204,13 @@ much as for the panes there are now, modelled on Visual C++ 6:
   - Memory goes to the bottom area the first time it is opened.
 - **Keys** (VC6's): Alt+0 the workspace, Alt+2 the bottom area, Alt+3
   Watch, Alt+4 Variables, Alt+5 Registers, Alt+6 Memory, Alt+7 Call
-  Stack; F11 hides every area (section 1).
+  Stack; Shift+Alt+Enter hides every area (section 1).
 
 ### 4.2 The terminal
 
 A `tt::TermPane` running the user's shell in the workspace directory.
 It takes every key except ttrcode's global ones (Ctrl+`, Alt+0, Alt+2,
-F11), which it gives up through `PaneHost::pane_key`.
+Shift+Alt+Enter), which it gives up through `PaneHost::pane_key`.
 
 ## 5. Files
 

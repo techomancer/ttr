@@ -28,7 +28,7 @@ public:
     IrixTarget() : pid_(-1), fd_(-1), exe_fd_(-1), alive_(false), child_(false), arch_(0) {}
     ~IrixTarget();
 
-    bool launch(char* const* argv, ttr::Str* err);
+    bool launch(char* const* argv, const LaunchOptions& o, ttr::Str* err);
     bool attach(int pid, ttr::Str* err);
     const Arch* arch() const { return arch_ ? arch_ : arch_mips32(); }
     int pid() const { return pid_; }
@@ -38,6 +38,8 @@ public:
     bool loader_hook(Addr dynamic, SharedObject* loader, Addr* addr, ttr::Str* symbol);
     bool resume(bool step, int sig);
     bool wait(Event* ev);
+    bool poll(Event* ev, bool* got);
+    bool interrupt();
     void kill();
     void detach();
     bool get_regs(Regs* r);
@@ -50,6 +52,8 @@ private:
     bool trace(bool on);
     void gone();
     void arch_from(const char* path);
+    bool ended(Event* ev);
+    void decode(const prstatus_t& st, Event* ev);
 
     pid_t pid_;
     int fd_;            /* /proc/<pid> */
@@ -146,7 +150,7 @@ bool IrixTarget::trace(bool on)
     return ioctl(fd_, PIOCSFAULT, &f) == 0 && ioctl(fd_, PIOCSTRACE, &s) == 0;
 }
 
-bool IrixTarget::launch(char* const* argv, ttr::Str* err)
+bool IrixTarget::launch(char* const* argv, const LaunchOptions& o, ttr::Str* err)
 {
     path_ = find_program(argv[0]);
     arch_from(path_.c_str());
@@ -167,6 +171,7 @@ bool IrixTarget::launch(char* const* argv, ttr::Str* err)
         close(p[1]);
         ::read(p[0], &x, 1);
         close(p[0]);
+        setup_child(o);
         execvp(argv[0], argv);
         fprintf(stderr, "ttrdb: cannot run %s: %s\n", argv[0], strerror(errno));
         _exit(127);
@@ -311,23 +316,61 @@ bool IrixTarget::wait(Event* ev)
     do
         r = ioctl(fd_, PIOCWSTOP, &st);
     while (r != 0 && errno == EINTR);
-    if (r != 0) {
-        /* It is gone. Our own child tells how it ended. */
-        int status = 0;
-        gone();
-        if (child_ && waitpid(pid_, &status, 0) == pid_) {
-            if (WIFSIGNALED(status)) {
-                ev->kind = EV_KILLED;
-                ev->sig = WTERMSIG(status);
-            } else {
-                ev->kind = EV_EXITED;
-                ev->status = WEXITSTATUS(status);
-            }
-            return true;
-        }
-        ev->kind = EV_EXITED;
+    if (r != 0)
+        return ended(ev);
+    decode(st, ev);
+    return true;
+}
+
+/* PIOCSTATUS answers at once: stopped on something of interest or not. */
+bool IrixTarget::poll(Event* ev, bool* got)
+{
+    memset(ev, 0, sizeof(*ev));
+    *got = true;
+    if (!alive_) {
+        ev->kind = EV_ERROR;
+        return false;
+    }
+    prstatus_t st;
+    if (ioctl(fd_, PIOCSTATUS, &st) != 0)
+        return ended(ev);
+    if (!(st.pr_flags & PR_ISTOP)) {
+        *got = false;
         return true;
     }
+    decode(st, ev);
+    return true;
+}
+
+/* PIOCSTOP waits until it has stopped; poll() then reports the stop
+ * (PR_REQUESTED) as a signal 0. */
+bool IrixTarget::interrupt()
+{
+    prstatus_t st;
+    return alive_ && ioctl(fd_, PIOCSTOP, &st) == 0;
+}
+
+/* It is gone. Our own child tells how it ended. */
+bool IrixTarget::ended(Event* ev)
+{
+    int status = 0;
+    gone();
+    if (child_ && waitpid(pid_, &status, 0) == pid_) {
+        if (WIFSIGNALED(status)) {
+            ev->kind = EV_KILLED;
+            ev->sig = WTERMSIG(status);
+        } else {
+            ev->kind = EV_EXITED;
+            ev->status = WEXITSTATUS(status);
+        }
+        return true;
+    }
+    ev->kind = EV_EXITED;
+    return true;
+}
+
+void IrixTarget::decode(const prstatus_t& st, Event* ev)
+{
     Addr pc = (Addr)st.pr_reg[CTX_EPC];
     if (arch()->ptr_size == 4)
         pc = (uint32_t)pc;
@@ -343,7 +386,6 @@ bool IrixTarget::wait(Event* ev)
         ev->kind = EV_SIGNAL;
         ev->sig = st.pr_cursig;
     }
-    return true;
 }
 
 void IrixTarget::kill()

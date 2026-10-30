@@ -1,5 +1,6 @@
 #include "session.h"
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,8 +24,41 @@ const char* base_name(const char* p)
 } /* namespace */
 
 Session::Session()
-    : target_(0), alive_(false), started_(false), next_id_(1), pending_sig_(0)
+    : target_(0), alive_(false), started_(false), next_id_(1), pending_sig_(0), idle_(0),
+      idle_ctx_(0), busy_(false), interrupted_(false)
 {
+}
+
+void Session::set_idle(IdleFn fn, void* ctx)
+{
+    idle_ = fn;
+    idle_ctx_ = ctx;
+}
+
+void Session::interrupt()
+{
+    if (!alive_ || !busy_ || interrupted_)
+        return;
+    interrupted_ = true;
+    target_->interrupt();
+}
+
+/* Wait for the program; with an idle function, without blocking. */
+bool Session::wait_event(Event* e)
+{
+    if (!idle_)
+        return target_->wait(e);
+    busy_ = true;
+    bool ok;
+    for (;;) {
+        bool got = false;
+        ok = target_->poll(e, &got);
+        if (got)
+            break;
+        idle_(idle_ctx_);
+    }
+    busy_ = false;
+    return ok;
 }
 
 Session::~Session()
@@ -52,10 +86,10 @@ bool Session::load_exe(ttr::Str* err)
     return true;
 }
 
-bool Session::start(char* const* argv, ttr::Str* err)
+bool Session::start(char* const* argv, ttr::Str* err, const LaunchOptions& o)
 {
     target_ = Target::create();
-    if (!target_->launch(argv, err))
+    if (!target_->launch(argv, o, err))
         return false;
     alive_ = true;
     if (!load_exe(err))
@@ -306,6 +340,10 @@ Stop Session::to_stop(const Event& e)
     if (e.kind == EV_EXITED || e.kind == EV_KILLED || e.kind == EV_ERROR) {
         alive_ = false;
         pending_sig_ = 0;
+    } else if (e.kind == EV_SIGNAL && interrupted_ && (e.sig == 0 || e.sig == SIGSTOP)) {
+        /* What interrupt() asked for: not the program's signal. */
+        s.kind = EV_PAUSED;
+        interrupted_ = false;
     } else if (e.kind == EV_SIGNAL) {
         pending_sig_ = e.sig;     /* delivered when it runs again */
     } else if (e.kind == EV_BREAK) {
@@ -334,7 +372,7 @@ Stop Session::step_over_bp(bool* done)
     int sig = pending_sig_;
     pending_sig_ = 0;
     Event e;
-    if (!target_->resume(true, sig) || !target_->wait(&e)) {
+    if (!target_->resume(true, sig) || !wait_event(&e)) {
         e.kind = EV_ERROR;
         *done = true;
         return to_stop(e);
@@ -363,7 +401,7 @@ Stop Session::run_until_stop(bool step)
     }
     int sig = pending_sig_;
     pending_sig_ = 0;
-    if (!target_->resume(step, sig) || !target_->wait(&e))
+    if (!target_->resume(step, sig) || !wait_event(&e))
         e.kind = EV_ERROR;
     remove_all();       /* after an exit only the flags are cleared */
     return to_stop(e);

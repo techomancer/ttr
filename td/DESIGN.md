@@ -44,7 +44,16 @@ and on IRIX (the emulated guest, MIPSpro n32 programs):
   programs.
 - ttrdb -d DIR adds a source directory; the test runner passes the test
   sources, so programs compiled on one machine are tested on another.
-- Not yet: threads, values and types, watchpoints, core files.
+- ttrcode (section 8.2), 2026-10-26: the Debug menu with VC6's keys
+  (F11 is Step Into; full screen moved to Shift+Alt+Enter), breakpoints
+  as red dots in the margin, the yellow arrow and line where it stopped,
+  Call Stack (a green arrow for a chosen caller), Registers, Threads, a
+  Program pane (a terminal of its own for the program's input and
+  output), and the debugging layout. td waits through an idle function,
+  so the window goes on and Debug > Break interrupts the program.
+  Motif's F10 for the menu bar is moved out of the way.
+- Not yet: threads, values and types (Variables, Watch, Memory),
+  Disassembly (needs a disassembler), watchpoints, core files.
 
 gdb is hard to use, debugging through VS Code is worse, and dbx and
 ProDev WorkShop are not much better. ttr gets its own debugger, in three
@@ -606,9 +615,8 @@ serialising it. Nothing is built for it now.
 2. **The platform rule.** ptrace is a Linux-only API outside
    `src/wayland/`. The proposal is per-system Target files, as `tp/`
    already has for ptys; AGENTS.md would say so.
-3. **F11.** It is ttrcode's full screen today, and Step Into in Visual
-   C++. Proposal: F11 steps, and full screen moves to Shift+Alt+Enter,
-   Visual Studio's later key for full screen.
+3. **F11.** Decided 2026-10-26: F11 steps into, as in Visual C++, and
+   full screen moved to Shift+Alt+Enter.
 4. **libdwarf** as a `third_party` submodule (section 5.4), built as a
    shared library for the LGPL (decided: the vendored one on both systems).
    Pending: libdwarf's upstreaming policy. And **zstd** for compressed

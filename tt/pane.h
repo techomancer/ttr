@@ -64,13 +64,17 @@ struct PaneOptions {
     bool login;
     const char* cwd;
     const char* const* env;
+    /* No program of its own: only a terminal (tty_name()) for programs
+     * started elsewhere, such as a debugger's. It stays open between
+     * them. */
+    bool no_program;
 
     PaneOptions()
         : font(0), fallback_fonts(0), foreground(0xe5e5e5), background(0), palette(0),
           have_cursor_color(false), cursor_color(0), scrollback(1000), bold_is_bright(true),
           backspace_is_del(true), bell(BELL_AUDIBLE), scroll_bar(true), renderer(0),
           dynamic_background(0), text_rendering(0), argv(0), login(false),
-          cwd(0), env(0)
+          cwd(0), env(0), no_program(false)
     {
     }
 };
@@ -97,6 +101,8 @@ public:
      * realizing, in case the first resize came too early). */
     void start();
     bool running() const { return running_; }
+    /* The pty's terminal, for another program to use (the debugger's). */
+    const char* tty_name() const { return pty_.slave_name(); }
     /* The program itself is in the foreground (for a shell: at its
      * prompt, not running a command). */
     bool at_prompt() const;
@@ -156,6 +162,7 @@ public:
 
 private:
     void make_widgets(Widget parent);
+    void open_external();
     void drop_widgets();
     void spawn(int cols, int rows);
     void ended();
@@ -197,6 +204,8 @@ private:
     char* dynbg_;
     const char* text_;              /* a static string (TwGrid compares it) */
     bool want_scroll_;
+    bool external_;                 /* PaneOptions::no_program */
+    int hold_fd_;                   /* its own slave, so the pty outlives programs */
     bool started_, running_;
     bool in_scroll_update_;
     tl::Buffer outq_;               /* bytes the pty did not take yet */
