@@ -1,0 +1,29 @@
+# program: td_demo
+# Breakpoints by function and by line, continuing, recursion, the exit.
+b main
+expect Breakpoint 1 at
+expect main (demo.c:16)
+b demo.c:11
+expect Breakpoint 2 at
+expect fact (demo.c:11)
+b
+expect 1  main
+expect 2  demo.c:11
+r
+expect Breakpoint 1, main (demo.c:16)
+expect int a = square(3);
+c
+expect Breakpoint 2, fact (demo.c:11)
+bt
+expect #0
+expect fact (demo.c:11)
+expect main (demo.c:17)
+c
+expect Breakpoint 2, fact (demo.c:11)
+bt
+expect #1
+expect fact (demo.c:11)
+expect main (demo.c:17)
+d 2
+c
+expect Program exited with code 7.

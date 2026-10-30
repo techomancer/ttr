@@ -513,6 +513,141 @@ tf-test: $(B)/tf_test
 $(B)/tf_test_tf.o: $(B)/.dir tf/test/test_tf.cpp $(TF_H)
 	$(COMPILE) -c tf/test/test_tf.cpp -o $@
 
+# td, the debugger library (td/DESIGN.md), and ttrdb, its command line.
+# DWARF through libdwarf (third_party/libdwarf, pinned, LGPL 2.1), built
+# with td/third/libdwarf/config.h. Its sources cannot share one wrapper
+# (their headers have no include guards), so the rule compiles each in a
+# loop; dwarf_line.c and dwarf_print_lines.c go through wrappers in
+# td/third. LIBDWARF_CFLAGS: -c99 for MIPSpro.
+# TD_SYS: td_target_linux.o (ptrace) or td_target_irix.o (/proc).
+LIBDWARF_CFLAGS =
+# For td/module.cpp, which includes libdwarf's C header: its 64-bit types
+# are long long, which g++ -pedantic warns about in C++98. Empty for
+# MIPSpro.
+TD_DWARF_FLAGS = -Wno-long-long
+LIBDWARF_DIR = third_party/libdwarf/src/lib/libdwarf
+LIBDWARF_SRC = \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_64machoread.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_abbrev.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_alloc.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_arange.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_crc32.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_crc.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_debugaddr.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_debuglink.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_debugnames.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_debug_sup.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_die_deliv.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_dsc.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_elf_load_headers.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_elfread.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_elf_rel_detector.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_error.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_fill_in_attr_form.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_find_sigref.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_fission_to_cu.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_form.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_form_class_names.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_frame2.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_frame.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_frame_cfa_read.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_frame_iter.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_gdbindex.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_generic_init.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_global.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_gnu_index.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_groups.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_harmless.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_init_finish.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_leb.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_lname_version.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_local_malloc.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_locationop_read.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_loc.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_loclists.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_lvn_name.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_machoread.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_macro5.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_macro.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_memcpy_swap.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_names.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_object_detector.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_object_read_common.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_peread.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_query.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_ranges.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_rnglists.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_safe_arithmetic.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_safe_strcpy.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_secname_ck.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_seekr.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_setup_sections.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_string.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_stringsection.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_str_offsets.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_tied.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_tsearchhash.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_util.c \
+	third_party/libdwarf/src/lib/libdwarf/dwarf_xu_index.c \
+	td/third/libdwarf_line.c td/third/libdwarf_print_lines.c
+
+$(B)/libdwarf.a: $(B)/.dir td/third/libdwarf/config.h
+	rm -rf $(B)/libdwarf && mkdir -p $(B)/libdwarf
+	top=`pwd`; for f in $(LIBDWARF_SRC); do \
+		o=$(B)/libdwarf/`basename $$f .c`.o; \
+		echo "  CC $$f"; \
+		$(CC) $(CFLAGS) $(LIBDWARF_CFLAGS) -I$$top/td/third/libdwarf \
+			-I$$top/$(LIBDWARF_DIR) -c $$top/$$f -o $$o || exit 1; \
+	done
+	rm -f $@
+	$(AR) rc $@ $(B)/libdwarf/*.o
+
+TD_SYS = $(B)/td_target_linux.o
+TD_OBJS = $(B)/td_arch.o $(B)/td_elf.o $(B)/td_module.o $(B)/td_session.o $(TD_SYS)
+TD_H = td/td.h td/target.h td/elf.h td/module.h td/session.h src/core/str.h \
+	src/core/vector.h src/core/port.h
+
+$(B)/libtd.a: $(TD_OBJS)
+	rm -f $@
+	$(AR) rc $@ $(TD_OBJS)
+
+$(B)/td_arch.o: $(B)/.dir td/arch.cpp $(TD_H)
+	$(COMPILE) -c td/arch.cpp -o $@
+$(B)/td_elf.o: $(B)/.dir td/elf.cpp $(TD_H)
+	$(COMPILE) -c td/elf.cpp -o $@
+$(B)/td_module.o: $(B)/.dir td/module.cpp $(TD_H) $(B)/libdwarf.a
+	$(COMPILE) $(TD_DWARF_FLAGS) -I$(LIBDWARF_DIR) -c td/module.cpp -o $@
+$(B)/td_session.o: $(B)/.dir td/session.cpp $(TD_H)
+	$(COMPILE) -c td/session.cpp -o $@
+$(B)/td_target_linux.o: $(B)/.dir td/target_linux.cpp $(TD_H)
+	$(COMPILE) -c td/target_linux.cpp -o $@
+$(B)/td_target_irix.o: $(B)/.dir td/target_irix.cpp $(TD_H)
+	$(COMPILE) -c td/target_irix.cpp -o $@
+
+ttrdb: $(B)/ttrdb
+$(B)/ttrdb: $(B)/ttrdb_main.o $(B)/libtd.a $(B)/libdwarf.a $(B)/core_str.o
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/ttrdb_main.o $(B)/libtd.a $(B)/libdwarf.a \
+		$(B)/core_str.o
+$(B)/ttrdb_main.o: $(B)/.dir src/ttrdb/main.cpp $(TD_H)
+	$(COMPILE) -c src/ttrdb/main.cpp -o $@
+
+# The programs the tests debug, built with debug information and no
+# optimisation (TD_TEST_CFLAGS), and the scripts in td/test.
+TD_TEST_CFLAGS = -g -O0
+$(B)/td_demo: $(B)/td_demo.o $(B)/td_demo_util.o
+	$(CC) $(TD_TEST_CFLAGS) -o $@ $(B)/td_demo.o $(B)/td_demo_util.o
+$(B)/td_demo.o: $(B)/.dir td/test/progs/demo.c
+	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/demo.c -o $@
+$(B)/td_demo_util.o: $(B)/.dir td/test/progs/demo_util.c
+	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/demo_util.c -o $@
+$(B)/td_crash: $(B)/td_crash.o
+	$(CC) $(TD_TEST_CFLAGS) -o $@ $(B)/td_crash.o
+$(B)/td_crash.o: $(B)/.dir td/test/progs/crash.c
+	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/crash.c -o $@
+
+td-test: $(B)/ttrdb $(B)/td_demo $(B)/td_crash
+	sh td/test/run.sh $(B)
+
 # ttrc, To The Roots Commander (ttrc/DESIGN.md): tu + tf (+ tl) on a
 # character terminal; no X.
 TTRC_OBJS = $(B)/ttrc_main.o \

@@ -1,7 +1,23 @@
 # td: a debugger for ttr
 
-Status: design draft, 2026-10-24. Nothing is implemented yet. Section 11
-lists the questions to decide before milestone 1.
+Status: design draft, 2026-10-24. Section 11 lists the open questions.
+
+Prototype, 2026-10-24: the core of milestones 1 and 2, on Linux x86-64
+and on IRIX (the emulated guest, MIPSpro n32 programs):
+
+- td: the ptrace Target (`td/target_linux.cpp`) and the /proc Target
+  (`td/target_irix.cpp`), an ELF symbol reader, libdwarf's line and frame
+  tables (`td/module.cpp`), breakpoints by function, line or address,
+  continue, step and next by line, step by instruction, finish, and
+  backtraces from the frame tables (through recursion, to `__start` on
+  IRIX).
+- libdwarf vendored and built with plain make on both systems.
+- ttrdb with the commands of section 8.1 except `p`, `w`, `t`, `mods`
+  and `detach`; `-x SCRIPT` runs a test script. `make td-test` runs the
+  scripts in `td/test/` (breakpoints, stepping, a crash): all pass on
+  both systems.
+- Not yet: shared libraries (only the executable's symbols), threads,
+  values and types, watchpoints, core files, and the Octane.
 
 gdb is hard to use, debugging through VS Code is worse, and dbx and
 ProDev WorkShop are not much better. ttr gets its own debugger, in three

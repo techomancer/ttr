@@ -1,0 +1,12 @@
+# program: td_crash
+# A crash: the signal, where, and the stack through recursion.
+r
+expect Program received SIGSEGV (11) in
+expect poke (crash.c:9)
+bt
+expect #0
+expect poke (crash.c:9)
+expect poke (crash.c:11)
+expect main (crash.c:17)
+c
+expect Program killed by SIGSEGV (11).

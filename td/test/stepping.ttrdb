@@ -1,0 +1,27 @@
+# program: td_demo
+# Step into a function in another file, over lines, finish.
+b demo.c:16
+r
+expect Breakpoint 1, main (demo.c:16)
+s
+expect square (demo_util.c:4)
+expect int r = x * x;
+bt
+expect square (demo_util.c:4)
+expect main (demo.c:16)
+n
+expect square (demo_util.c:5)
+f
+expect in main (demo.c:16)
+n
+expect main (demo.c:17)
+n
+expect main (demo.c:18)
+absent fact
+l
+expect =>18
+si
+expect in main (demo.c:18)
+absent Program
+c
+expect Program exited with code 7.
