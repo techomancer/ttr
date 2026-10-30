@@ -339,10 +339,20 @@ libdwarf in it (not legal advice; this is the plan):
   ttrcode's About dialog lists it with its licence and the repository
   address, and so does `ttrdb --version`.
 
-SGI's libdwarf (`TD_DWARF=system`) is for local IRIX builds only. We do
-not have the source of the exact 2001 version in `/usr/lib32/libdwarf.a`,
-so we cannot meet the first point for a binary linked with it. Released
-tardists use the vendored one.
+SGI's libdwarf (`TD_DWARF=system`) is for local IRIX builds only. It was
+already LGPL 2.1: the guest's `/usr/include/libdwarf.h` says "Copyright
+(C) 2000, 2001, 2002 Silicon Graphics, Inc." under the LGPL 2.1, and SGI
+published the source on oss.sgi.com. That site is gone, and the libdwarf
+repository's oldest release tag is from 2011, so we do not have the
+source of the exact version in `/usr/lib32/libdwarf.a` and cannot meet
+the first point for a binary linked with it. If a matching 2000-2002
+snapshot turns up (a mirror, the Wayback Machine), shipping it alongside
+would allow it. Until then, released tardists use the vendored one.
+
+(Current libdwarf's files carry SGI copyrights from 2000 to 2010. Three
+files, `dwarf.h`, `libdwarf.h` and `dwarf_form.c`, also say "Copyright
+2007-2010 Sun Microsystems": contributions, not joint ownership, as far
+as the source shows.)
 
 *Pending:* libdwarf's policy on taking the `__sgi` fix and, more
 generally, IRIX build fixes upstream.
