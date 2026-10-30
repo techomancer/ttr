@@ -86,7 +86,8 @@ private:
 
 /* 4Dwm toolchest menu files (mwm menu syntax). The menu named "ToolChest"
  * becomes the root; f.menu entries become folders. Files are read in
- * order; a menu defined twice keeps its first definition. */
+ * order; a menu defined again adds its entries to the first definition,
+ * as app-chests and ~/.auxchestrc extend system.chestrc in 4Dwm. */
 class ToolchestAppSource : public AppSource {
 public:
     ToolchestAppSource();

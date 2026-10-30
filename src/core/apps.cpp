@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 namespace ttr {
 
@@ -114,6 +115,23 @@ void AppFolder::prune()
             }
         }
         i++;
+    }
+    /* Separators only between entries, one at a time (entries that were
+     * left out leave them behind). */
+    for (i = 0; i < items.size(); ) {
+        bool sep = items[i]->kind == AppNode::SEPARATOR;
+        if (sep && (i == 0 || i == items.size() - 1 ||
+                    items[i - 1]->kind == AppNode::SEPARATOR)) {
+            delete items[i];
+            items.remove_at(i);
+            continue;
+        }
+        i++;
+    }
+    /* Removing a trailing one can leave another before it. */
+    while (items.size() > 0 && items[items.size() - 1]->kind == AppNode::SEPARATOR) {
+        delete items[items.size() - 1];
+        items.remove_at(items.size() - 1);
     }
 }
 
@@ -383,9 +401,57 @@ ToolchestAppSource::~ToolchestAppSource()
         delete menus_[i];
 }
 
+/* "a|b": the first of them that exists (~/.chestrc replaces
+ * system.chestrc). A directory: its *.chest files, by name, as 4Dwm reads
+ * /usr/lib/X11/app-chests. */
 void ToolchestAppSource::add_file(const char* path)
 {
-    files_.push_back(Str(path));
+    char one[1024];
+    const char* p = path;
+    for (;;) {
+        const char* bar = strchr(p, '|');
+        size_t n = bar ? (size_t)(bar - p) : strlen(p);
+        if (n > 0 && n < sizeof(one)) {
+            memcpy(one, p, n);
+            one[n] = 0;
+            struct stat st;
+            if (stat(one, &st) == 0)
+                break;
+        }
+        if (!bar)
+            return;
+        p = bar + 1;
+    }
+    struct stat st;
+    stat(one, &st);
+    if (!S_ISDIR(st.st_mode)) {
+        files_.push_back(Str(one));
+        return;
+    }
+    DIR* d = opendir(one);
+    if (!d)
+        return;
+    Vector<Str> names;
+    struct dirent* e;
+    while ((e = readdir(d)) != 0) {
+        size_t l = strlen(e->d_name);
+        if (l > 6 && strcmp(e->d_name + l - 6, ".chest") == 0)
+            names.push_back(Str(e->d_name));
+    }
+    closedir(d);
+    /* Insertion sort: a handful of files. */
+    int i, j;
+    for (i = 1; i < names.size(); i++)
+        for (j = i; j > 0 && strcmp(names[j - 1].c_str(), names[j].c_str()) > 0; j--) {
+            Str t = names[j];
+            names[j] = names[j - 1];
+            names[j - 1] = t;
+        }
+    for (i = 0; i < names.size(); i++) {
+        char full[1200];
+        sprintf(full, "%.900s/%.200s", one, names[i].c_str());
+        files_.push_back(Str(full));
+    }
 }
 
 /* Next token from *p: a "quoted string" (with \" and \\ escapes) or a run
@@ -455,10 +521,18 @@ void ToolchestAppSource::parse_file(const char* path)
             continue;
         }
         if (strcmp(line, "}") == 0) {
-            if (find_menu(cur->name.c_str()))
-                delete cur;     /* first definition wins */
-            else
+            /* A menu defined again adds to it: app-chests and
+             * ~/.auxchestrc extend the system's menus, as in 4Dwm. */
+            Menu* old = find_menu(cur->name.c_str());
+            if (old) {
+                int i;
+                for (i = 0; i < cur->lines.size(); i++)
+                    old->lines.push_back(cur->lines[i]);
+                cur->lines.clear();
+                delete cur;
+            } else {
                 menus_.push_back(cur);
+            }
             cur = 0;
             continue;
         }
@@ -508,6 +582,22 @@ ToolchestAppSource::Menu* ToolchestAppSource::find_menu(const char* name)
     return 0;
 }
 
+/* The command's program, when named by its full path, can be run. */
+static bool installed(const char* command)
+{
+    while (*command == ' ' || *command == '\t')
+        command++;
+    if (*command != '/')
+        return true;
+    char prog[1024];
+    size_t n = strcspn(command, " \t");
+    if (n >= sizeof(prog))
+        return true;
+    memcpy(prog, command, n);
+    prog[n] = 0;
+    return access(prog, X_OK) == 0;
+}
+
 void ToolchestAppSource::build(AppFolder* folder, Menu* m, int depth)
 {
     if (depth > 16)     /* menus that include themselves */
@@ -531,6 +621,10 @@ void ToolchestAppSource::build(AppFolder* folder, Menu* m, int depth)
         } else if ((strncmp(fn, "f.exec", 6) == 0 ||
                     strncmp(fn, "f.checkexec", 11) == 0) &&
                    !l->label.empty() && !l->arg.empty()) {
+            /* f.checkexec: only if the program is installed (4Dwm greys
+             * the entry out). */
+            if (strncmp(fn, "f.checkexec", 11) == 0 && !installed(l->arg.c_str()))
+                continue;
             folder->add_app(l->label.c_str(), l->arg.c_str(), "");
         }
         /* f.title and window manager functions are not applications. */

@@ -412,6 +412,22 @@ When ttr starts, it starts these, in order:
 
 None of these run again when ttr restarts in place.
 
+### The Start menu on IRIX
+
+On IRIX the Start menu is the 4Dwm toolchest, read the way 4Dwm reads it:
+`~/.chestrc` if you have one, otherwise `/usr/lib/X11/system.chestrc`;
+then the additions in `/usr/lib/X11/app-chests/*.chest`, which installed
+software puts there; then your own `~/.auxchestrc`. A menu named again in
+a later file adds its entries to the earlier one, so an `.auxchestrc`
+with `Menu ToolChest { ... }` adds folders to the top of the menu rather
+than replacing it. Entries whose program is not installed (`f.checkexec`)
+are left out. A few entries talk to 4Dwm or the IRIX desktop and do
+nothing under ttr, such as Restart Window Manager (`tellwm`).
+
+The list of files is Settings > Start Menu > Toolchest files (the
+`toolchestFiles` setting): separated by `:`, with `a|b` for "the first
+of these that exists" and a directory for the `.chest` files in it.
+
 ### The terminal (ttrt)
 
 `ttrt` is ttr's terminal emulator: xterm-compatible, with scrollback that

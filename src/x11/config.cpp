@@ -73,12 +73,18 @@ struct Resources {
     { (char*)name, (char*)cls, XtRString, sizeof(String), \
       XtOffsetOf(Resources, field), XtRString, (XtPointer)def }
 
+/* 4Dwm's order (apps.h); older versions saved the first one from
+ * Settings, which now means the second. */
+#define k_toolchest_files \
+    "~/.chestrc|/usr/lib/X11/system.chestrc:/usr/lib/X11/app-chests:~/.auxchestrc"
+static const char k_old_toolchest_files[] = "~/.auxchestrc:/usr/lib/X11/system.chestrc";
+
 static XtResource k_resources[] = {
     RES("focusPolicy", "FocusPolicy", focus_policy, "click"),
     RES("switchStyle", "SwitchStyle", switch_style, "windows"),
     RES("appSource", "AppSource", app_source, "auto"),
     RES("toolchestFiles", "ToolchestFiles", toolchest_files,
-        "~/.auxchestrc:/usr/lib/X11/system.chestrc"),
+        k_toolchest_files),
     RES("terminal", "Terminal", terminal, "xterm -e"),
     RES("clockFormat", "ClockFormat", clock_format, "%H:%M"),
     RES("titleFont", "Font", title_font, BOLD_12),
@@ -397,7 +403,7 @@ String* config_fallback_resources()
     return (String*)k_fallback;
 }
 
-/* Replace a leading ~ in each colon separated element with $HOME. */
+/* Replace a leading ~ in each element (separated by : or |) with $HOME. */
 static Str expand_home(const char* list)
 {
     const char* home = getenv("HOME");
@@ -418,7 +424,7 @@ static Str expand_home(const char* list)
         } else {
             out[o++] = *p;
         }
-        start = *p == ':';
+        start = *p == ':' || *p == '|';
     }
     out[o] = 0;
     Str s(out);
@@ -854,8 +860,11 @@ void read_config(Widget toplevel, Config* cfg)
 #endif
     }
 
-    cfg->toolchest_setting = r.toolchest_files;
-    cfg->toolchest_files = expand_home(r.toolchest_files);
+    const char* chests = r.toolchest_files;
+    if (chests && strcmp(chests, k_old_toolchest_files) == 0)
+        chests = k_toolchest_files;
+    cfg->toolchest_setting = chests;
+    cfg->toolchest_files = expand_home(chests);
     cfg->terminal = r.terminal;
     cfg->clock_format = r.clock_format;
 
