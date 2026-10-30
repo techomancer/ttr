@@ -3,4 +3,6 @@ build-asan/
 ignore/
 build-irix/
 __pycache__/
+# core dumps, but not the src/core directory
 core
+!core/
