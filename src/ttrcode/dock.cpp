@@ -181,6 +181,11 @@ void Docks::drop_group(Group* g)
     int i = a->groups.find(g);
     if (i >= 0)
         a->groups.remove_at(i);
+    /* Out of the layout now: Xt destroys widgets only after the event
+     * being handled, and until then XmForm would still lay them out
+     * against the groups that are left (contradictory constraints). */
+    XtUnmanageChild(g->sash);
+    XtUnmanageChild(g->form);
     XtDestroyWidget(g->sash);
     XtDestroyWidget(g->form);
     delete g;
@@ -350,6 +355,11 @@ void Docks::layout_area(Area* a)
     for (i = 0; i < n; i++) {
         Group* g = a->groups[i];
         bool last = i == n - 1;
+        /* The last group's sash goes first: attached below a group that
+         * now reaches the far edge it would push the area out, a cycle
+         * XmForm cannot settle (contradictory constraints). */
+        if (last)
+            XtUnmanageChild(g->sash);
         if (vert) {
             XtVaSetValues(g->form, XmNleftAttachment, XmATTACH_FORM,
                           XmNrightAttachment, XmATTACH_FORM,
@@ -368,10 +378,8 @@ void Docks::layout_area(Area* a)
                 XtVaSetValues(g->form, XmNwidth, (Dimension)g->size, (char*)0);
         }
         XtVaSetValues(g->sash, XmNuserData, (XtPointer)sash_code(a->side, i + 1), (char*)0);
-        if (last) {
-            XtUnmanageChild(g->sash);
+        if (last)
             continue;
-        }
         if (vert)
             XtVaSetValues(g->sash, XmNleftAttachment, XmATTACH_FORM,
                           XmNrightAttachment, XmATTACH_FORM,
