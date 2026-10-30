@@ -250,15 +250,47 @@ stepping by instruction.
 
 ### 5.4 libdwarf
 
-libdwarf started at SGI. IRIX ships a 2001 version (`/usr/lib32/libdwarf.a`,
-`libdwarf_sgi.a`, `libelf.a`, headers in `/usr/include`), but it reads
-only DWARF 2, so it cannot read gcc's or clang's output on Linux. Using it
-on IRIX and a current one on Linux would mean two APIs.
+td reads DWARF through libdwarf, from one of two places:
 
-The current libdwarf (https://github.com/davea42/libdwarf-code, LGPL 2.1,
-about 62,000 lines of C in 64 files) is the better choice, vendored in
-`third_party/libdwarf` as a pinned submodule and built the same way on
-both systems:
+- **SGI's**, on IRIX: a 2001 version, static only (`/usr/lib32/libdwarf.a`,
+  `libdwarf_sgi.a`, `libelf.a`, headers in `/usr/include`), also under
+  the LGPL 2.1. It reads DWARF 2, which is what MIPSpro writes.
+- **The current one** (https://github.com/davea42/libdwarf-code, LGPL
+  2.1, about 62,000 lines of C in 64 files), vendored in
+  `third_party/libdwarf` as a pinned submodule. Needed on Linux (DWARF
+  4 and 5), and usable on IRIX too.
+
+The Makefile chooses: `TD_DWARF=vendored` (the default) or
+`TD_DWARF=system` (IRIX only).
+
+**The two APIs are not interchangeable as they are.** Compared on
+2026-10-24 (the guest's `/usr/include/libdwarf.h` against commit 71f0401):
+
+- The same in both: `dwarf_child`, `dwarf_tag`, `dwarf_diename`,
+  `dwarf_attr`, the `dwarf_form*` readers, `dwarf_lowpc`,
+  `dwarf_lineaddr`/`dwarf_lineno`/`dwarf_linesrc`, `dwarf_get_fde_list`,
+  `dwarf_get_fde_list_eh`, `dwarf_get_fde_at_pc`, `dwarf_get_globals`,
+  `dwarf_dealloc`, `dwarf_finish`.
+- Renamed with more arguments, the old names gone from the current
+  library:
+
+  | SGI | current |
+  |---|---|
+  | `dwarf_init`, `dwarf_elf_init` | `dwarf_init_b`, `dwarf_object_init_b` |
+  | `dwarf_next_cu_header` | `dwarf_next_cu_header_d` |
+  | `dwarf_siblingof` | `dwarf_siblingof_b` |
+  | `dwarf_srclines` | `dwarf_srclines_b` (a line context) |
+  | `dwarf_highpc` | `dwarf_highpc_b` (an offset or an address) |
+  | `dwarf_get_fde_info_for_reg` | `dwarf_get_fde_info_for_reg3_c`, `..._all_regs3` |
+  | `dwarf_loclist` | `dwarf_get_loclist_c` (location lists of DWARF 5 too) |
+
+So td is written against the current API, and `td/dwarf_sgi.cpp`
+provides the dozen renamed calls it uses on top of SGI's old ones: for
+DWARF 2, the extra arguments have fixed answers. Only that file knows
+which library is underneath. If SGI's turns out to miss too much, IRIX
+uses the vendored one, which builds there (below).
+
+About the current libdwarf:
 
 - **It builds with MIPSpro.** Tried on 2026-10-24 with commit 71f0401
   (`cc -c99 -n32`, a hand-written `config.h` with `WORDS_BIGENDIAN`):
@@ -287,8 +319,12 @@ both systems:
 Licensing: ttr is BSD-3, and the LGPL 2.1 allows linking libdwarf into
 it. A distributed binary that contains libdwarf must come with its source
 and be relinkable with a changed libdwarf. The simplest way is to build
-libdwarf as a shared library (`libdwarf.so`, which IRIX supports too),
-installed next to ttrcode and ttrdb.
+the vendored one as a shared library (`libdwarf.so`, which IRIX supports
+too), installed next to ttrcode and ttrdb. SGI's is static only, so with
+it the tardist would ship td's object files for relinking instead.
+
+*Pending:* libdwarf's policy on taking the `__sgi` fix and, more
+generally, IRIX build fixes upstream.
 
 `dwarfdump` (GPL, in the same repository) is useful for checking our
 results but is not linked into anything.
@@ -317,7 +353,21 @@ Unwinding a stopped thread is a loop:
 
 That loop is a few hundred lines in td, the same on both systems.
 
-What it needs besides libdwarf:
+td has an Unwinder interface with two implementations, chosen when td is
+built:
+
+- **libunwind** (https://github.com/libunwind/libunwind, MIT), on Linux,
+  when the system has it: `libunwind-ptrace` unwinds another process
+  through ptrace, and `libunwind-coredump` a core file. The Makefile
+  looks for `libunwind-ptrace.h` and `pkg-config libunwind-ptrace`
+  (`TD_UNWIND=auto`, the default; `TD_UNWIND=own` turns it off). It is
+  not vendored: it is used when present and missed when not.
+- **td's own loop** above: on IRIX always, and on Linux when libunwind is
+  missing or `TD_UNWIND=own`. It has to work on its own on both systems,
+  so the tests run it on Linux too, against libunwind's answers where
+  both exist.
+
+What the own loop needs besides libdwarf:
 
 - **No CFI for a function** (hand-written assembly, some IRIX system
   libraries): on MIPS, scan back for the prologue (`addiu sp, sp, -n`,
@@ -325,17 +375,15 @@ What it needs besides libdwarf:
 - **Signal frames:** IRIX's `sigcontext` and Linux's `rt_sigframe`, which
   `.eh_frame` describes for the signal trampoline. *To verify* on IRIX.
 
-Other unwinders, and why not:
+Why libunwind does not cover IRIX: it supports Linux, FreeBSD, QNX,
+Solaris and HP-UX. Its MIPS port is for Linux, and 26 of its files use
+C11 atomics or `__sync` builtins, which MIPSpro does not have. *Pending:*
+asking libunwind's maintainers about an IRIX port. If one appears, IRIX
+can use it the same way.
 
-- **libunwind** (https://github.com/libunwind/libunwind, MIT): it unwinds
-  other processes through ptrace (`libunwind-ptrace`), but only on Linux,
-  FreeBSD, QNX, Solaris and HP-UX. Its MIPS port is for Linux, and 26 of
-  its files use C11 atomics or `__sync` builtins, so MIPSpro would need a
-  lot of patching. Using it on Linux only would mean two unwinders, and
-  the loop above is small.
-- **IRIX's libexc** (`trace_back_stack`, `exc_dladdr`, in
-  `<libexc.h>`): it unwinds only the calling program's own stack. Useful
-  for crash reports in ttr's own programs, not for a debugger.
+Not an option: **IRIX's libexc** (`trace_back_stack`, `exc_dladdr`, in
+`<libexc.h>`) unwinds only the calling program's own stack. It is useful
+for crash reports in ttr's own programs, not for a debugger.
 
 ## 6. Arch
 
@@ -490,12 +538,15 @@ serialising it. Nothing is built for it now.
    C++. Proposal: F11 steps, and full screen moves to Shift+Alt+Enter,
    Visual Studio's later key for full screen.
 4. **libdwarf** as a `third_party` submodule (section 5.4), built as a
-   shared library for the LGPL. And **zstd** for compressed debug
-   sections on Linux: a submodule too, or leave such files unread for
-   now (our own builds don't compress them).
+   shared library for the LGPL, with SGI's as the alternative on IRIX.
+   Pending: libdwarf's upstreaming policy. And **zstd** for compressed
+   debug sections on Linux: a submodule too, or leave such files unread
+   for now (our own builds don't compress them).
 5. **Alt+F9.** VC6's Breakpoints dialog key is the window manager's
    minimize key in ttr. The dialog would be reached from the Debug menu
    only.
+6. **libunwind on IRIX:** pending a question to its maintainers. Until
+   then IRIX uses td's own unwinder (section 5.6).
 
 ## 12. Milestones
 
@@ -504,8 +555,10 @@ serialising it. Nothing is built for it now.
    - Step by line and by instruction, backtrace, registers, memory.
    - Shared libraries.
    - Built from: libdwarf (vendored), the ptrace Target, the x86-64
-     Arch, the unwinding loop.
+     Arch, and both unwinders (libunwind when present, td's own loop).
 2. **The same on IRIX.**
+   - With both libdwarfs: the vendored one, and SGI's through
+     `td/dwarf_sgi.cpp`.
    - The /proc Target and the MIPS Arch, with delay slots.
    - Tested on the guest and on the Octane, with MIPSpro-built programs.
    - The *to verify* items of sections 3 to 6 get answered here.
