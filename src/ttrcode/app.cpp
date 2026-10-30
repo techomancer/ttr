@@ -324,7 +324,7 @@ App::App(Widget top, const Options& o)
       vars_auto_(true), vars_menu_stop_(-1), mem_format_(0), mem_addr_(0), mem_per_row_(16), mem_prev_addr_(0),
       mem_cur_addr_(0), mem_prev_stop_(-1), frames_serial_(0), stop_serial_(0), quick_dlg_(0), quick_expr_(0),
       quick_list_(0), dbg_dlg_(0), dbg_prog_(0), dbg_args_w_(0), dbg_dir_w_(0), bp_dlg_(0),
-      bp_at_w_(0), bp_expr_w_(0), bp_list_w_(0), bp_note_w_(0), attach_dlg_(0), results_(0), searched_(false), cur_result_(-1),
+      bp_at_w_(0), bp_expr_w_(0), bp_list_w_(0), bp_note_w_(0), attach_dlg_(0), about_dlg_(0), results_(0), searched_(false), cur_result_(-1),
       scanned_(0), result_files_(0), fif_case_on_(false), fif_word_on_(false)
 {
     opt_renderer_ = 0;
@@ -1759,19 +1759,9 @@ void App::command(int cmd)
         if (docs_.size() > 1)
             show_doc((cur_ + (cmd == CMD_NEXT_DOC ? 1 : docs_.size() - 1)) % docs_.size());
         break;
-    case CMD_ABOUT: {
-        Widget dlg = XmCreateInformationDialog(top_, (char*)"about", 0, 0);
-        XmString s = XmStringCreateLocalized(
-            (char*)"ttrcode, the To The Roots code editor: Motif, te and tw.");
-        XtVaSetValues(dlg, XmNmessageString, s, (char*)0);
-        XmStringFree(s);
-        XtUnmanageChild(child(dlg, "Cancel"));
-        XtUnmanageChild(child(dlg, "Help"));
-        XtVaSetValues(XtParent(dlg), XmNtitle, "About ttrcode", (char*)0);
-        XtAddCallback(dlg, XmNokCallback, destroy_dialog_cb, 0);
-        XtManageChild(dlg);
+    case CMD_ABOUT:
+        show_about();
         break;
-    }
     case CMD_DEBUG_GO:
     case CMD_DEBUG_STOP:
     case CMD_DEBUG_RESTART:

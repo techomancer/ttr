@@ -1215,3 +1215,8 @@ General Public License 2.1; see its `COPYING`. On Linux it also includes
 Zydis (`third_party/zydis` and `third_party/zycore`,
 https://github.com/zyantific/zydis), its x86-64 disassembler, under the
 MIT License; see their `LICENSE` files.
+
+ttrcode includes libdwarf, Zydis (on Linux) and stb_image (MIT License
+or public domain), and uses the system's Motif, X libraries, libpng,
+libjpeg, giflib and libtiff; Help > About ttrcode lists them with their
+licenses.

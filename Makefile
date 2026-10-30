@@ -850,6 +850,7 @@ $(B)/ttrt_settingsdlg.o: $(B)/.dir src/ttrt/settingsdlg.cpp $(TTRT_H) \
 
 # ttrcode, the code editor (ttrcode/DESIGN.md): te + tw + tt in Motif.
 TTRCODE_OBJS = $(B)/ttrcode_main.o \
+	$(B)/ttrcode_about.o \
 	$(B)/ttrcode_app.o \
 	$(B)/ttrcode_attach.o \
 	$(B)/ttrcode_breakpoints.o \
@@ -894,6 +895,8 @@ $(B)/ttrcode_breakpoints.o: $(B)/.dir src/ttrcode/breakpoints.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/breakpoints.cpp -o $@
 $(B)/ttrcode_datatip.o: $(B)/.dir src/ttrcode/datatip.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/datatip.cpp -o $@
+$(B)/ttrcode_about.o: $(B)/.dir src/ttrcode/about.cpp $(TTRCODE_H)
+	$(COMPILE) -c src/ttrcode/about.cpp -o $@
 $(B)/ttrcode_disassembly.o: $(B)/.dir src/ttrcode/disassembly.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/disassembly.cpp -o $@
 $(B)/ttrcode_celllist.o: $(B)/.dir src/ttrcode/celllist.cpp $(TTRCODE_H)

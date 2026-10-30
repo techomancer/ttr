@@ -246,6 +246,8 @@ private:
     /* The Breakpoints dialog (breakpoints.cpp). */
     void show_breakpoints();
     void show_attach();
+    /* Help > About (about.cpp). */
+    void show_about();
     void fill_attach();
     bool debug_attach(int pid, const char* name);
     int source_frame() const;
@@ -490,6 +492,7 @@ private:
     Widget dbg_dlg_, dbg_prog_, dbg_args_w_, dbg_dir_w_;
     Widget bp_dlg_, bp_at_w_, bp_expr_w_, bp_list_w_, bp_note_w_;
     Widget attach_dlg_;
+    Widget about_dlg_;
     ttr::Vector<td::ProcessInfo> attach_procs_;   /* what the dialog lists */
     ttr::Str dbg_msg_;          /* the status bar's first words */
     /* Find Results (0 while its pane is closed). */
