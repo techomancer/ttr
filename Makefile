@@ -57,7 +57,10 @@ TTRC_DATADIR = $(PREFIX)/share/ttrc
 # the system directory every user's curses reads (/usr/share/lib/terminfo
 # on IRIX, /usr/share/terminfo with ncurses). With DESTDIR it is never the
 # system's: TERMINFO_DIR under DESTDIR, or DESTDIR/PREFIX/share/terminfo
-# when it is empty (IRIX packages name /usr/share/lib/terminfo).
+# when it is empty (IRIX packages name /usr/share/lib/terminfo). The
+# directory goes to tic as -o: ncurses built to ignore TERMINFO for root
+# (Arch's) would write the system directory under makepkg's fakeroot. IRIX's
+# tic has no -o and gets TERMINFO.
 TERMINFO_DIR =
 DESTDIR =
 
@@ -1142,12 +1145,11 @@ install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode
 	mkdir -p $(DESTDIR)$(DATADIR)/fonts
 	cp $(TW_FONTS) third_party/misc-misc/COPYING $(DESTDIR)$(DATADIR)/fonts
 	chmod 644 $(DESTDIR)$(DATADIR)/fonts/*
-	if [ -n "$(TERMINFO_DIR)" ]; then \
-		mkdir -p $(DESTDIR)$(TERMINFO_DIR) && \
-		TERMINFO=$(DESTDIR)$(TERMINFO_DIR) tic data/ttrt.ti; \
-	elif [ -n "$(DESTDIR)" ]; then \
-		mkdir -p $(DESTDIR)$(PREFIX)/share/terminfo && \
-		TERMINFO=$(DESTDIR)$(PREFIX)/share/terminfo tic data/ttrt.ti; \
+	if [ -n "$(TERMINFO_DIR)$(DESTDIR)" ]; then \
+		d=$(DESTDIR)$(TERMINFO_DIR); \
+		[ -n "$(TERMINFO_DIR)" ] || d=$(DESTDIR)$(PREFIX)/share/terminfo; \
+		mkdir -p $$d && \
+		{ tic -o $$d data/ttrt.ti 2>/dev/null || TERMINFO=$$d tic data/ttrt.ti; }; \
 	else \
 		tic data/ttrt.ti || echo "tic failed: ttrt will use TERM=xterm" >&2; \
 	fi
