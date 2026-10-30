@@ -151,6 +151,26 @@ void tab_button(Widget w, XtPointer, XEvent* ev, Boolean*)
         g_app->tab_close(w);
 }
 
+/* The debugger's windows (td/DESIGN.md 8.2), with VC6's keys. Until the
+ * debugger is wired in they say so. */
+struct DebugPane {
+    const char* id;
+    const char* title;
+    char mnemonic;
+    const char* key;        /* for the menu */
+    KeySym ks;              /* with Alt */
+    Side home;
+};
+const DebugPane k_debug_panes[] = {
+    { "watch", "Watch", 'W', "Alt+3", XK_3, SIDE_BOTTOM },
+    { "variables", "Variables", 'V', "Alt+4", XK_4, SIDE_BOTTOM },
+    { "registers", "Registers", 'R', "Alt+5", XK_5, SIDE_RIGHT },
+    { "memory", "Memory", 'M', "Alt+6", XK_6, SIDE_BOTTOM },
+    { "callstack", "Call Stack", 'C', "Alt+7", XK_7, SIDE_RIGHT },
+    { "threads", "Threads", 'T', 0, 0, SIDE_RIGHT },
+    { 0, 0, 0, 0, 0, SIDE_LEFT }
+};
+
 /* A small x for the tabs' close buttons, 8 x 7. */
 const unsigned char k_close_bits[] = { 0xc3, 0x66, 0x3c, 0x18, 0x3c, 0x66, 0xc3 };
 
@@ -183,11 +203,6 @@ void theme_cb(Widget, XtPointer data, XtPointer call)
 void restart_terminal_cb(XtPointer, XtIntervalId*)
 {
     g_app->restart_terminal();
-}
-
-void sash_handler(Widget w, XtPointer, XEvent* ev, Boolean*)
-{
-    g_app->sash_event(w, ev);
 }
 
 void autoscroll_timeout(XtPointer, XtIntervalId*)
@@ -288,19 +303,17 @@ void separator(Widget menu)
 /* ---- the window ---- */
 
 App::App(Widget top, const Options& o)
-    : top_(top), form_(0), bar_(0), body_(0), right_(0), tree_box_(0), tree_sash_(0),
-      bottom_sash_(0), tree_(0), edit_box_(0),
-      tabs_(0), grid_(0), scroll_(0), status_(0), bottom_slot_(0), ncascades_(0), term_(0),
-      opt_(o), cur_(-1), untitled_(0), fullscreen_(false), workspace_on_(true), bottom_on_(true),
-      was_workspace_(true), was_bottom_(true), tree_w_(o.tree_width), bottom_h_(o.bottom_height),
-      drag_start_(-1), drag_size_(0), close_pixmap_(0), save_w_(0), save_h_(0), save_x_(0), save_y_(0),
+    : top_(top), form_(0), bar_(0), body_(0), tree_(0), edit_box_(0), tabs_(0), grid_(0),
+      scroll_(0), status_(0), docks_(0), pane_workspace_(0), pane_terminal_(0), pane_results_(0),
+      ncascades_(0), term_(0), opt_(o), cur_(-1), untitled_(0), fullscreen_(false),
+      close_pixmap_(0), save_w_(0), save_h_(0), save_x_(0), save_y_(0),
       in_scroll_update_(false), selecting_(false), last_click_(0), click_count_(0),
       last_col_(-1), last_row_(-1), autoscroll_(0), autoscroll_id_(0), match_case_(false),
       find_dlg_(0), find_what_(0), replace_with_(0), case_toggle_(0), replace_row_(0),
       primary_(0), primary_len_(0), clipboard_(0), clipboard_len_(0), answer_(-1),
       scheme_items_(0), theme_items_(0), font_(0), term_font_(0), opt_font_(0), opt_term_font_(0),
       opt_text_(0), opt_term_text_(0), opt_dlg_(0), fif_dlg_(0), fif_replace_(false),
-      bottom_tabs_(0), results_box_(0), results_(0), bottom_page_(0), cur_result_(-1),
+      results_(0), searched_(false), cur_result_(-1),
       scanned_(0), result_files_(0), fif_case_on_(false), fif_word_on_(false)
 {
     opt_renderer_ = 0;
@@ -335,11 +348,9 @@ App::App(Widget top, const Options& o)
     form_ = XtVaCreateManagedWidget("main", xmFormWidgetClass, top, (char*)0);
     build_menus();
     build_layout();
-    build_bottom();
     apply_look();
     tree_read(-1, root_.c_str(), 0);
-    tree_fill();
-    make_terminal();
+    make_panes();
 
     Atom wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
     XmAddWMProtocolCallback(top, wm_delete, close_window_cb, 0);
@@ -429,7 +440,18 @@ void App::build_menus()
 
     m = menus[3];
     menu_item(m, "Workspace", 'W', "Alt+0", CMD_VIEW_WORKSPACE);
-    menu_item(m, "Terminal Pane", 'T', "Alt+2", CMD_VIEW_BOTTOM);
+    menu_item(m, "Bottom Area", 'B', "Alt+2", CMD_VIEW_BOTTOM);
+    menu_item(m, "Terminal", 'T', "Ctrl+`", CMD_TERMINAL);
+    menu_item(m, "Find Results", 'R', 0, CMD_VIEW_RESULTS);
+    {
+        Widget dm = XmCreatePulldownMenu(m, (char*)"debugWindows", 0, 0);
+        XtVaCreateManagedWidget("Debug Windows", xmCascadeButtonWidgetClass, m, XmNsubMenuId, dm,
+                                XmNmnemonic, 'D', (char*)0);
+        int i;
+        for (i = 0; k_debug_panes[i].id; i++)
+            menu_item(dm, k_debug_panes[i].title, k_debug_panes[i].mnemonic, k_debug_panes[i].key,
+                      CMD_VIEW_DEBUG + i);
+    }
     menu_item(m, "Line Numbers", 'L', 0, CMD_VIEW_LINE_NUMBERS);
     separator(m);
     build_color_menus(m);
@@ -451,10 +473,9 @@ void App::build_menus()
     XtManageChild(bar_);
 }
 
-/* The window is forms all the way down, so the editor takes whatever
- * the side panes leave: the workspace keeps its width and the bottom
- * pane its height when the window grows, as in VS6. The sashes between
- * them are separators that can be dragged. */
+/* The menu bar and status bar, and between them the docks (dock.h) with
+ * the documents in their center: the editor's tabs over the grid and its
+ * scroll bar. */
 void App::build_layout()
 {
     status_ = XtVaCreateManagedWidget("status", xmLabelWidgetClass, form_,
@@ -464,52 +485,13 @@ void App::build_layout()
                                       XmNbottomAttachment, XmATTACH_FORM,
                                       XmNmarginWidth, 6, (char*)0);
     body_ = XtVaCreateWidget("body", xmFormWidgetClass, form_, (char*)0);
+    docks_ = new Docks(body_, this, tab_fill());
 
-    /* The workspace. */
-    tree_box_ = XtVaCreateWidget("workspace", xmFormWidgetClass, body_,
-                                 XmNwidth, (Dimension)tree_w_,
-                                 XmNresizePolicy, XmRESIZE_NONE, (char*)0);
-    Widget title = XtVaCreateManagedWidget("Workspace", xmLabelWidgetClass, tree_box_,
-                                           XmNalignment, XmALIGNMENT_BEGINNING,
-                                           XmNtopAttachment, XmATTACH_FORM,
-                                           XmNleftAttachment, XmATTACH_FORM,
-                                           XmNrightAttachment, XmATTACH_FORM, (char*)0);
-    Arg args[16];
-    Cardinal n = 0;
-    XtSetArg(args[n], XmNselectionPolicy, XmBROWSE_SELECT); n++;
-    XtSetArg(args[n], XmNscrollBarDisplayPolicy, XmAS_NEEDED); n++;
-    XtSetArg(args[n], XmNlistSizePolicy, XmCONSTANT); n++;
-    tree_ = XmCreateScrolledList(tree_box_, (char*)"tree", args, n);
-    XtVaSetValues(XtParent(tree_), XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget, title,
-                  XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_FORM,
-                  XmNbottomAttachment, XmATTACH_FORM, (char*)0);
-    XtAddCallback(tree_, XmNdefaultActionCallback, tree_cb, 0);
-    XtAddEventHandler(tree_, KeyPressMask, False, tree_key, 0);
-    XtManageChild(tree_);
-    XtManageChild(tree_box_);
-    tree_sash_ = XtVaCreateManagedWidget("treeSash", xmSeparatorWidgetClass, body_,
-                                         XmNorientation, XmVERTICAL,
-                                         XmNseparatorType, XmSHADOW_ETCHED_OUT,
-                                         XmNwidth, 7, XmNmargin, 0, (char*)0);
-    XtAddEventHandler(tree_sash_, ButtonPressMask | ButtonReleaseMask | Button1MotionMask,
-                      False, sash_handler, 0);
-
-    /* Right of it: the editor over the bottom pane. */
-    right_ = XtVaCreateManagedWidget("right", xmFormWidgetClass, body_, (char*)0);
-    /* The slots' sizes are ours (the sashes'), not their children's: a
-     * terminal pane being replaced must not shrink its slot to nothing. */
-    bottom_slot_ = XtVaCreateManagedWidget("bottom", xmFormWidgetClass, right_,
-                                           XmNheight, (Dimension)bottom_h_,
-                                           XmNresizePolicy, XmRESIZE_NONE, (char*)0);
-    bottom_sash_ = XtVaCreateManagedWidget("bottomSash", xmSeparatorWidgetClass, right_,
-                                           XmNorientation, XmHORIZONTAL,
-                                           XmNseparatorType, XmSHADOW_ETCHED_OUT,
-                                           XmNheight, 7, XmNmargin, 0, (char*)0);
-    XtAddEventHandler(bottom_sash_, ButtonPressMask | ButtonReleaseMask | Button1MotionMask,
-                      False, sash_handler, 0);
-
-    /* The editor: the tabs over the grid and its scroll bar. */
-    edit_box_ = XtVaCreateWidget("editor", xmFormWidgetClass, right_, (char*)0);
+    edit_box_ = XtVaCreateWidget("editor", xmFormWidgetClass, docks_->center(),
+                                 XmNtopAttachment, XmATTACH_FORM,
+                                 XmNbottomAttachment, XmATTACH_FORM,
+                                 XmNleftAttachment, XmATTACH_FORM,
+                                 XmNrightAttachment, XmATTACH_FORM, (char*)0);
     tabs_ = XtVaCreateManagedWidget("tabs", xmRowColumnWidgetClass, edit_box_,
                                     XmNorientation, XmHORIZONTAL,
                                     XmNpacking, XmPACK_TIGHT,
@@ -526,7 +508,8 @@ void App::build_layout()
                                       XmNminimum, 0, XmNmaximum, 1, XmNsliderSize, 1, (char*)0);
     XtAddCallback(scroll_, XmNvalueChangedCallback, scroll_cb, 0);
     XtAddCallback(scroll_, XmNdragCallback, scroll_cb, 0);
-    n = 0;
+    Arg args[16];
+    Cardinal n = 0;
     XtSetArg(args[n], TwNfont, opt_.font); n++;
     if (opt_.fallback_fonts) {
         XtSetArg(args[n], TwNfallbackFonts, opt_.fallback_fonts); n++;
@@ -554,18 +537,123 @@ void App::build_layout()
     layout();
     XtManageChild(body_);
     XtVaSetValues(form_, XmNinitialFocus, body_, (char*)0);
-    XtVaSetValues(body_, XmNinitialFocus, right_, (char*)0);
-    XtVaSetValues(right_, XmNinitialFocus, edit_box_, (char*)0);
     XtVaSetValues(edit_box_, XmNinitialFocus, grid_, (char*)0);
 }
 
-/* Attachments for what is shown: panes, sashes, and in full screen only
- * the editor's grid. */
+/* The panes the docks place: the workspace, the terminal, Find Results
+ * and the debugger's, in the saved layout. */
+void App::make_panes()
+{
+    pane_workspace_ = new Pane("workspace", "Workspace", SIDE_LEFT);
+    pane_terminal_ = new Pane("terminal", "Terminal", SIDE_BOTTOM);
+    pane_results_ = new Pane("results", "Find Results", SIDE_BOTTOM);
+    docks_->add(pane_workspace_);
+    docks_->add(pane_terminal_);
+    docks_->add(pane_results_);
+    int i;
+    for (i = 0; k_debug_panes[i].id; i++) {
+        Pane* p = new Pane(k_debug_panes[i].id, k_debug_panes[i].title, k_debug_panes[i].home);
+        debug_panes_.push_back(p);
+        docks_->add(p);
+    }
+    if (opt_.layout && *opt_.layout)
+        docks_->apply(opt_.layout);
+    else
+        docks_->apply(default_layout().c_str());
+    /* The terminal runs from the start, in its pane or out of sight. */
+    if (!term_)
+        make_terminal(docks_->parking());
+}
+
+/* The first layout, with the sizes older settings saved. */
+ttr::Str App::default_layout() const
+{
+    char b[200];
+    snprintf(b, sizeof(b), "left:%d=workspace;bottom:%d=terminal,results;right:240=",
+             opt_.tree_width > 40 ? opt_.tree_width : 220,
+             opt_.bottom_height > 40 ? opt_.bottom_height : 220);
+    return ttr::Str(b);
+}
+
+Widget App::build_pane(Pane* p, Widget parent)
+{
+    if (p == pane_workspace_) {
+        if (tree_)
+            XtDestroyWidget(XtParent(tree_));
+        Arg args[4];
+        Cardinal n = 0;
+        XtSetArg(args[n], XmNselectionPolicy, XmBROWSE_SELECT); n++;
+        XtSetArg(args[n], XmNscrollBarDisplayPolicy, XmAS_NEEDED); n++;
+        XtSetArg(args[n], XmNlistSizePolicy, XmCONSTANT); n++;
+        tree_ = XmCreateScrolledList(parent, (char*)"tree", args, n);
+        XtAddCallback(tree_, XmNdefaultActionCallback, tree_cb, 0);
+        XtAddEventHandler(tree_, KeyPressMask, False, tree_key, 0);
+        XtManageChild(tree_);
+        tree_fill();
+        return XtParent(tree_);
+    }
+    if (p == pane_terminal_) {
+        if (!term_) {
+            make_terminal(parent);
+            return term_->widget();
+        }
+        return term_->rebuild(parent);
+    }
+    if (p == pane_results_)
+        return build_results(parent);
+    /* A debugger window, until the debugger is in. */
+    Widget f = XtVaCreateManagedWidget(p->id(), xmFormWidgetClass, parent, (char*)0);
+    XmString l = XmStringCreateLocalized((char*)"Not debugging.");
+    XtVaCreateManagedWidget("note", xmLabelWidgetClass, f, XmNlabelString, l,
+                            XmNtopAttachment, XmATTACH_FORM, XmNleftAttachment, XmATTACH_FORM,
+                            XmNtopOffset, 6, XmNleftOffset, 6, (char*)0);
+    XmStringFree(l);
+    return f;
+}
+
+void App::drop_pane(Pane* p)
+{
+    if (p == pane_workspace_) {
+        if (tree_)
+            XtDestroyWidget(XtParent(tree_));
+        tree_ = 0;
+        XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
+    } else if (p == pane_terminal_) {
+        /* The shell carries on, out of sight. */
+        if (term_)
+            term_->rebuild(docks_->parking());
+        XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
+    } else if (p == pane_results_) {
+        if (results_)
+            XtDestroyWidget(XtParent(results_));
+        results_ = 0;
+    } else if (p->widget) {
+        XtDestroyWidget(p->widget);
+    }
+}
+
+void App::layout_changed()
+{
+    save_settings();
+}
+
+void App::show_pane(Pane* p)
+{
+    if (fullscreen_)
+        set_fullscreen(false);
+    docks_->show(p);
+    if (p == pane_terminal_ && term_)
+        term_->focus();
+    else if (p == pane_workspace_ && tree_)
+        XmProcessTraversal(tree_, XmTRAVERSE_CURRENT);
+    else if (p == pane_results_ && results_)
+        XmProcessTraversal(results_, XmTRAVERSE_CURRENT);
+}
+
+/* Full screen: only the editor's grid; otherwise the bars and the docks. */
 void App::layout()
 {
     bool bars = !fullscreen_;
-    bool tree = workspace_on_ && !fullscreen_;
-    bool bottom = bottom_on_ && !fullscreen_;
     if (bars) {
         XtManageChild(bar_);
         XtManageChild(status_);
@@ -584,84 +672,10 @@ void App::layout()
                   XmNtopWidget, tabs_, (char*)0);
     XtVaSetValues(grid_, XmNtopAttachment, bars ? XmATTACH_WIDGET : XmATTACH_FORM,
                   XmNtopWidget, tabs_, (char*)0);
-
-    if (tree) {
-        XtVaSetValues(tree_box_, XmNwidth, (Dimension)tree_w_,
-                      XmNtopAttachment, XmATTACH_FORM, XmNbottomAttachment, XmATTACH_FORM,
-                      XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_NONE,
-                      (char*)0);
-        XtVaSetValues(tree_sash_, XmNtopAttachment, XmATTACH_FORM,
-                      XmNbottomAttachment, XmATTACH_FORM,
-                      XmNleftAttachment, XmATTACH_WIDGET, XmNleftWidget, tree_box_, (char*)0);
-        XtManageChild(tree_box_);
-        XtManageChild(tree_sash_);
-    } else {
-        XtUnmanageChild(tree_box_);
-        XtUnmanageChild(tree_sash_);
-    }
-    XtVaSetValues(right_, XmNtopAttachment, XmATTACH_FORM, XmNbottomAttachment, XmATTACH_FORM,
-                  XmNleftAttachment, tree ? XmATTACH_WIDGET : XmATTACH_FORM,
-                  XmNleftWidget, tree_sash_, XmNrightAttachment, XmATTACH_FORM, (char*)0);
-
-    if (bottom) {
-        XtVaSetValues(bottom_slot_, XmNheight, (Dimension)bottom_h_,
-                      XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_FORM,
-                      XmNbottomAttachment, XmATTACH_FORM, XmNtopAttachment, XmATTACH_NONE,
-                      (char*)0);
-        XtVaSetValues(bottom_sash_, XmNleftAttachment, XmATTACH_FORM,
-                      XmNrightAttachment, XmATTACH_FORM,
-                      XmNbottomAttachment, XmATTACH_WIDGET, XmNbottomWidget, bottom_slot_,
-                      (char*)0);
-        XtManageChild(bottom_slot_);
-        XtManageChild(bottom_sash_);
-    } else {
-        XtUnmanageChild(bottom_slot_);
-        XtUnmanageChild(bottom_sash_);
-    }
-    XtVaSetValues(edit_box_, XmNtopAttachment, XmATTACH_FORM,
-                  XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_FORM,
-                  XmNbottomAttachment, bottom ? XmATTACH_WIDGET : XmATTACH_FORM,
-                  XmNbottomWidget, bottom_sash_, (char*)0);
+    docks_->set_all_hidden(fullscreen_);
 }
 
-/* Dragging a sash: the workspace's width or the bottom pane's height
- * follows the pointer, within reason. */
-void App::sash_event(Widget w, XEvent* ev)
-{
-    bool vertical = w == tree_sash_;
-    int pos = vertical ? (ev->type == MotionNotify ? ev->xmotion.x_root : ev->xbutton.x_root)
-                       : (ev->type == MotionNotify ? ev->xmotion.y_root : ev->xbutton.y_root);
-    if (ev->type == ButtonPress && ev->xbutton.button == 1) {
-        drag_start_ = pos;
-        drag_size_ = vertical ? tree_w_ : bottom_h_;
-        return;
-    }
-    if (ev->type != MotionNotify && ev->type != ButtonRelease)
-        return;
-    if (drag_start_ < 0)
-        return;
-    Dimension pw = 0, ph = 0;
-    XtVaGetValues(vertical ? body_ : right_, XmNwidth, &pw, XmNheight, &ph, (char*)0);
-    int limit = (vertical ? (int)pw : (int)ph) - 80;
-    int size = vertical ? drag_size_ + (pos - drag_start_) : drag_size_ - (pos - drag_start_);
-    if (size > limit)
-        size = limit;
-    if (size < 40)
-        size = 40;
-    if (vertical) {
-        tree_w_ = size;
-        XtVaSetValues(tree_box_, XmNwidth, (Dimension)size, (char*)0);
-    } else {
-        bottom_h_ = size;
-        XtVaSetValues(bottom_slot_, XmNheight, (Dimension)size, (char*)0);
-    }
-    if (ev->type == ButtonRelease) {
-        drag_start_ = -1;
-        save_settings();
-    }
-}
-
-void App::make_terminal()
+void App::make_terminal(Widget parent)
 {
     term_opt_.font = term_font_ && *term_font_ ? term_font_ : opt_.font;
     term_opt_.text_rendering = text_value(opt_.terminal_text_rendering);
@@ -675,14 +689,8 @@ void App::make_terminal()
     term_opt_.palette = palette_;
     term_opt_.renderer = opt_.renderer;
     term_opt_.dynamic_background = opt_.terminal_background;
-    term_ = new tt::TermPane(bottom_slot_, "terminal", term_opt_, this);
-    XtVaSetValues(term_->widget(), XmNtopAttachment, XmATTACH_WIDGET,
-                  XmNtopWidget, bottom_tabs_,
-                  XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_FORM,
-                  XmNbottomAttachment, XmATTACH_FORM, (char*)0);
-    if (bottom_page_ != 0)
-        XtUnmanageChild(term_->widget());
-    if (XtIsRealized(bottom_slot_))
+    term_ = new tt::TermPane(parent, "terminal", term_opt_, this);
+    if (XtIsRealized(parent))
         term_->start();
 }
 
@@ -690,8 +698,7 @@ void App::realized()
 {
     Display* dpy = XtDisplay(top_);
     XDefineCursor(dpy, XtWindow(grid_), XCreateFontCursor(dpy, XC_xterm));
-    XDefineCursor(dpy, XtWindow(tree_sash_), XCreateFontCursor(dpy, XC_sb_h_double_arrow));
-    XDefineCursor(dpy, XtWindow(bottom_sash_), XCreateFontCursor(dpy, XC_sb_v_double_arrow));
+    docks_->realized();
     if (term_)
         term_->start();
     XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
@@ -796,7 +803,8 @@ void App::open_workspace(const char* dir)
     }
     rows_.clear();
     tree_read(-1, root_.c_str(), 0);
-    XtVaSetValues(tree_, XmNtopItemPosition, 1, (char*)0);
+    if (tree_)
+        XtVaSetValues(tree_, XmNtopItemPosition, 1, (char*)0);
     tree_fill();
     /* A shell at its prompt follows; a running command is not disturbed
      * (a new shell starts in the workspace anyway). */
@@ -1359,18 +1367,6 @@ void App::show_find(bool replace)
 
 /* ---- panes and full screen ---- */
 
-void App::show_workspace(bool on)
-{
-    workspace_on_ = on;
-    layout();
-}
-
-void App::show_bottom(bool on)
-{
-    bottom_on_ = on;
-    layout();
-}
-
 /* Does the window manager do _NET_WM_STATE_FULLSCREEN (ttr does)? */
 static bool wm_has_fullscreen(Display* dpy)
 {
@@ -1555,20 +1551,25 @@ void App::command(int cmd)
         }
         break;
     case CMD_VIEW_WORKSPACE:
-        if (fullscreen_)
-            set_fullscreen(false);
-        show_workspace(!workspace_on_);
-        if (workspace_on_)
-            XmProcessTraversal(tree_, XmTRAVERSE_CURRENT);
+        if (docks_->open(pane_workspace_) && !docks_->hidden(pane_workspace_->group->area->side) &&
+            !fullscreen_)
+            docks_->close(pane_workspace_);
         else
-            XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
+            show_pane(pane_workspace_);
         break;
     case CMD_VIEW_BOTTOM:
         if (fullscreen_)
             set_fullscreen(false);
-        show_bottom(!bottom_on_);
-        if (!bottom_on_)
-            XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
+        if (docks_->empty(SIDE_BOTTOM)) {
+            show_pane(pane_terminal_);
+        } else {
+            docks_->set_hidden(SIDE_BOTTOM, !docks_->hidden(SIDE_BOTTOM));
+            if (docks_->hidden(SIDE_BOTTOM))
+                XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
+        }
+        break;
+    case CMD_VIEW_RESULTS:
+        show_pane(pane_results_);
         break;
     case CMD_VIEW_LINE_NUMBERS:
         opt_.line_numbers = !opt_.line_numbers;
@@ -1601,12 +1602,7 @@ void App::command(int cmd)
         if (term_ && XmGetFocusWidget(top_) == term_->grid()) {
             XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
         } else if (term_) {
-            if (fullscreen_)
-                set_fullscreen(false);
-            if (!bottom_on_)
-                show_bottom(true);
-            show_bottom_page(0);
-            term_->focus();
+            show_pane(pane_terminal_);
         }
         break;
     case CMD_NEXT_DOC:
@@ -1628,6 +1624,8 @@ void App::command(int cmd)
         break;
     }
     default:
+        if (cmd >= CMD_VIEW_DEBUG && cmd - CMD_VIEW_DEBUG < debug_panes_.size())
+            show_pane(debug_panes_[cmd - CMD_VIEW_DEBUG]);
         break;
     }
 }
@@ -1648,6 +1646,14 @@ bool App::global_key(KeySym ks, unsigned state)
     if (alt && !ctrl && ks == XK_2) {
         command(CMD_VIEW_BOTTOM);
         return true;
+    }
+    if (alt && !ctrl) {
+        int i;
+        for (i = 0; k_debug_panes[i].id; i++)
+            if (k_debug_panes[i].ks && ks == k_debug_panes[i].ks) {
+                command(CMD_VIEW_DEBUG + i);
+                return true;
+            }
     }
     if (ctrl && !alt && (ks == XK_grave || ks == XK_dead_grave)) {
         command(CMD_TERMINAL);
@@ -1932,8 +1938,10 @@ void App::editor_pointer(TwGridCallbackStruct* cb)
 void App::editor_resize(TwGridCallbackStruct* cb)
 {
     src_.set_size(cb->cols, cb->rows);
-    if (doc())
+    if (doc()) {
+        doc()->view.refit();
         doc()->view.follow();
+    }
     TwGridDamage(grid_);
     update_scrollbar();
 }
@@ -2117,8 +2125,10 @@ void App::restart_terminal()
         return;
     delete term_;
     term_ = 0;
-    make_terminal();
-    layout();
+    if (docks_->open(pane_terminal_))
+        docks_->rebuild(pane_terminal_);    /* build_pane makes a new one */
+    else
+        make_terminal(docks_->parking());
     term_->focus();
 }
 
@@ -2168,10 +2178,11 @@ void App::save_settings()
         f.remove("uiTheme");
     else
         f.set("uiTheme", theme_name_.c_str());
-    sprintf(v, "%d", tree_w_);
-    f.set("treeWidth", v);
-    sprintf(v, "%d", bottom_h_);
-    f.set("bottomHeight", v);
+    /* The docks' layout replaces the two sizes older versions saved. */
+    if (docks_)
+        f.set("layout", docks_->layout().c_str());
+    f.remove("treeWidth");
+    f.remove("bottomHeight");
     sprintf(v, "%d", opt_.tab_width);
     f.set("tabWidth", v);
     sprintf(v, "%d", opt_.indent_width);
@@ -2258,6 +2269,8 @@ void App::set_theme(const char* name)
     th::recolor(top_, t, twGridWidgetClass);
     for (int i = 0; i < docs_.size(); i++)
         XtVaSetValues(docs_[i]->tab, XmNselectColor, tab_fill(), (char*)0);
+    if (docks_)
+        docks_->set_tab_fill(tab_fill());
     /* The tabs' close buttons have the old colours in their pixmap. */
     if (close_pixmap_) {
         Pixel fg, bg;
@@ -2284,7 +2297,7 @@ void App::set_theme(const char* name)
  * the theme's text stays readable on (a theme's toggle fill may not). */
 Pixel App::tab_fill()
 {
-    return th::pixel(tabs_, th::motif_colors(theme_.get(th::ROLE_BACKGROUND)).select);
+    return th::pixel(top_, th::motif_colors(theme_.get(th::ROLE_BACKGROUND)).select);
 }
 
 void App::scheme_chosen(int i)
@@ -2391,6 +2404,8 @@ void App::tree_read(int at, const char* dir, int depth)
 
 void App::tree_fill()
 {
+    if (!tree_)
+        return;
     int top = 0;
     XtVaGetValues(tree_, XmNtopItemPosition, &top, (char*)0);
     XmListDeleteAllItems(tree_);
@@ -2433,7 +2448,8 @@ void App::tree_toggle(int row)
         }
     }
     tree_fill();
-    XmListSelectPos(tree_, row + 1, False);
+    if (tree_)
+        XmListSelectPos(tree_, row + 1, False);
 }
 
 void App::tree_activate(int row)

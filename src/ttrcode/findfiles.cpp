@@ -57,13 +57,6 @@ void results_cb(Widget, XtPointer data, XtPointer call)
     ((App*)data)->result_chosen(((XmListCallbackStruct*)call)->item_position - 1);
 }
 
-void page_cb(Widget w, XtPointer data, XtPointer)
-{
-    XtPointer page = 0;
-    XtVaGetValues(w, XmNuserData, &page, (char*)0);
-    ((App*)data)->bottom_page_chosen((int)(long)page);
-}
-
 int* g_answer;
 void answer_cb(Widget, XtPointer data, XtPointer)
 {
@@ -169,66 +162,32 @@ char* read_file(const char* path, size_t* n)
 
 /* ---- the bottom pane's pages ---- */
 
-void App::build_bottom()
+/* The Find Results pane's list, filled from the results there are. */
+Widget App::build_results(Widget parent)
 {
-    bottom_tabs_ = XtVaCreateManagedWidget("pages", xmRowColumnWidgetClass, bottom_slot_,
-                                           XmNorientation, XmHORIZONTAL, XmNpacking,
-                                           XmPACK_TIGHT, XmNspacing, 0, XmNmarginHeight, 0,
-                                           XmNmarginWidth, 0,
-                                           XmNtopAttachment, XmATTACH_FORM,
-                                           XmNleftAttachment, XmATTACH_FORM,
-                                           XmNrightAttachment, XmATTACH_FORM, (char*)0);
-    static const char* const labels[2] = { "Terminal", "Find Results" };
-    for (int i = 0; i < 2; i++) {
-        page_tabs_[i] = XtVaCreateManagedWidget(labels[i], xmToggleButtonWidgetClass,
-                                                bottom_tabs_, XmNindicatorOn, False,
-                                                XmNshadowThickness, 2, XmNfillOnSelect, True,
-                                                XmNselectColor, tab_fill(),
-                                                XmNtraversalOn, False, XmNmarginWidth, 8,
-                                                XmNuserData, (XtPointer)(long)i,
-                                                XmNset, i == 0, (char*)0);
-        XtAddCallback(page_tabs_[i], XmNvalueChangedCallback, page_cb, (XtPointer)this);
-    }
+    if (results_)
+        XtDestroyWidget(XtParent(results_));
     Arg args[6];
     Cardinal n = 0;
     XtSetArg(args[n], XmNselectionPolicy, XmBROWSE_SELECT); n++;
     XtSetArg(args[n], XmNscrollBarDisplayPolicy, XmAS_NEEDED); n++;
     XtSetArg(args[n], XmNlistSizePolicy, XmCONSTANT); n++;
-    results_ = XmCreateScrolledList(bottom_slot_, (char*)"results", args, n);
-    results_box_ = XtParent(results_);
-    XtVaSetValues(results_box_, XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget, bottom_tabs_,
-                  XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_FORM,
-                  XmNbottomAttachment, XmATTACH_FORM, (char*)0);
+    results_ = XmCreateScrolledList(parent, (char*)"results", args, n);
     XtAddCallback(results_, XmNdefaultActionCallback, results_cb, (XtPointer)this);
     XtManageChild(results_);
-    XtUnmanageChild(results_box_);
+    if (searched_)
+        fill_results();
+    if (cur_result_ >= 0 && cur_result_ < results_list_.size())
+        XmListSelectPos(results_, cur_result_ + 1, False);
+    return XtParent(results_);
 }
 
-void App::show_bottom_page(int page)
+/* Bring Find Results forward (opening its pane if it was closed). */
+void App::show_results()
 {
-    bottom_page_ = page;
-    for (int i = 0; i < 2; i++)
-        XmToggleButtonSetState(page_tabs_[i], i == page, False);
-    if (page == 0) {
-        XtUnmanageChild(results_box_);
-        if (term_)
-            XtManageChild(term_->widget());
-    } else {
-        if (term_)
-            XtUnmanageChild(term_->widget());
-        XtManageChild(results_box_);
-    }
-    if (!bottom_on_)
-        show_bottom(true);
-}
-
-void App::bottom_page_chosen(int page)
-{
-    show_bottom_page(page);
-    if (page == 0 && term_)
-        term_->focus();
-    else if (page == 1)
-        XmProcessTraversal(results_, XmTRAVERSE_CURRENT);
+    if (fullscreen_)
+        set_fullscreen(false);
+    docks_->show(pane_results_);
 }
 
 /* ---- the dialog ---- */
@@ -490,7 +449,7 @@ int App::find_in_files(const char* what, const char* dir, const char* types, boo
     XUndefineCursor(XtDisplay(busy), XtWindow(busy));
     XFreeCursor(XtDisplay(busy), watch);
     fill_results();
-    show_bottom_page(1);
+    show_results();
     *files = result_files_;
     return results_list_.size();
 }
@@ -498,6 +457,9 @@ int App::find_in_files(const char* what, const char* dir, const char* types, boo
 /* The results as "path(line): text", the path relative to the workspace. */
 void App::fill_results()
 {
+    searched_ = true;
+    if (!results_)
+        return;
     XmListDeleteAllItems(results_);
     int n = results_list_.size();
     if (!n) {
@@ -586,11 +548,14 @@ void App::goto_result(int i)
         d->view.set_cursor(te::Pos(r->line, r->col + r->len), true);
         after_edit(true);
     }
-    XmListSelectPos(results_, i + 1, False);
-    int top = 0, visible = 0;
-    XtVaGetValues(results_, XmNtopItemPosition, &top, XmNvisibleItemCount, &visible, (char*)0);
-    if (i + 1 < top || i + 1 >= top + visible)
-        XmListSetPos(results_, i + 1 > 2 ? i - 1 : 1);
+    if (results_) {
+        XmListSelectPos(results_, i + 1, False);
+        int top = 0, visible = 0;
+        XtVaGetValues(results_, XmNtopItemPosition, &top, XmNvisibleItemCount, &visible,
+                      (char*)0);
+        if (i + 1 < top || i + 1 >= top + visible)
+            XmListSetPos(results_, i + 1 > 2 ? i - 1 : 1);
+    }
     XmProcessTraversal(grid_, XmTRAVERSE_CURRENT);
 }
 

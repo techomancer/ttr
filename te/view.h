@@ -122,6 +122,9 @@ public:
     void scroll(long lines);
     /* Bring the cursor into view (call after commands). */
     void follow();
+    /* After the view got wider: scroll back left as far as the cursor
+     * stays in view (a narrow moment must not leave the text shifted). */
+    void refit();
 
     /* Layout: columns of a position and the position at a column. */
     int column_of(Pos p) const;

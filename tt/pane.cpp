@@ -221,11 +221,13 @@ const char* const k_auto_fonts[] = {
 
 TermPane::TermPane(Widget parent, const char* name, const PaneOptions& o, PaneHost* host)
     : host_(host), form_(0), grid_(0), scroll_(0), src_(term_), argv_(dup_list(o.argv)),
-      env_(dup_list(o.env)), cwd_(dup_str(o.cwd)), login_(o.login), font_(0), started_(false),
-      running_(false), in_scroll_update_(false), outq_off_(0), in_id_(0), out_id_(0),
-      bell_id_(0), bell_(o.bell), selecting_(false), sel_moved_(false), click_count_(0),
-      last_click_(0), last_col_(-1), last_row_(-1), drag_col_(0), drag_row_(0), autoscroll_(0),
-      autoscroll_id_(0)
+      env_(dup_list(o.env)), cwd_(dup_str(o.cwd)), login_(o.login), font_(0),
+      name_(dup_str(name)), fallback_(dup_str(o.fallback_fonts)), renderer_(dup_str(o.renderer)),
+      dynbg_(dup_str(o.dynamic_background)), text_(0), want_scroll_(o.scroll_bar),
+      started_(false), running_(false), in_scroll_update_(false), outq_off_(0), in_id_(0),
+      out_id_(0), bell_id_(0), bell_(o.bell), selecting_(false), sel_moved_(false),
+      click_count_(0), last_click_(0), last_col_(-1), last_row_(-1), drag_col_(0), drag_row_(0),
+      autoscroll_(0), autoscroll_id_(0)
 {
     thost_.pane = this;
     Display* dpy = XtDisplay(parent);
@@ -244,8 +246,17 @@ TermPane::TermPane(Widget parent, const char* name, const PaneOptions& o, PaneHo
     a_targets_ = XInternAtom(dpy, "TARGETS", False);
     a_text_ = XInternAtom(dpy, "TEXT", False);
 
-    form_ = XtVaCreateWidget(name, xmFormWidgetClass, parent, (char*)0);
-    if (o.scroll_bar) {
+    font_ = dup_str(o.font && o.font[0] ? o.font : pick_font(dpy));
+    if (o.text_rendering && *o.text_rendering)
+        set_text_rendering(o.text_rendering);   /* only remembers it: no grid yet */
+    make_widgets(parent);
+}
+
+void TermPane::make_widgets(Widget parent)
+{
+    form_ = XtVaCreateWidget(name_ ? name_ : "terminal", xmFormWidgetClass, parent, (char*)0);
+    scroll_ = 0;
+    if (want_scroll_) {
         scroll_ = XtVaCreateManagedWidget("scrollBar", xmScrollBarWidgetClass, form_,
                                           XmNorientation, XmVERTICAL,
                                           XmNtraversalOn, False,
@@ -257,22 +268,21 @@ TermPane::TermPane(Widget parent, const char* name, const PaneOptions& o, PaneHo
         XtAddCallback(scroll_, XmNvalueChangedCallback, scroll_cb, (XtPointer)this);
         XtAddCallback(scroll_, XmNdragCallback, scroll_cb, (XtPointer)this);
     }
-    font_ = dup_str(o.font && o.font[0] ? o.font : pick_font(dpy));
     Arg args[16];
     Cardinal n = 0;
     XtSetArg(args[n], TwNfont, font_); n++;
-    if (o.fallback_fonts) {
-        XtSetArg(args[n], TwNfallbackFonts, o.fallback_fonts); n++;
+    if (fallback_) {
+        XtSetArg(args[n], TwNfallbackFonts, fallback_); n++;
     }
     XtSetArg(args[n], TwNsource, (tw::Source*)&src_); n++;
-    if (o.renderer && *o.renderer) {
-        XtSetArg(args[n], TwNrenderer, o.renderer); n++;
+    if (renderer_ && *renderer_) {
+        XtSetArg(args[n], TwNrenderer, renderer_); n++;
     }
-    if (o.dynamic_background && *o.dynamic_background) {
-        XtSetArg(args[n], TwNdynamicBackground, o.dynamic_background); n++;
+    if (dynbg_ && *dynbg_) {
+        XtSetArg(args[n], TwNdynamicBackground, dynbg_); n++;
     }
-    if (o.text_rendering && *o.text_rendering) {
-        XtSetArg(args[n], TwNtextRendering, o.text_rendering); n++;
+    if (text_) {
+        XtSetArg(args[n], TwNtextRendering, text_); n++;
     }
     XtSetArg(args[n], XmNuserData, (XtPointer)this); n++;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
@@ -294,20 +304,15 @@ TermPane::TermPane(Widget parent, const char* name, const PaneOptions& o, PaneHo
     XtManageChild(form_);
 }
 
-TermPane::~TermPane()
+/* Xt destroys widgets at the end of the event: until then nothing in
+ * them may reach this pane or its source. */
+void TermPane::drop_widgets()
 {
-    if (running_)
-        hangup(500);
-    if (in_id_)
-        XtRemoveInput(in_id_);
-    if (out_id_)
-        XtRemoveInput(out_id_);
-    if (bell_id_)
-        XtRemoveTimeOut(bell_id_);
     if (autoscroll_id_)
         XtRemoveTimeOut(autoscroll_id_);
-    /* Xt destroys widgets at the end of the event: until then nothing in
-     * them may reach this pane or its source. */
+    autoscroll_id_ = 0;
+    autoscroll_ = 0;
+    selecting_ = false;
     XtVaSetValues(grid_, XmNuserData, (XtPointer)0, (char*)0);
     TwGridSetSource(grid_, 0);
     XtRemoveAllCallbacks(grid_, TwNinputCallback);
@@ -319,10 +324,36 @@ TermPane::~TermPane()
         XtRemoveAllCallbacks(scroll_, XmNdragCallback);
     }
     XtDestroyWidget(form_);
+    form_ = grid_ = scroll_ = 0;
+}
+
+Widget TermPane::rebuild(Widget parent)
+{
+    drop_widgets();
+    make_widgets(parent);
+    update_scrollbar();
+    return form_;
+}
+
+TermPane::~TermPane()
+{
+    if (running_)
+        hangup(500);
+    if (in_id_)
+        XtRemoveInput(in_id_);
+    if (out_id_)
+        XtRemoveInput(out_id_);
+    if (bell_id_)
+        XtRemoveTimeOut(bell_id_);
+    drop_widgets();
     pty_.close();
     free_list(argv_);
     free_list(env_);
     free(cwd_);
+    free(name_);
+    free(fallback_);
+    free(renderer_);
+    free(dynbg_);
     /* TwGrid holds the font name until the widget is gone, which Xt does
      * at the end of this event; keep it. */
 }
@@ -1093,7 +1124,16 @@ void TermPane::set_text_rendering(const char* t)
     const char* v = t && strcmp(t, "sharp") == 0    ? "sharp"
                     : t && strcmp(t, "smooth") == 0 ? "smooth"
                                                     : "auto";
-    XtVaSetValues(grid_, TwNtextRendering, v, (char*)0);
+    text_ = v;
+    if (grid_)
+        XtVaSetValues(grid_, TwNtextRendering, v, (char*)0);
+}
+
+bool TermPane::set_dynamic_background(const char* name)
+{
+    free(dynbg_);
+    dynbg_ = dup_str(name);
+    return TwGridSetBackground(grid_, name) != False;
 }
 
 } /* namespace tt */

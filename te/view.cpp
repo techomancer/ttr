@@ -658,6 +658,14 @@ void View::follow()
         left_ = 0;
 }
 
+void View::refit()
+{
+    int c = column_of(doc_.clamp(cur_));
+    int least = c >= cols_ ? c - cols_ + 8 : 0;
+    if (left_ > least)
+        left_ = least < 0 ? 0 : least;
+}
+
 int View::column_of(Pos p) const
 {
     p = doc_.clamp(p);

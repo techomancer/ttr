@@ -6,6 +6,7 @@
 #ifndef TTRCODE_APP_H
 #define TTRCODE_APP_H
 
+#include "dock.h"
 #include "editsource.h"
 
 #include "../../te/syntax.h"
@@ -35,7 +36,8 @@ struct Options {
     bool line_numbers;
     const char* scheme;         /* text colour scheme (th/scheme.h) */
     const char* ui_theme;       /* UI theme; "" follows ttr's */
-    int tree_width, bottom_height;
+    int tree_width, bottom_height;  /* older settings: the first layout's sizes */
+    const char* layout;         /* the docks (dock.h), "" for the default */
     bool auto_indent;           /* Enter keeps the previous line's indentation */
     bool show_whitespace;
     bool highlight_line;
@@ -102,10 +104,12 @@ enum Command {
     CMD_FIND, CMD_FIND_NEXT, CMD_FIND_PREV, CMD_REPLACE, CMD_GOTO,
     CMD_FIND_IN_FILES, CMD_REPLACE_IN_FILES, CMD_NEXT_RESULT, CMD_PREV_RESULT, CMD_OPTIONS,
     CMD_VIEW_WORKSPACE, CMD_VIEW_BOTTOM, CMD_VIEW_FULLSCREEN, CMD_VIEW_LINE_NUMBERS,
-    CMD_TERMINAL, CMD_NEXT_DOC, CMD_PREV_DOC, CMD_ABOUT
+    CMD_TERMINAL, CMD_NEXT_DOC, CMD_PREV_DOC, CMD_ABOUT, CMD_VIEW_RESULTS,
+    /* View > Debug Windows: one per pane in k_debug_panes (app.cpp). */
+    CMD_VIEW_DEBUG
 };
 
-class App : public tt::PaneHost {
+class App : public tt::PaneHost, public PaneBuilder {
 public:
     App(Widget top, const Options& o);
     ~App();
@@ -127,7 +131,6 @@ public:
     void scrolled(int value);
     void tab_chosen(Widget tab, bool set);
     void tab_close(Widget w);
-    void sash_event(Widget w, XEvent* ev);
     void tree_activate(int row);
     bool global_key(KeySym ks, unsigned state);
     void autoscroll_step();
@@ -143,7 +146,6 @@ public:
     void options_button(int which);
     void fif_button(int which);
     void result_chosen(int i);
-    void bottom_page_chosen(int page);
     void theme_chosen(int i);
 
     /* tt::PaneHost */
@@ -151,10 +153,19 @@ public:
     bool pane_key(tt::TermPane* p, TwGridCallbackStruct* cb);
     void pane_focus(tt::TermPane* p, bool in);
 
+    /* PaneBuilder: the docks' panes (dock.h). */
+    Widget build_pane(Pane* p, Widget parent);
+    void drop_pane(Pane* p);
+    void layout_changed();
+
 private:
     void build_menus();
     void build_layout();
-    void make_terminal();
+    void make_terminal(Widget parent);
+    void make_panes();
+    ttr::Str default_layout() const;
+    /* Open the pane (where it was last) and give it the focus. */
+    void show_pane(Pane* p);
     Doc* doc() { return cur_ >= 0 && cur_ < docs_.size() ? docs_[cur_] : 0; }
     void show_doc(int i);
     Doc* new_doc();
@@ -175,8 +186,6 @@ private:
     void find(bool forward);
     void show_find(bool replace);
     void set_fullscreen(bool on);
-    void show_workspace(bool on);
-    void show_bottom(bool on);
     void layout();
     void set_mnemonics(bool on);
     void own(Atom sel, Time t);
@@ -201,8 +210,8 @@ private:
     void set_terminal_font(const char* xlfd);
     void set_text_rendering(const char* editor, const char* terminal);
     /* Find in Files and the results pane (findfiles.cpp). */
-    void build_bottom();
-    void show_bottom_page(int page);
+    Widget build_results(Widget parent);
+    void show_results();
     void show_find_in_files(bool replace);
     int find_in_files(const char* what, const char* dir, const char* types, bool match_case,
                       bool whole, int* files);
@@ -216,9 +225,13 @@ private:
     void goto_result(int i);
     bool confirm(const char* message);
 
-    Widget top_, form_, bar_, body_, right_, tree_box_, tree_sash_, bottom_sash_, tree_,
-        edit_box_, tabs_, grid_,
-        scroll_, status_, bottom_slot_;
+    Widget top_, form_, bar_, body_, tree_, edit_box_, tabs_, grid_, scroll_, status_;
+    /* The dock areas and their panes. */
+    Docks* docks_;
+    Pane* pane_workspace_;
+    Pane* pane_terminal_;
+    Pane* pane_results_;
+    ttr::Vector<Pane*> debug_panes_;
     Widget cascades_[8];
     int ncascades_;
     char mnemonics_[8];
@@ -232,10 +245,7 @@ private:
     ttr::Vector<TreeRow*> rows_;
     ttr::Str root_;
     /* View state. */
-    bool fullscreen_, workspace_on_, bottom_on_;
-    bool was_workspace_, was_bottom_;
-    int tree_w_, bottom_h_;     /* the side panes' sizes in pixels */
-    int drag_start_, drag_size_;    /* a sash being dragged */
+    bool fullscreen_;
     Pixmap close_pixmap_;
     Dimension save_w_, save_h_;
     Position save_x_, save_y_;
@@ -285,9 +295,9 @@ private:
     Widget fif_dlg_, fif_what_, fif_with_, fif_with_label_, fif_folder_, fif_types_, fif_case_,
         fif_word_, fif_find_btn_, fif_replace_btn_;
     bool fif_replace_;
-    /* The bottom pane's pages: the terminal and the results. */
-    Widget bottom_tabs_, page_tabs_[2], results_box_, results_;
-    int bottom_page_;
+    /* Find Results (0 while its pane is closed). */
+    Widget results_;
+    bool searched_;             /* a search has run: the list has something to say */
     ttr::Vector<Result*> results_list_;
     int cur_result_;
     int scanned_, result_files_;

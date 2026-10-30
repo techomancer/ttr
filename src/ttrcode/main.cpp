@@ -39,6 +39,7 @@ struct Resources {
     int ruler;
     String cursor_shape, cursor_color;
     String terminal_font, text_rendering, terminal_text_rendering;
+    String layout;
 };
 
 #define ROFF(f) XtOffsetOf(Resources, f)
@@ -77,7 +78,8 @@ XtResource k_resources[] = {
     RSTR("terminalBackground", "TerminalBackground", terminal_background, ""),
     RSTR("terminalFont", "TerminalFont", terminal_font, ""),
     RSTR("textRendering", "TextRendering", text_rendering, "auto"),
-    RSTR("terminalTextRendering", "TerminalTextRendering", terminal_text_rendering, "auto")
+    RSTR("terminalTextRendering", "TerminalTextRendering", terminal_text_rendering, "auto"),
+    RSTR("layout", "Layout", layout, "")
 };
 #undef RSTR
 #undef ROFF
@@ -184,6 +186,7 @@ int main(int argc, char** argv)
     o.terminal_font = res.terminal_font ? res.terminal_font : "";
     o.text_rendering = res.text_rendering ? res.text_rendering : "auto";
     o.terminal_text_rendering = res.terminal_text_rendering ? res.terminal_text_rendering : "auto";
+    o.layout = res.layout ? res.layout : "";
 
     /* The UI theme, for every widget made from here on. */
     th::Theme theme;

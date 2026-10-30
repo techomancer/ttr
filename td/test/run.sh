@@ -18,6 +18,8 @@ LD_LIBRARY64_PATH=$W
 export LD_LIBRARY_PATH LD_LIBRARYN32_PATH LD_LIBRARY64_PATH
 fail=0
 ran=0
+# The crash test's core dump goes to the temporary directory too.
+cd $W || exit 1
 for s in $T/*.ttrdb; do
     name=`basename $s .ttrdb`
     prog=`sed -n 's/^# program: *//p' $s | head -1`
@@ -31,6 +33,7 @@ for s in $T/*.ttrdb; do
         cat $W/$name.out
     fi
 done
+cd /
 rm -rf $W
 echo "td tests: $ran scripts, $fail failed"
 [ $fail -eq 0 ]

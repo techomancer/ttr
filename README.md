@@ -795,9 +795,17 @@ ttrcode -renderer gl -dynbg night    # OpenGL, stars behind the terminal pane
 The window has the workspace tree on the left (Enter or a double click
 opens a directory or a file), tabs over the editor, a terminal running
 your shell in the workspace below, and the line, column and line ends in
-the status bar. The editor takes all the room the side panes leave; drag
-the dividers between them to change their size, which ttrcode remembers.
-A tab's x button (or a middle click on the tab) closes the file. File >
+the status bar. The editor takes all the room the side panes leave.
+
+The tool panes (Workspace, Terminal, Find Results, and the debugger's
+Watch, Variables, Registers, Memory, Call Stack and Threads, which say
+"Not debugging" for now) sit in three areas around the editor: left,
+bottom and right. An area holds groups of tabs, one over another at the
+sides and side by side at the bottom. Right-click a pane's tab to move it
+to another area, into one of the groups there or a new one of its own,
+or to close it; the View menu and the keys below open a pane again where
+it was. Drag the dividers to resize areas and groups. ttrcode remembers
+the layout. A tab's x button (or a middle click on the tab) closes the file. File >
 Open Workspace... switches the tree to another directory (the box opens in
 the current workspace: OK keeps it, a directory in the list goes there);
 open files stay open, and the terminal's shell changes to the new
@@ -825,7 +833,8 @@ are not shown in the tree.
 | Ctrl+N, Ctrl+O, Ctrl+S | new, open, save |
 | Ctrl+W, Ctrl+F4 | close the file (asks about unsaved changes) |
 | Ctrl+Tab, Ctrl+Shift+Tab | next, previous file |
-| Alt+0, Alt+2 | show or hide the workspace, the terminal pane |
+| Alt+0, Alt+2 | show or hide the workspace, the bottom area |
+| Alt+3, Alt+4, Alt+5, Alt+6, Alt+7 | Watch, Variables, Registers, Memory, Call Stack (VC6's keys) |
 | Ctrl+` | to the terminal and back |
 | F11 | full screen with only the text (F11 or Esc to come back); on window managers without full-screen support, such as 4Dwm and mwm, the window drops its frame and covers the screen |
 
@@ -835,7 +844,7 @@ numbers selects the line, Shift+click extends, the middle button pastes
 the X selection, and the wheel scrolls.
 
 In the terminal pane every key goes to the shell except F11, Alt+0,
-Alt+2, Ctrl+` and Ctrl+Tab; the menus' Alt+letter keys are off while it
+Alt+2 to Alt+7, Ctrl+` and Ctrl+Tab; the menus' Alt+letter keys are off while it
 has the focus. When the shell ends, Enter starts a new one.
 
 Files are saved through a new file that replaces the old one, so a full
@@ -865,7 +874,7 @@ Settings; any other choice is ttrcode's own.
 searches every text file of the workspace, or of another folder, for a
 text, with Match case, Whole words and file types such as `*.c *.h`.
 Hidden files, build directories, binary files and files over 16 MB are
-left out. The matches fill the Find Results page of the bottom pane as
+left out. The matches fill the Find Results pane as
 `file(line): text`; Enter or a double click opens one with the match
 selected, and F4 and Shift+F4 step through them. Replace in Files
 (Ctrl+Shift+H) shows how many matches it will replace in how many files
@@ -909,7 +918,7 @@ the file wins over them:
 | `cursorShape` | `bar`, `block`, `underline` | `bar` |
 | `cursorBlink` | `true`, `false` | `true` |
 | `cursorColor` | `#rrggbb`; left out: the color scheme's | |
-| `treeWidth`, `bottomHeight` | the workspace's width, the terminal pane's height, in pixels | `220`, `220` |
+| `layout` | where the tool panes are: `left:220=workspace;bottom:220=terminal,results;right:240=` (each area's size, its groups split by `\|`, a group's panes by `,`, a group's size after `@`); older `treeWidth` and `bottomHeight` set the first one | |
 | `renderer` | `auto`, `core`, `soft`, `gl`, as for ttrt (`-renderer`) | `auto` |
 | `terminalBackground` | an animated background for the terminal pane, as ttrt's (`-dynbg`) | none |
 

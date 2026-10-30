@@ -82,6 +82,10 @@ public:
     TermPane(Widget parent, const char* name, const PaneOptions& o, PaneHost* host);
     /* Hangs up the program and destroys the widgets. */
     ~TermPane();
+    /* The widgets again, in another parent (Xt cannot move a widget): the
+     * terminal, its scrollback and its program carry on. Returns the new
+     * form, managed, for the caller to attach. */
+    Widget rebuild(Widget parent);
 
     Widget widget() const { return form_; }     /* attach this one */
     Widget grid() const { return grid_; }
@@ -119,7 +123,7 @@ public:
     void set_backspace_is_del(bool on);
     void set_bell(BellMode b) { bell_ = b; }
     /* False if the renderer cannot draw it (only gl can). */
-    bool set_dynamic_background(const char* name) { return TwGridSetBackground(grid_, name) != False; }
+    bool set_dynamic_background(const char* name);
     /* Sharp, smooth or auto text (TwNtextRendering); smooth needs the GL
      * renderer, which a pane gets when it is made. */
     void set_text_rendering(const char* t);
@@ -151,6 +155,8 @@ public:
                    int format, bool second_try);
 
 private:
+    void make_widgets(Widget parent);
+    void drop_widgets();
     void spawn(int cols, int rows);
     void ended();
     void update_scrollbar();
@@ -184,6 +190,13 @@ private:
     char* cwd_;
     bool login_;
     char* font_;                    /* the font name TwGrid holds */
+    /* What the widgets are made with, kept for rebuild(). */
+    char* name_;
+    char* fallback_;
+    char* renderer_;
+    char* dynbg_;
+    const char* text_;              /* a static string (TwGrid compares it) */
+    bool want_scroll_;
     bool started_, running_;
     bool in_scroll_update_;
     tl::Buffer outq_;               /* bytes the pty did not take yet */
