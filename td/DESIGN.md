@@ -248,21 +248,50 @@ stepping by instruction.
   `.debug_funcnames`, DWARF 5's `.debug_names`. Otherwise scan the
   top-level DIEs once and keep a hash table.
 
-### 5.4 Our own reader, or libdwarf
+### 5.4 libdwarf
 
-libdwarf started at SGI, and IRIX ships it (`/usr/lib32/libdwarf.a`,
-`libdwarf_sgi.a`, `libelf.a`). The current one is maintained, is written
-in C, and is under the LGPL 2.1.
+libdwarf started at SGI. IRIX ships a 2001 version (`/usr/lib32/libdwarf.a`,
+`libdwarf_sgi.a`, `libelf.a`, headers in `/usr/include`), but it reads
+only DWARF 2, so it cannot read gcc's or clang's output on Linux. Using it
+on IRIX and a current one on Linux would mean two APIs.
 
-The recommendation is our own reader, as with terminfo in tu:
+The current libdwarf (https://github.com/davea42/libdwarf-code, LGPL 2.1,
+about 62,000 lines of C in 64 files) is the better choice, vendored in
+`third_party/libdwarf` as a pinned submodule and built the same way on
+both systems:
 
-- We need a subset: line tables, CFI, DIEs with the attributes C and C++
-  use, location expressions. That is a few thousand lines.
-- C++98 without the STL, built the same way as the rest of ttr.
-- No compatibility problems between libdwarf versions on the two
-  systems.
+- **It builds with MIPSpro.** Tried on 2026-10-24 with commit 71f0401
+  (`cc -c99 -n32`, a hand-written `config.h` with `WORDS_BIGENDIAN`):
+  62 of the 64 files compile. The other two, `dwarf_line.c` and
+  `dwarf_print_lines.c`, fail on one line: an `#ifdef __sgi` block in
+  `dwarf_line_table_reader_common.h` sets a field, `li_offset`, that the
+  line structure no longer has. That code went stale because nobody
+  builds it on IRIX any more. The fix is one line: report it upstream and
+  pin a commit with the fix. Until then the wrapper file can `#undef
+  __sgi` around that one source file (the system headers it needs are
+  already included by then).
+- **It reads all of it:**
+  - DWARF 2 to 5.
+  - SGI's `.debug_funcnames`, `.debug_varnames` and `.debug_typenames`
+    (`dwarf_get_funcs`, `dwarf_get_vars`, `dwarf_get_types`).
+  - Line tables (`dwarf_srclines_b`).
+  - Location lists (`dwarf_get_loclist_c`).
+  - Frame tables: the FDE for a PC (`dwarf_get_fde_at_pc`) and every
+    register's rule there (`dwarf_get_fde_info_for_all_regs3`).
+  - zlib-compressed sections (zlib is already in `third_party/`), and
+    zstd ones when built with zstd.
+- **`dwarf_object_init_b`** lets us supply the object's sections
+  ourselves: from a file, a core file, or another machine's memory.
+- **Its API is C.** td wraps it, and nothing above td sees it.
 
-libdwarf's `dwarfdump` is still useful for checking our results.
+Licensing: ttr is BSD-3, and the LGPL 2.1 allows linking libdwarf into
+it. A distributed binary that contains libdwarf must come with its source
+and be relinkable with a changed libdwarf. The simplest way is to build
+libdwarf as a shared library (`libdwarf.so`, which IRIX supports too),
+installed next to ttrcode and ttrdb.
+
+`dwarfdump` (GPL, in the same repository) is useful for checking our
+results but is not linked into anything.
 
 ### 5.5 Names
 
@@ -270,16 +299,43 @@ libdwarf's `dwarfdump` is still useful for checking our results.
 - Linux uses the Itanium C++ ABI. `abi::__cxa_demangle` exists, but
   pulling in libstdc++'s interface goes against the no-STL rule, so td
   gets its own demangler, to be written later.
-- MIPSpro uses its own mangling scheme. *To verify:* the scheme, and
-  whether IRIX's `c++filt` or a library function can be called.
+- MIPSpro uses cfront-style mangling. IRIX has a demangler,
+  `<dem.h>` (`demangle(in, out)`, from cfront's tools). *To verify:*
+  which library provides it, and whether it handles MIPSpro 7.4's
+  templates.
 
 ### 5.6 Unwinding
 
-- From `.debug_frame` or `.eh_frame` CFI.
-- Without CFI on MIPS: scan back for the function's prologue
-  (`addiu sp, sp, -n`, `sw ra, n(sp)`), as dbx does.
-- Signal frames: IRIX's `sigcontext` and Linux's `rt_sigframe`, which
+Unwinding a stopped thread is a loop:
+
+1. Take the frame's PC.
+2. Ask libdwarf for the rules at that PC (`.debug_frame`, or `.eh_frame`
+   on Linux).
+3. Compute the frame's address (the CFA), and read the saved registers
+   through the Target.
+4. The return address gives the next frame's PC. Repeat.
+
+That loop is a few hundred lines in td, the same on both systems.
+
+What it needs besides libdwarf:
+
+- **No CFI for a function** (hand-written assembly, some IRIX system
+  libraries): on MIPS, scan back for the prologue (`addiu sp, sp, -n`,
+  `sw ra, n(sp)`), as dbx does. On x86-64, follow the frame pointer.
+- **Signal frames:** IRIX's `sigcontext` and Linux's `rt_sigframe`, which
   `.eh_frame` describes for the signal trampoline. *To verify* on IRIX.
+
+Other unwinders, and why not:
+
+- **libunwind** (https://github.com/libunwind/libunwind, MIT): it unwinds
+  other processes through ptrace (`libunwind-ptrace`), but only on Linux,
+  FreeBSD, QNX, Solaris and HP-UX. Its MIPS port is for Linux, and 26 of
+  its files use C11 atomics or `__sync` builtins, so MIPSpro would need a
+  lot of patching. Using it on Linux only would mean two unwinders, and
+  the loop above is small.
+- **IRIX's libexc** (`trace_back_stack`, `exc_dladdr`, in
+  `<libexc.h>`): it unwinds only the calling program's own stack. Useful
+  for crash reports in ttr's own programs, not for a debugger.
 
 ## 6. Arch
 
@@ -414,7 +470,8 @@ serialising it. Nothing is built for it now.
   - Symbol reading on checked-in small binaries: a gcc `-g` x86-64
     program and a MIPSpro n32 one, with their expected line tables and
     unwind results.
-  - `llvm-dwarfdump` or `dwarfdump` produce the expected values once.
+  - libdwarf's `dwarfdump` or `llvm-dwarfdump` produce the expected
+    values once.
 - **ttrdb scripts** on small test programs (`td/test/progs/*.c`):
   breakpoints, stepping through recursion and across a shared library,
   a signal, threads, a crash and its core file.
@@ -432,9 +489,10 @@ serialising it. Nothing is built for it now.
 3. **F11.** It is ttrcode's full screen today, and Step Into in Visual
    C++. Proposal: F11 steps, and full screen moves to Shift+Alt+Enter,
    Visual Studio's later key for full screen.
-4. **zstd** for compressed debug sections on Linux: a `third_party`
-   submodule, or leave such files unread for now. (Our own builds don't
-   compress them.)
+4. **libdwarf** as a `third_party` submodule (section 5.4), built as a
+   shared library for the LGPL. And **zstd** for compressed debug
+   sections on Linux: a submodule too, or leave such files unread for
+   now (our own builds don't compress them).
 5. **Alt+F9.** VC6's Breakpoints dialog key is the window manager's
    minimize key in ttr. The dialog would be reached from the Debug menu
    only.
@@ -445,8 +503,8 @@ serialising it. Nothing is built for it now.
    - Start a program, breakpoints by line and function, continue.
    - Step by line and by instruction, backtrace, registers, memory.
    - Shared libraries.
-   - Built from: the ELF reader, line tables, CFI, the ptrace Target,
-     the x86-64 Arch.
+   - Built from: libdwarf (vendored), the ptrace Target, the x86-64
+     Arch, the unwinding loop.
 2. **The same on IRIX.**
    - The /proc Target and the MIPS Arch, with delay slots.
    - Tested on the guest and on the Octane, with MIPSpro-built programs.
