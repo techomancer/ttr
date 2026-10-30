@@ -360,8 +360,10 @@ $(B)/te_test_te.o: $(B)/.dir te/test/test_te.cpp $(TE_H)
 
 # tx, Motif pieces every ttr program shares (tx/DESIGN.md): the font
 # chooser.
-TX_OBJS = $(B)/tx_fontchooser.o
-TX_H = tx/fontchooser.h tx/dialog.h src/core/str.h src/core/vector.h
+TX_OBJS = $(B)/tx_fontchooser.o \
+	$(B)/tx_pages.o \
+	$(B)/tx_scale.o
+TX_H = tx/fontchooser.h tx/dialog.h tx/pages.h tx/scale.h src/core/str.h src/core/vector.h
 
 $(B)/libtx.a: $(TX_OBJS)
 	rm -f $@
@@ -369,6 +371,10 @@ $(B)/libtx.a: $(TX_OBJS)
 
 $(B)/tx_fontchooser.o: $(B)/.dir tx/fontchooser.cpp $(TX_H)
 	$(COMPILE) -c tx/fontchooser.cpp -o $@
+$(B)/tx_pages.o: $(B)/.dir tx/pages.cpp $(TX_H) src/core/scale.h
+	$(COMPILE) -c tx/pages.cpp -o $@
+$(B)/tx_scale.o: $(B)/.dir tx/scale.cpp $(TX_H) src/core/scale.h src/core/settings.h
+	$(COMPILE) -c tx/scale.cpp -o $@
 
 # tx_demo shows the font chooser (needs a display).
 $(B)/tx_demo: $(B)/tx_demo.o $(B)/libtx.a $(B)/core_str.o
@@ -865,8 +871,9 @@ TTRCODE_OBJS = $(B)/ttrcode_main.o \
 	$(B)/ttrcode_dock.o \
 	$(B)/ttrcode_editsource.o \
 	$(B)/ttrcode_findfiles.o \
-	$(B)/ttrcode_options.o \
+	$(B)/ttrcode_settings.o \
 	$(B)/ttrcode_valuetree.o \
+	$(B)/core_scale.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
 TTRCODE_H = src/ttrcode/app.h src/ttrcode/celllist.h src/ttrcode/dock.h \
@@ -908,8 +915,8 @@ $(B)/ttrcode_valuetree.o: $(B)/.dir src/ttrcode/valuetree.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/valuetree.cpp -o $@
 $(B)/ttrcode_findfiles.o: $(B)/.dir src/ttrcode/findfiles.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/findfiles.cpp -o $@
-$(B)/ttrcode_options.o: $(B)/.dir src/ttrcode/options.cpp $(TTRCODE_H)
-	$(COMPILE) -c src/ttrcode/options.cpp -o $@
+$(B)/ttrcode_settings.o: $(B)/.dir src/ttrcode/settings.cpp $(TTRCODE_H)
+	$(COMPILE) -c src/ttrcode/settings.cpp -o $@
 $(B)/ttrcode_editsource.o: $(B)/.dir src/ttrcode/editsource.cpp src/ttrcode/editsource.h \
 		$(TE_H) tw/tw.h
 	$(COMPILE) -c src/ttrcode/editsource.cpp -o $@

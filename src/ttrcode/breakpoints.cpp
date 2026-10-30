@@ -114,7 +114,7 @@ void App::show_breakpoints()
         XtSetArg(a[0], XmNautoUnmanage, False);
         bp_dlg_ = XmCreateFormDialog(top_, (char*)"breakpoints", a, 1);
         XtVaSetValues(XtParent(bp_dlg_), XmNtitle, "Breakpoints", (char*)0);
-        XtVaSetValues(bp_dlg_, XmNmarginWidth, 10, XmNmarginHeight, 10, (char*)0);
+        XtVaSetValues(bp_dlg_, XmNmarginWidth, scaled(10), XmNmarginHeight, scaled(10), (char*)0);
         int i;
         for (i = 0; i < BP_BUTTONS; i++) {
             g_bp_hooks[i].app = this;
@@ -133,13 +133,14 @@ void App::show_breakpoints()
                                            XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget, l1,
                                            XmNleftAttachment, XmATTACH_FORM,
                                            XmNrightAttachment, XmATTACH_WIDGET,
-                                           XmNrightWidget, add_at, XmNrightOffset, 8, (char*)0);
+                                           XmNrightWidget, add_at, XmNrightOffset, scaled(8),
+                                           (char*)0);
         XtAddCallback(bp_at_w_, XmNactivateCallback, bp_at_cb, (XtPointer)this);
         /* Break when this expression changes: [field] [Add] */
         Widget l2 = XtVaCreateManagedWidget("Break when this expression changes:",
                                             xmLabelWidgetClass, bp_dlg_,
                                             XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget,
-                                            bp_at_w_, XmNtopOffset, 8,
+                                            bp_at_w_, XmNtopOffset, scaled(8),
                                             XmNleftAttachment, XmATTACH_FORM, (char*)0);
         Widget add_data = XtVaCreateManagedWidget("Add", xmPushButtonWidgetClass, bp_dlg_,
                                                   XmNtopAttachment, XmATTACH_WIDGET,
@@ -151,16 +152,16 @@ void App::show_breakpoints()
                                              XmNcolumns, 50, XmNtopAttachment, XmATTACH_WIDGET,
                                              XmNtopWidget, l2, XmNleftAttachment, XmATTACH_FORM,
                                              XmNrightAttachment, XmATTACH_WIDGET,
-                                             XmNrightWidget, add_data, XmNrightOffset, 8,
+                                             XmNrightWidget, add_data, XmNrightOffset, scaled(8),
                                              (char*)0);
         XtAddCallback(bp_expr_w_, XmNactivateCallback, bp_expr_cb, (XtPointer)this);
         /* The list, with Remove, Remove All and Go To Code beside it. */
         Widget l3 = XtVaCreateManagedWidget("Breakpoints:", xmLabelWidgetClass, bp_dlg_,
                                             XmNtopAttachment, XmATTACH_WIDGET,
-                                            XmNtopWidget, bp_expr_w_, XmNtopOffset, 10,
+                                            XmNtopWidget, bp_expr_w_, XmNtopOffset, scaled(10),
                                             XmNleftAttachment, XmATTACH_FORM, (char*)0);
         Widget side = XtVaCreateManagedWidget("side", xmRowColumnWidgetClass, bp_dlg_,
-                                              XmNorientation, XmVERTICAL, XmNspacing, 4,
+                                              XmNorientation, XmVERTICAL, XmNspacing, scaled(4),
                                               XmNpacking, XmPACK_COLUMN,
                                               XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget, l3,
                                               XmNrightAttachment, XmATTACH_FORM, (char*)0);
@@ -179,7 +180,7 @@ void App::show_breakpoints()
                                              XmNalignment, XmALIGNMENT_BEGINNING,
                                              XmNleftAttachment, XmATTACH_FORM,
                                              XmNrightAttachment, XmATTACH_WIDGET,
-                                             XmNrightWidget, close, XmNrightOffset, 8,
+                                             XmNrightWidget, close, XmNrightOffset, scaled(8),
                                              XmNbottomAttachment, XmATTACH_FORM, (char*)0);
         Arg la[2];
         XtSetArg(la[0], XmNvisibleItemCount, 10);
@@ -187,9 +188,9 @@ void App::show_breakpoints()
         bp_list_w_ = XmCreateScrolledList(bp_dlg_, (char*)"list", la, 2);
         XtVaSetValues(XtParent(bp_list_w_), XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget, l3,
                       XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment, XmATTACH_WIDGET,
-                      XmNrightWidget, side, XmNrightOffset, 8,
+                      XmNrightWidget, side, XmNrightOffset, scaled(8),
                       XmNbottomAttachment, XmATTACH_WIDGET, XmNbottomWidget, close,
-                      XmNbottomOffset, 8, (char*)0);
+                      XmNbottomOffset, scaled(8), (char*)0);
         XtAddCallback(bp_list_w_, XmNdefaultActionCallback, bp_list_cb, (XtPointer)this);
         XtManageChild(bp_list_w_);
         XtVaSetValues(bp_dlg_, XmNcancelButton, close, (char*)0);

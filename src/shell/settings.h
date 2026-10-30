@@ -9,6 +9,7 @@
 #include "core/str.h"
 #include "core/vector.h"
 #include "core/wmlink.h"
+#include "../../tx/pages.h"
 
 #include <X11/Intrinsic.h>
 
@@ -51,16 +52,12 @@ private:
     void save();
     void error(const char* msg);
 
-    static void ok_cb(Widget w, XtPointer closure, XtPointer call);
+    static void pressed(void* data, int which);
     static void shortcuts_cb(Widget w, XtPointer closure, XtPointer call);
-    static void page_cb(Widget w, XtPointer closure, XtPointer call);
 
     enum { PAGE_WINDOWS, PAGE_DESKTOPS, PAGE_APPEARANCE, PAGE_COLORS,
            PAGE_TASKBAR,
            PAGE_START, PAGE_STARTUP, PAGE_XDG, PAGE_COUNT };
-    Widget page(Widget parent, int index);
-    void show_page(int index);
-    static void cancel_cb(Widget w, XtPointer closure, XtPointer call);
 
     Widget parent_;
     WmLink* wm_;
@@ -83,9 +80,7 @@ private:
     Widget source_;
     Widget toolchest_;
     Widget terminal_;
-    Widget categories_;
-    Widget pages_[PAGE_COUNT];
-    int current_page_;          /* kept across opening the dialog */
+    tx::PagedDialog pages_;     /* keeps the page shown across openings */
     ShortcutsDialog* shortcuts_;
     StartupPage* startup_;      /* rebuilt with the dialog */
     XdgAutostartPage* xdg_;

@@ -189,18 +189,6 @@ void tree_key(Widget, XtPointer, XEvent* ev, Boolean* go_on)
         *go_on = False;
 }
 
-void scheme_cb(Widget, XtPointer data, XtPointer call)
-{
-    if (((XmToggleButtonCallbackStruct*)call)->set)
-        g_app->scheme_chosen((int)(long)data);
-}
-
-void theme_cb(Widget, XtPointer data, XtPointer call)
-{
-    if (((XmToggleButtonCallbackStruct*)call)->set)
-        g_app->theme_chosen((int)(long)data);
-}
-
 void restart_terminal_cb(XtPointer, XtIntervalId*)
 {
     g_app->restart_terminal();
@@ -314,8 +302,9 @@ App::App(Widget top, const Options& o)
       tip_label_(0), tip_up_(false), tip_watch_(false), tip_x_(0), tip_y_(0), match_case_(false),
       find_dlg_(0), find_what_(0), replace_with_(0), case_toggle_(0), replace_row_(0),
       primary_(0), primary_len_(0), clipboard_(0), clipboard_len_(0), answer_(-1),
-      scheme_items_(0), theme_items_(0), font_(0), term_font_(0), opt_font_(0), opt_term_font_(0),
-      opt_text_(0), opt_term_text_(0), opt_dlg_(0), fif_dlg_(0), fif_replace_(false),
+      font_(0), term_font_(0), opt_font_(0), opt_term_font_(0),
+      opt_text_(0), opt_term_text_(0), opt_scheme_(0), opt_theme_(0), opt_scale_(0), fif_dlg_(0),
+      fif_replace_(false),
       dbg_(0), stop_line_(-1), frame_line_(-1), cur_frame_(0), have_last_regs_(false),
       regs_stop_(-1), regs_thread_(-1),
       dbg_kill_req_(false), dbg_attached_(false), stack_list_(0), regs_list_(0), threads_list_(0), watch_list_(0),
@@ -329,6 +318,15 @@ App::App(Widget top, const Options& o)
 {
     opt_renderer_ = 0;
     renderer_chosen_ = false;
+    auto_font_ = o.auto_font && *o.auto_font ? o.auto_font : "fixed";
+    if (o.font && *o.font) {
+        font_ = (char*)malloc(strlen(o.font) + 1);
+        if (font_)
+            strcpy(font_, o.font);
+    }
+    opt_.font = font_ ? font_ : auto_font_.c_str();
+    ui_scale_ = o.ui_scale ? o.ui_scale : "";
+    opt_.ui_scale = ui_scale_.c_str();
     text_ = o.text_rendering && *o.text_rendering ? o.text_rendering : "auto";
     term_text_ = o.terminal_text_rendering && *o.terminal_text_rendering
                      ? o.terminal_text_rendering : "auto";
@@ -553,12 +551,10 @@ void App::build_menus()
     }
     menu_item(m, "Line Numbers", 'L', 0, CMD_VIEW_LINE_NUMBERS);
     separator(m);
-    build_color_menus(m);
-    separator(m);
     menu_item(m, "Full Screen", 'F', "Shift+Alt+Enter", CMD_VIEW_FULLSCREEN);
 
     m = menus[4];
-    menu_item(m, "Options...", 'O', 0, CMD_OPTIONS);
+    menu_item(m, "Settings...", 'S', 0, CMD_SETTINGS);
 
     /* Debug (debug.cpp): VC6's keys. */
     m = menus[5];
@@ -602,7 +598,7 @@ void App::build_layout()
                                       XmNleftAttachment, XmATTACH_FORM,
                                       XmNrightAttachment, XmATTACH_FORM,
                                       XmNbottomAttachment, XmATTACH_FORM,
-                                      XmNmarginWidth, 6, (char*)0);
+                                      XmNmarginWidth, scaled(6), (char*)0);
     body_ = XtVaCreateWidget("body", xmFormWidgetClass, form_, (char*)0);
     docks_ = new Docks(body_, this, tab_fill());
 
@@ -859,11 +855,11 @@ Doc* App::new_doc()
     d->view.show_whitespace = opt_.show_whitespace;
     d->tab = XtVaCreateManagedWidget("tab", xmToggleButtonWidgetClass, tabs_,
                                      XmNindicatorOn, False,
-                                     XmNshadowThickness, 2,
+                                     XmNshadowThickness, scaled_line(2),
                                      XmNfillOnSelect, True,
                                      XmNselectColor, tab_fill(),
                                      XmNtraversalOn, False,
-                                     XmNmarginWidth, 8, (char*)0);
+                                     XmNmarginWidth, scaled(8), (char*)0);
     XtAddCallback(d->tab, XmNvalueChangedCallback, tab_cb, 0);
     XtAddEventHandler(d->tab, ButtonReleaseMask, False, tab_button, 0);
     if (!close_pixmap_) {
@@ -878,10 +874,11 @@ Doc* App::new_doc()
     d->close = XtVaCreateManagedWidget("close", xmPushButtonWidgetClass, tabs_,
                                        XmNlabelType, XmPIXMAP,
                                        XmNlabelPixmap, close_pixmap_,
-                                       XmNshadowThickness, 1,
+                                       XmNshadowThickness, scaled_line(1),
                                        XmNhighlightThickness, 0,
                                        XmNtraversalOn, False,
-                                       XmNmarginWidth, 3, XmNmarginHeight, 3, (char*)0);
+                                       XmNmarginWidth, scaled(3), XmNmarginHeight, scaled(3),
+                                       (char*)0);
     XtAddCallback(d->close, XmNactivateCallback, tab_close_cb, 0);
     docs_.push_back(d);
     return d;
@@ -1436,30 +1433,31 @@ void App::show_find(bool replace)
         tx::fixed_size(find_dlg_);
         Widget work = XtVaCreateManagedWidget("work", xmFormWidgetClass, find_dlg_, (char*)0);
         Widget l1 = XtVaCreateManagedWidget("Find what:", xmLabelWidgetClass, work,
-                                            XmNtopAttachment, XmATTACH_FORM, XmNtopOffset, 6,
+                                            XmNtopAttachment, XmATTACH_FORM,
+                                            XmNtopOffset, scaled(6),
                                             XmNleftAttachment, XmATTACH_FORM, (char*)0);
         find_what_ = XtVaCreateManagedWidget("what", xmTextFieldWidgetClass, work,
                                              XmNcolumns, 40,
                                              XmNtopAttachment, XmATTACH_FORM,
                                              XmNleftAttachment, XmATTACH_FORM,
-                                             XmNleftOffset, 90,
+                                             XmNleftOffset, scaled(90),
                                              XmNrightAttachment, XmATTACH_FORM, (char*)0);
         replace_row_ = XtVaCreateManagedWidget("Replace with:", xmLabelWidgetClass, work,
                                                XmNtopAttachment, XmATTACH_WIDGET,
-                                               XmNtopWidget, find_what_, XmNtopOffset, 10,
+                                               XmNtopWidget, find_what_, XmNtopOffset, scaled(10),
                                                XmNleftAttachment, XmATTACH_FORM, (char*)0);
         replace_with_ = XtVaCreateManagedWidget("with", xmTextFieldWidgetClass, work,
                                                 XmNcolumns, 40,
                                                 XmNtopAttachment, XmATTACH_WIDGET,
-                                                XmNtopWidget, find_what_, XmNtopOffset, 4,
+                                                XmNtopWidget, find_what_, XmNtopOffset, scaled(4),
                                                 XmNleftAttachment, XmATTACH_FORM,
-                                                XmNleftOffset, 90,
+                                                XmNleftOffset, scaled(90),
                                                 XmNrightAttachment, XmATTACH_FORM, (char*)0);
         case_toggle_ = XtVaCreateManagedWidget("Match case", xmToggleButtonWidgetClass, work,
                                                XmNtopAttachment, XmATTACH_WIDGET,
-                                               XmNtopWidget, replace_with_, XmNtopOffset, 6,
+                                               XmNtopWidget, replace_with_, XmNtopOffset, scaled(6),
                                                XmNleftAttachment, XmATTACH_FORM,
-                                               XmNleftOffset, 86, (char*)0);
+                                               XmNleftOffset, scaled(86), (char*)0);
         (void)l1;
         static const char* const labels[] = { "Find Next", "Replace", "Replace All", "Close" };
         for (int i = 0; i < 4; i++) {
@@ -1740,8 +1738,8 @@ void App::command(int cmd)
             goto_result(i < 0 ? n - 1 : i >= n ? 0 : i);
         }
         break;
-    case CMD_OPTIONS:
-        show_options();
+    case CMD_SETTINGS:
+        show_settings();
         break;
     case CMD_VIEW_FULLSCREEN:
         set_fullscreen(!fullscreen_);
@@ -2340,7 +2338,7 @@ void App::save_settings()
     ttr::Str path = settings_path();
     static const char* const header[] = {
         "# ttrcode's settings: X resource names (TTRcode*name) and values.",
-        "# View > Color Scheme and View > UI Theme change the colours here.", 0
+        "# Tools > Settings changes them.", 0
     };
     f.set_header(header);
     f.load(path.c_str());
@@ -2385,6 +2383,8 @@ void App::save_settings()
         f.remove("cursorColor");
     if (font_ && *font_)
         f.set("font", font_);
+    else
+        f.remove("font");
     if (term_font_ && *term_font_)
         f.set("terminalFont", term_font_);
     else
@@ -2393,6 +2393,10 @@ void App::save_settings()
         f.set("renderer", opt_.renderer);
     f.set("textRendering", text_.c_str());
     f.set("terminalTextRendering", term_text_.c_str());
+    if (ui_scale_.empty())
+        f.remove("uiScale");
+    else
+        f.set("uiScale", ui_scale_.c_str());
     ttr::make_parent_dirs(path.c_str());
     f.save(path.c_str());
 }
@@ -2435,9 +2439,6 @@ void App::set_scheme(const char* name)
     if (grid_)
         TwGridDamage(grid_);
     recolor_lists();
-    for (int i = 0; scheme_items_ && i < schemes_.count(); i++)
-        XmToggleButtonSetState(scheme_items_[i],
-                               th::compare_names(schemes_[i].name, scheme_.name) == 0, False);
 }
 
 /* Widgets change colour in place (XmChangeColor); dialogs made later get
@@ -2469,12 +2470,6 @@ void App::set_theme(const char* name)
             XtVaSetValues(docs_[i]->close, XmNlabelPixmap, close_pixmap_, (char*)0);
         XFreePixmap(XtDisplay(tabs_), old);
     }
-    for (int i = 0; theme_items_ && i < themes_.count() + 1; i++) {
-        bool on = i == 0 ? theme_name_.empty()
-                         : !theme_name_.empty() &&
-                               th::compare_names(themes_[i - 1].name, theme_name_.c_str()) == 0;
-        XmToggleButtonSetState(theme_items_[i], on, False);
-    }
 }
 
 /* The chosen tab is filled with the background's select shade, which
@@ -2482,58 +2477,6 @@ void App::set_theme(const char* name)
 Pixel App::tab_fill()
 {
     return th::pixel(top_, th::motif_colors(theme_.get(th::ROLE_BACKGROUND)).select);
-}
-
-void App::scheme_chosen(int i)
-{
-    if (i < 0 || i >= schemes_.count())
-        return;
-    set_scheme(schemes_[i].name);
-    save_settings();
-}
-
-void App::theme_chosen(int i)
-{
-    set_theme(i == 0 ? "" : themes_[i - 1].name);
-    save_settings();
-}
-
-/* View > Color Scheme and View > UI Theme: one radio item per scheme
- * and theme found (th/scheme.h, th/theme.h). */
-void App::build_color_menus(Widget view)
-{
-    th::list_schemes(&schemes_);
-    th::list_themes(&themes_);
-    Arg a[2];
-    XtSetArg(a[0], XmNradioBehavior, True);
-    Widget sm = XmCreatePulldownMenu(view, (char*)"schemeMenu", a, 1);
-    XtVaCreateManagedWidget("Color Scheme", xmCascadeButtonWidgetClass, view,
-                            XmNsubMenuId, sm, XmNmnemonic, 'C', (char*)0);
-    scheme_items_ = (Widget*)XtMalloc((Cardinal)(sizeof(Widget) * (size_t)(schemes_.count() + 1)));
-    for (int i = 0; i < schemes_.count(); i++) {
-        scheme_items_[i] = XtVaCreateManagedWidget(
-            schemes_[i].name, xmToggleButtonWidgetClass, sm, XmNindicatorType, XmONE_OF_MANY,
-            XmNvisibleWhenOff, True,
-            XmNset, th::compare_names(schemes_[i].name, scheme_.name) == 0, (char*)0);
-        XtAddCallback(scheme_items_[i], XmNvalueChangedCallback, scheme_cb, (XtPointer)(long)i);
-    }
-    /* Many themes: in columns. */
-    XtSetArg(a[1], XmNpacking, XmPACK_COLUMN);
-    Widget tm = XmCreatePulldownMenu(view, (char*)"themeMenu", a, 2);
-    XtVaSetValues(tm, XmNnumColumns, (short)(themes_.count() > 18 ? 2 : 1), (char*)0);
-    XtVaCreateManagedWidget("UI Theme", xmCascadeButtonWidgetClass, view,
-                            XmNsubMenuId, tm, XmNmnemonic, 'U', (char*)0);
-    theme_items_ = (Widget*)XtMalloc((Cardinal)(sizeof(Widget) * (size_t)(themes_.count() + 1)));
-    for (int i = 0; i <= themes_.count(); i++) {
-        const char* label = i == 0 ? "Same as ttr" : themes_[i - 1].name;
-        bool on = i == 0 ? theme_name_.empty()
-                         : !theme_name_.empty() &&
-                               th::compare_names(themes_[i - 1].name, theme_name_.c_str()) == 0;
-        theme_items_[i] = XtVaCreateManagedWidget(
-            label, xmToggleButtonWidgetClass, tm, XmNindicatorType, XmONE_OF_MANY,
-            XmNvisibleWhenOff, True, XmNset, on, (char*)0);
-        XtAddCallback(theme_items_[i], XmNvalueChangedCallback, theme_cb, (XtPointer)(long)i);
-    }
 }
 
 /* ---- the workspace tree ---- */

@@ -272,6 +272,10 @@ with the menu bar hidden). An earlier plan put them on a page of ttr's
 Settings dialog. That made the window manager the owner of the terminal's
 settings, which is the kind of coupling ttr exists to avoid.
 
+The dialog has pages as ttr's (`tx/pages.h`): Terminal, Appearance (UI
+scale, font, drawing) and Colors. The UI scale (`uiScale`, `tx/scale.h`)
+follows ttr's unless set.
+
 Implemented 2026-10-20:
 
 - `src/ttrt/settings.h` lists the settings (name, default) and the file,
@@ -290,7 +294,8 @@ Implemented 2026-10-20:
   back to its default is removed from the file, so X resources apply
   again) and apply them to the window: font (the window keeps its size in
   cells), colours, cursor colour, bold as bright, Backspace, bell, menu
-  bar. Scrollback and the login shell apply to new windows. A command-line
+  bar. Scrollback, the login shell, the renderer and the UI scale apply to
+  new windows. A command-line
   value the user does not touch is never written to the file, and
   unchanged values keep their spelling ("wheat", "9x15").
 - The colour scheme (`colorScheme`) is one of th's text schemes

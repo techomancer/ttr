@@ -1,5 +1,7 @@
 #include "dock.h"
 
+#include "core/scale.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,10 +15,14 @@
 
 namespace ttrcode {
 
+using ttr::scaled;
+using ttr::scaled_line;
+
 namespace {
 
 const char* const k_side_names[SIDE_COUNT] = { "left", "bottom", "right" };
 const char* const k_side_labels[SIDE_COUNT] = { "Left", "Bottom", "Right" };
+/* Sizes at 100%; the layout's text has them so too (ttr::unscaled). */
 const int k_default_size[SIDE_COUNT] = { 220, 220, 240 };
 const int k_min = 40;           /* no area or group smaller */
 const int k_sash = 7;           /* a sash's thickness */
@@ -84,7 +90,7 @@ Docks::Docks(Widget body, PaneBuilder* builder, Pixel tab_fill)
     for (s = 0; s < SIDE_COUNT; s++) {
         Area& a = areas_[s];
         a.side = (Side)s;
-        a.size = k_default_size[s];
+        a.size = scaled(k_default_size[s]);
         a.hidden = false;
         Widget parent = s == SIDE_BOTTOM ? column_ : body_;
         char name[32];
@@ -119,7 +125,7 @@ Widget Docks::make_sash(Widget parent, bool vertical)
     Widget w = XtVaCreateWidget("sash", xmSeparatorWidgetClass, parent,
                                 XmNorientation, vertical ? XmVERTICAL : XmHORIZONTAL,
                                 XmNseparatorType, XmSHADOW_ETCHED_OUT,
-                                vertical ? XmNwidth : XmNheight, k_sash,
+                                vertical ? XmNwidth : XmNheight, scaled(k_sash),
                                 XmNmargin, 0, (char*)0);
     XtAddEventHandler(w, ButtonPressMask | ButtonReleaseMask | Button1MotionMask, False, sash_cb,
                       (XtPointer)this);
@@ -153,7 +159,7 @@ Group* Docks::new_group(Area* a, int at)
     Group* g = new Group;
     g->area = a;
     g->current = -1;
-    g->size = 200;
+    g->size = scaled(200);
     g->form = XtVaCreateWidget("group", xmFormWidgetClass, a->form, XmNresizePolicy,
                                XmRESIZE_NONE, (char*)0);
     g->tabs = XtVaCreateManagedWidget("tabs", xmRowColumnWidgetClass, g->form,
@@ -198,9 +204,9 @@ void Docks::add_to(Pane* p, Group* g)
     XmString l = XmStringCreateLocalized((char*)p->title());
     p->tab = XtVaCreateManagedWidget("tab", xmToggleButtonWidgetClass, g->tabs,
                                      XmNlabelString, l, XmNindicatorOn, False,
-                                     XmNshadowThickness, 2, XmNfillOnSelect, True,
+                                     XmNshadowThickness, scaled_line(2), XmNfillOnSelect, True,
                                      XmNselectColor, tab_fill_, XmNtraversalOn, False,
-                                     XmNmarginWidth, 8, XmNuserData, (XtPointer)p,
+                                     XmNmarginWidth, scaled(8), XmNuserData, (XtPointer)p,
                                      XmNset, False, (char*)0);
     XmStringFree(l);
     XtAddCallback(p->tab, XmNvalueChangedCallback, tab_cb, (XtPointer)this);
@@ -409,9 +415,9 @@ void Docks::relayout()
      * center get the size that is left before anything new is managed. */
     Dimension bw = 0, bh = 0;
     XtVaGetValues(body_, XmNwidth, &bw, XmNheight, &bh, (char*)0);
-    int cw = (int)bw - (vis[SIDE_LEFT] ? l.size + k_sash : 0) -
-             (vis[SIDE_RIGHT] ? r.size + k_sash : 0);
-    int ch = (int)bh - (vis[SIDE_BOTTOM] ? b.size + k_sash : 0);
+    int cw = (int)bw - (vis[SIDE_LEFT] ? l.size + scaled(k_sash) : 0) -
+             (vis[SIDE_RIGHT] ? r.size + scaled(k_sash) : 0);
+    int ch = (int)bh - (vis[SIDE_BOTTOM] ? b.size + scaled(k_sash) : 0);
     if (bw > 1 && cw > 1)
         XtVaSetValues(column_, XmNwidth, (Dimension)cw, (char*)0);
     if (bh > 1 && ch > 1) {
@@ -439,7 +445,7 @@ void Docks::relayout()
         XtVaSetValues(r.sash, XmNtopAttachment, XmATTACH_FORM, XmNbottomAttachment,
                       XmATTACH_FORM, XmNrightAttachment, XmATTACH_WIDGET, XmNrightWidget, r.form,
                       XmNleftAttachment, XmATTACH_OPPOSITE_WIDGET, XmNleftWidget, r.form,
-                      XmNleftOffset, -k_sash, (char*)0);
+                      XmNleftOffset, -scaled(k_sash), (char*)0);
     }
     XtVaSetValues(column_, XmNtopAttachment, XmATTACH_FORM, XmNbottomAttachment, XmATTACH_FORM,
                   XmNleftAttachment, vis[SIDE_LEFT] ? XmATTACH_WIDGET : XmATTACH_FORM,
@@ -454,7 +460,7 @@ void Docks::relayout()
         XtVaSetValues(b.sash, XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment,
                       XmATTACH_FORM, XmNbottomAttachment, XmATTACH_WIDGET, XmNbottomWidget,
                       b.form, XmNtopAttachment, XmATTACH_OPPOSITE_WIDGET, XmNtopWidget, b.form,
-                      XmNtopOffset, -k_sash, (char*)0);
+                      XmNtopOffset, -scaled(k_sash), (char*)0);
     }
     XtVaSetValues(center_, XmNtopAttachment, XmATTACH_FORM, XmNleftAttachment, XmATTACH_FORM,
                   XmNrightAttachment, XmATTACH_FORM,
@@ -522,7 +528,7 @@ void Docks::sash_event(Widget w, XEvent* ev)
     if (g) {
         XtVaGetValues(a->form, XmNwidth, &pw, XmNheight, &ph, (char*)0);
         size = drag_size_ + delta;
-        limit = (horiz ? (int)pw : (int)ph) - k_min;
+        limit = (horiz ? (int)pw : (int)ph) - scaled(k_min);
     } else {
         Widget parent = side == SIDE_BOTTOM ? column_ : body_;
         XtVaGetValues(parent, XmNwidth, &pw, XmNheight, &ph, (char*)0);
@@ -531,8 +537,8 @@ void Docks::sash_event(Widget w, XEvent* ev)
     }
     if (size > limit)
         size = limit;
-    if (size < k_min)
-        size = k_min;
+    if (size < scaled(k_min))
+        size = scaled(k_min);
     if (g) {
         g->size = size;
         XtVaSetValues(g->form, horiz ? XmNwidth : XmNheight, (Dimension)size, (char*)0);
@@ -665,7 +671,7 @@ ttr::Str Docks::layout() const
     for (s = 0; s < SIDE_COUNT; s++) {
         const Area& a = areas_[s];
         o += (size_t)snprintf(out + o, sizeof(out) - o, "%s%s:%d=", s ? ";" : "",
-                              k_side_names[s], a.size);
+                              k_side_names[s], ttr::unscaled(a.size));
         int g;
         for (g = 0; g < a.groups.size() && o < sizeof(out); g++) {
             const Group* gr = a.groups[g];
@@ -676,7 +682,7 @@ ttr::Str Docks::layout() const
                 o += (size_t)snprintf(out + o, sizeof(out) - o, "%s%s", j ? "," : "",
                                       gr->panes[j]->id());
             if (g < a.groups.size() - 1 && o < sizeof(out))
-                o += (size_t)snprintf(out + o, sizeof(out) - o, "@%d", gr->size);
+                o += (size_t)snprintf(out + o, sizeof(out) - o, "@%d", ttr::unscaled(gr->size));
         }
         if (o >= sizeof(out))
             break;
@@ -712,7 +718,7 @@ void Docks::apply(const char* text)
             continue;
         Area* a = &areas_[side];
         if (colon && colon < eq && atoi(colon + 1) >= k_min)
-            a->size = atoi(colon + 1);
+            a->size = scaled(atoi(colon + 1));
         /* Groups: "a,b@300|c". */
         char* grest = eq + 1;
         char* gtext;
@@ -735,7 +741,7 @@ void Docks::apply(const char* text)
                 add_to(p, g);
             }
             if (g && size >= k_min)
-                g->size = size;
+                g->size = scaled(size);
             if (g)
                 choose(g, 0);
         }

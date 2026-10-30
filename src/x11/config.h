@@ -106,10 +106,6 @@ void merge_settings_file(Widget toplevel, int argc, char** argv);
 /* Read the settings, and point Motif's fonts at menuFont. */
 void read_config(Widget toplevel, Config* cfg);
 
-/* An XLFD at 'percent' of its size: the nearest size the server has. Names
- * that are not XLFDs, or have no size, are returned as they are. */
-Str scale_font(Display* dpy, const char* name, int percent);
-
 /* Whether this Motif has the scroll bar styles (Motif 2.2 or later). */
 bool scroll_bar_styles();
 

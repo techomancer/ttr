@@ -18,6 +18,8 @@
 #include "../../th/scheme.h"
 #include "../../th/theme.h"
 #include "../../tt/pane.h"
+#include "../../tx/pages.h"
+#include "core/scale.h"
 #include "core/str.h"
 #include "core/vector.h"
 
@@ -33,8 +35,13 @@ class SettingsFile;
 
 namespace ttrcode {
 
+/* Pixel sizes at the UI scale (core/scale.h). */
+using ttr::scaled;
+using ttr::scaled_line;
+
 struct Options {
-    const char* font;
+    const char* font;           /* the editor's; "": auto_font */
+    const char* auto_font;      /* tt::pick_font() at the UI scale */
     const char* fallback_fonts;
     const char* workspace;      /* directory */
     int tab_width;
@@ -64,6 +71,7 @@ struct Options {
     const char* terminal_font;  /* "": the editor's */
     const char* text_rendering; /* the editor's: sharp, smooth, auto (tw) */
     const char* terminal_text_rendering;
+    const char* ui_scale;       /* percent; "": ttr's (tx/scale.h); next start */
 };
 
 /* An open file. */
@@ -133,7 +141,7 @@ enum Command {
     CMD_NEW, CMD_OPEN, CMD_OPEN_WORKSPACE, CMD_SAVE, CMD_SAVE_AS, CMD_SAVE_ALL, CMD_CLOSE, CMD_EXIT,
     CMD_UNDO, CMD_REDO, CMD_CUT, CMD_COPY, CMD_PASTE, CMD_DELETE, CMD_SELECT_ALL,
     CMD_FIND, CMD_FIND_NEXT, CMD_FIND_PREV, CMD_REPLACE, CMD_GOTO,
-    CMD_FIND_IN_FILES, CMD_REPLACE_IN_FILES, CMD_NEXT_RESULT, CMD_PREV_RESULT, CMD_OPTIONS,
+    CMD_FIND_IN_FILES, CMD_REPLACE_IN_FILES, CMD_NEXT_RESULT, CMD_PREV_RESULT, CMD_SETTINGS,
     CMD_VIEW_WORKSPACE, CMD_VIEW_BOTTOM, CMD_VIEW_FULLSCREEN, CMD_VIEW_LINE_NUMBERS,
     CMD_TERMINAL, CMD_NEXT_DOC, CMD_PREV_DOC, CMD_ABOUT, CMD_VIEW_RESULTS,
     /* Debug (debug.cpp). */
@@ -183,12 +191,10 @@ public:
     void got_paste(Widget w, Atom sel, Atom type, XtPointer value, unsigned long length,
                    int format, bool second_try);
     void focus_changed_window();
-    void scheme_chosen(int i);
     void restart_terminal();
-    void options_button(int which);
+    void settings_button(int which);
     void fif_button(int which);
     void result_chosen(int i);
-    void theme_chosen(int i);
 
     /* tt::PaneHost */
     void pane_exited(tt::TermPane* p, int code);
@@ -330,12 +336,11 @@ private:
     /* Colours and settings. */
     void set_scheme(const char* name);
     void set_theme(const char* name);
-    void build_color_menus(Widget view_menu);
     void save_settings();
     Pixel tab_fill();
-    /* Options (options.cpp). */
+    /* Tools > Settings (settings.cpp). */
     void apply_look();
-    void show_options();
+    void show_settings();
     void set_font(const char* xlfd);
     /* "": the editor's font. */
     void set_terminal_font(const char* xlfd);
@@ -407,10 +412,8 @@ private:
     Atom a_clipboard_, a_utf8_, a_targets_, a_text_;
     /* Modal dialogs: the answer, -1 while waiting. */
     int answer_;
-    /* Colours: the lists the menus show, and what is chosen. */
+    /* Colours: the lists Settings offers, and what is chosen. */
     th::List schemes_, themes_;
-    Widget* scheme_items_;
-    Widget* theme_items_;
     th::Scheme scheme_;
     uint32_t palette_[16];      /* the terminal's, from the scheme */
     ttr::Str theme_name_;       /* "" follows ttr's */
@@ -420,14 +423,18 @@ private:
     char* font_;
     char* term_font_;           /* "" : the editor's */
     ttr::Str text_, term_text_;
-    /* The Options dialog. */
+    ttr::Str ui_scale_;
+    ttr::Str auto_font_;
+    /* The Settings dialog (tx/pages.h). */
+    tx::PagedDialog settings_;
     tx::FontChooser* opt_font_;
     tx::FontChooser* opt_term_font_;
     Widget opt_text_, opt_term_text_;
+    Widget opt_scheme_, opt_theme_, opt_scale_;
     Widget opt_texts_[3], opt_term_texts_[3];
     Widget opt_renderer_, opt_renderers_[4];
     bool renderer_chosen_;      /* in Options: saved (else -renderer stays out of the file) */
-    Widget opt_dlg_, opt_tab_, opt_indent_, opt_spaces_, opt_auto_, opt_ws_,
+    Widget opt_tab_, opt_indent_, opt_spaces_, opt_auto_, opt_ws_,
         opt_line_, opt_numbers_, opt_ruler_, opt_shape_, opt_blink_, opt_ccolor_;
     Widget opt_shapes_[3];
     /* Find in Files. */

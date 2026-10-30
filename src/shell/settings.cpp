@@ -1,6 +1,8 @@
 #include "shell/settings.h"
 #include "../../tx/dialog.h"
 #include "../../tx/fontchooser.h"
+#include "../../tx/pages.h"
+#include "../../tx/scale.h"
 #include "shell/colorspage.h"
 #include "shell/shortcutsdlg.h"
 #include "shell/startuppage.h"
@@ -27,17 +29,10 @@
 
 namespace ttr {
 
-static const int k_label_width = 140;
-
 static const char* const k_sources[] = { "auto", "desktop", "toolchest" };
 
 static const char* const k_grips[] = { "none", "line", "ridges", "dot" };
 static const int k_ngrips = 4;
-
-static const char* const k_scales[] = {
-    "100", "125", "150", "175", "200", "250", "300"
-};
-static const int k_nscales = (int)(sizeof(k_scales) / sizeof(k_scales[0]));
 
 static const char* const k_notify_times[] = {
     "3", "5", "8", "10", "15", "30", "60"
@@ -60,7 +55,7 @@ static XmString xmstr(const char* s)
 SettingsDialog::SettingsDialog(Widget parent, WmLink* wm, const Config& cfg,
                                const AppFolder* apps)
     : parent_(parent), wm_(wm), cfg_(cfg), apps_(apps), dialog_(0), title_font_(0),
-      menu_font_(0), taskbar_font_(0), categories_(0), current_page_(0),
+      menu_font_(0), taskbar_font_(0),
       shortcuts_(new ShortcutsDialog(parent, wm, apps)), startup_(0),
       xdg_(0), colors_(0)
 {
@@ -75,40 +70,6 @@ SettingsDialog::~SettingsDialog()
     delete shortcuts_;
 }
 
-/* One page: a column of frames in the page area, shown alone. */
-Widget SettingsDialog::page(Widget parent, int index)
-{
-    Arg args[6];
-    int n = 0;
-    XtSetArg(args[n], XmNorientation, XmVERTICAL); n++;
-    XtSetArg(args[n], XmNspacing, scaled(6)); n++;
-    XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
-    pages_[index] = XmCreateRowColumn(parent, (char*)"page", args, n);
-    return pages_[index];
-}
-
-void SettingsDialog::show_page(int index)
-{
-    if (index < 0 || index >= PAGE_COUNT)
-        index = 0;
-    current_page_ = index;
-    int i;
-    for (i = 0; i < PAGE_COUNT; i++)
-        if (i != index)
-            XtUnmanageChild(pages_[i]);
-    XtManageChild(pages_[index]);
-    XmListSelectPos(categories_, index + 1, False);
-}
-
-void SettingsDialog::page_cb(Widget w, XtPointer closure, XtPointer call)
-{
-    (void)w;
-    XmListCallbackStruct* cbs = (XmListCallbackStruct*)call;
-    ((SettingsDialog*)closure)->show_page(cbs->item_position - 1);
-}
-
 void SettingsDialog::shortcuts_cb(Widget w, XtPointer closure,
                                   XtPointer call)
 {
@@ -120,8 +81,8 @@ void SettingsDialog::shortcuts_cb(Widget w, XtPointer closure,
 void SettingsDialog::show()
 {
     /* Rebuilt every time, so it shows the current values. */
-    if (dialog_)
-        XtDestroyWidget(XtParent(dialog_));
+    pages_.destroy();
+    dialog_ = 0;
     drop_fonts();
     build();
     XtManageChild(dialog_);
@@ -132,87 +93,25 @@ void SettingsDialog::show()
 
 Widget SettingsDialog::frame(Widget parent, const char* title)
 {
-    Widget f = XmCreateFrame(parent, (char*)"frame", 0, 0);
-    XmString l = xmstr(title);
-    Arg args[2];
-    XtSetArg(args[0], XmNlabelString, l);
-    XtSetArg(args[1], XmNchildType, XmFRAME_TITLE_CHILD);
-    XtManageChild(XmCreateLabel(f, (char*)"title", args, 2));
-    XmStringFree(l);
-
-    Arg rargs[3];
-    XtSetArg(rargs[0], XmNorientation, XmVERTICAL);
-    XtSetArg(rargs[1], XmNmarginWidth, scaled(8));
-    XtSetArg(rargs[2], XmNmarginHeight, scaled(6));
-    Widget rc = XmCreateRowColumn(f, (char*)"rows", rargs, 3);
-    XtManageChild(rc);
-    XtManageChild(f);
-    return rc;
+    return tx::frame(parent, title);
 }
 
-/* A horizontal row starting with a fixed-width label. */
 Widget SettingsDialog::row(Widget parent, const char* label)
 {
-    Arg args[4];
-    XtSetArg(args[0], XmNorientation, XmHORIZONTAL);
-    XtSetArg(args[1], XmNmarginWidth, 0);
-    XtSetArg(args[2], XmNmarginHeight, 0);
-    Widget rc = XmCreateRowColumn(parent, (char*)"row", args, 3);
-
-    XmString l = xmstr(label);
-    int n = 0;
-    XtSetArg(args[n], XmNlabelString, l); n++;
-    XtSetArg(args[n], XmNwidth, scaled(k_label_width)); n++;
-    XtSetArg(args[n], XmNrecomputeSize, False); n++;
-    XtSetArg(args[n], XmNalignment, XmALIGNMENT_BEGINNING); n++;
-    XtManageChild(XmCreateLabel(rc, (char*)"label", args, n));
-    XmStringFree(l);
-    XtManageChild(rc);
-    return rc;
+    return tx::row(parent, label);
 }
 
-/* Two radio buttons; returns the box, *first is the first button. */
 Widget SettingsDialog::radio(Widget parent, const char* a, const char* b,
                              Widget* first)
 {
-    Arg args[1];
-    XtSetArg(args[0], XmNorientation, XmHORIZONTAL);
-    Widget box = XmCreateRadioBox(parent, (char*)"radio", args, 1);
-    XmString la = xmstr(a), lb = xmstr(b);
-    XtSetArg(args[0], XmNlabelString, la);
-    *first = XmCreateToggleButton(box, (char*)"a", args, 1);
-    XtSetArg(args[0], XmNlabelString, lb);
-    Widget second = XmCreateToggleButton(box, (char*)"b", args, 1);
-    XmStringFree(la);
-    XmStringFree(lb);
-    XtManageChild(*first);
-    XtManageChild(second);
-    XtManageChild(box);
-    return box;
+    return tx::radio(parent, a, b, first);
 }
 
 Widget SettingsDialog::drop_down(Widget parent, const char* name,
                                  const char* const* items, int count,
                                  int visible, int columns)
 {
-    XmString* strs = new XmString[count > 0 ? count : 1];
-    int i;
-    for (i = 0; i < count; i++)
-        strs[i] = xmstr(items[i]);
-    Arg args[4];
-    int n = 0;
-    XtSetArg(args[n], XmNvisibleItemCount, visible); n++;
-    XtSetArg(args[n], XmNcolumns, columns); n++;
-    if (count > 0) {    /* Motif reads items[0] even when there are none */
-        XtSetArg(args[n], XmNitems, strs); n++;
-        XtSetArg(args[n], XmNitemCount, count); n++;
-    }
-    Widget cb = XmCreateDropDownList(parent, (char*)name, args, n);
-    for (i = 0; i < count; i++)
-        XmStringFree(strs[i]);
-    delete [] strs;
-    XtManageChild(cb);
-    return cb;
+    return tx::drop_down(parent, name, items, count, visible, columns);
 }
 
 /* Select the entry equal to 'value' (or the first). */
@@ -310,7 +209,7 @@ tx::FontChooser* SettingsDialog::font_row(Widget parent, const char* label, cons
 Str SettingsDialog::preview_name(const char* xlfd, void* data)
 {
     SettingsDialog* self = (SettingsDialog*)data;
-    return scale_font(XtDisplay(self->parent_), xlfd, self->cfg_.ui_scale);
+    return tx::scale_font(XtDisplay(self->parent_), xlfd, self->cfg_.ui_scale);
 }
 
 void SettingsDialog::drop_fonts()
@@ -327,53 +226,15 @@ void SettingsDialog::drop_fonts()
 void SettingsDialog::build()
 {
 
-    XmString title = xmstr("Settings");
-    Arg args[6];
-    int n = 0;
-    XtSetArg(args[n], XmNdialogTitle, title); n++;
-    XtSetArg(args[n], XmNautoUnmanage, False); n++;
-    XtSetArg(args[n], XmNmarginWidth, scaled(10)); n++;
-    XtSetArg(args[n], XmNmarginHeight, scaled(10)); n++;
-    dialog_ = XmCreateFormDialog(parent_, (char*)"settingsDialog", args, n);
-    tx::fixed_size(dialog_);
-    XmStringFree(title);
-
-    /* Categories on the left, the chosen page on the right. */
     static const char* const names[PAGE_COUNT] = {
         "Windows", "Desktops", "Appearance", "Colors", "Taskbar",
         "Start Menu", "Startup", "XDG Autostart"
     };
-    XmString items[PAGE_COUNT];
-    int i;
-    for (i = 0; i < PAGE_COUNT; i++)
-        items[i] = xmstr(names[i]);
-    n = 0;
-    XtSetArg(args[n], XmNitems, items); n++;
-    XtSetArg(args[n], XmNitemCount, PAGE_COUNT); n++;
-    XtSetArg(args[n], XmNvisibleItemCount, PAGE_COUNT); n++;
-    XtSetArg(args[n], XmNselectionPolicy, XmBROWSE_SELECT); n++;
-    XtSetArg(args[n], XmNlistMarginWidth, scaled(4)); n++;
-    categories_ = XmCreateScrolledList(dialog_, (char*)"categories", args, n);
-    for (i = 0; i < PAGE_COUNT; i++)
-        XmStringFree(items[i]);
-    XtAddCallback(categories_, XmNbrowseSelectionCallback, page_cb,
-                  (XtPointer)this);
-    n = 0;
-    XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
-    XtSetValues(XtParent(categories_), args, n);
-    XtManageChild(categories_);
-
-    n = 0;
-    XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNleftAttachment, XmATTACH_WIDGET); n++;
-    XtSetArg(args[n], XmNleftWidget, XtParent(categories_)); n++;
-    XtSetArg(args[n], XmNleftOffset, scaled(10)); n++;
-    XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
-    Widget content = XmCreateForm(dialog_, (char*)"pages", args, n);
+    pages_.create(parent_, "settingsDialog", "Settings", names, PAGE_COUNT);
+    dialog_ = pages_.dialog();
 
     /* Windows */
-    Widget pg = page(content, PAGE_WINDOWS);
+    Widget pg = pages_.page(PAGE_WINDOWS);
     Widget f = frame(pg, "Focus and switching");
     Widget unused;
     radio(row(f, "Focus:"), "Click to focus", "Focus follows mouse",
@@ -396,7 +257,7 @@ void SettingsDialog::build()
                            True, True);
 
     /* Desktops */
-    pg = page(content, PAGE_DESKTOPS);
+    pg = pages_.page(PAGE_DESKTOPS);
     f = frame(pg, "Virtual desktops");
     desktops_ = drop_down(row(f, "Number of desktops:"), "desktops",
                           k_desktop_counts, k_ncounts, 8, 3);
@@ -405,10 +266,11 @@ void SettingsDialog::build()
     select_item(desktops_, count);
 
     /* Appearance */
-    pg = page(content, PAGE_APPEARANCE);
+    pg = pages_.page(PAGE_APPEARANCE);
     f = frame(pg, "Size");
     Widget srow0 = row(f, "UI scale:");
-    scale_ = drop_down(srow0, "uiScale", k_scales, k_nscales, k_nscales, 3);
+    scale_ = drop_down(srow0, "uiScale", tx::k_ui_scales, tx::k_ui_scale_count,
+                       tx::k_ui_scale_count, 3);
     XmString pct = xmstr("%   for high-resolution screens");
     Arg pargs[1];
     XtSetArg(pargs[0], XmNlabelString, pct);
@@ -459,12 +321,12 @@ void SettingsDialog::build()
     XmStringFree(fpl);
 
     /* Colors */
-    pg = page(content, PAGE_COLORS);
+    pg = pages_.page(PAGE_COLORS);
     delete colors_;
     colors_ = new ColorsPage(this, pg, cfg_);
 
     /* Taskbar */
-    pg = page(content, PAGE_TASKBAR);
+    pg = pages_.page(PAGE_TASKBAR);
     f = frame(pg, "Clock");
     clock_ = text_field(row(f, "Clock format:"), cfg_.clock_format.c_str(),
                         12);
@@ -482,7 +344,7 @@ void SettingsDialog::build()
     select_item(notify_time_, secs);
 
     /* Start menu */
-    pg = page(content, PAGE_START);
+    pg = pages_.page(PAGE_START);
     f = frame(pg, "Programs");
     source_ = drop_down(row(f, "Programs from:"), "source", k_sources, 3, 3,
                         10);
@@ -502,82 +364,17 @@ void SettingsDialog::build()
     XtManageChild(sb);
 
     /* Startup */
-    pg = page(content, PAGE_STARTUP);
+    pg = pages_.page(PAGE_STARTUP);
     delete startup_;
     startup_ = new StartupPage(this, pg, cfg_, apps_);
 
     /* XDG Autostart */
-    pg = page(content, PAGE_XDG);
+    pg = pages_.page(PAGE_XDG);
     delete xdg_;
     xdg_ = new XdgAutostartPage(this, pg, cfg_);
 
-    /* The page area is as big as the biggest page, so switching pages
-     * does not resize the dialog. */
-    Dimension pw = 0, ph = 0;
-    for (i = 0; i < PAGE_COUNT; i++) {
-        XtWidgetGeometry pref;
-        XtQueryGeometry(pages_[i], 0, &pref);
-        if (pref.width > pw)
-            pw = pref.width;
-        if (pref.height > ph)
-            ph = pref.height;
-    }
-    n = 0;
-    XtSetArg(args[n], XmNwidth, pw); n++;
-    XtSetArg(args[n], XmNheight, ph); n++;
-    XtSetArg(args[n], XmNresizePolicy, XmRESIZE_NONE); n++;
-    XtSetValues(content, args, n);
-    XtManageChild(content);
-    show_page(current_page_);
-
-    /* OK and Cancel along the bottom. */
-    n = 0;
-    XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
-    XtSetArg(args[n], XmNtopWidget, content); n++;
-    XtSetArg(args[n], XmNtopOffset, scaled(10)); n++;
-    XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
-    Widget sep = XmCreateSeparator(dialog_, (char*)"sep", args, n);
-    XtManageChild(sep);
-
-    XmString note = xmstr("OK saves the settings and restarts ttr.");
-    n = 0;
-    XtSetArg(args[n], XmNlabelString, note); n++;
-    XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
-    XtSetArg(args[n], XmNtopWidget, sep); n++;
-    XtSetArg(args[n], XmNtopOffset, scaled(10)); n++;
-    XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
-    Widget label = XmCreateLabel(dialog_, (char*)"note", args, n);
-    XmStringFree(note);
-    XtManageChild(label);
-
-    XmString cancel = xmstr("Cancel"), ok = xmstr("OK");
-    n = 0;
-    XtSetArg(args[n], XmNlabelString, cancel); n++;
-    XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
-    XtSetArg(args[n], XmNtopWidget, sep); n++;
-    XtSetArg(args[n], XmNtopOffset, scaled(6)); n++;
-    XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
-    Widget cancel_b = XmCreatePushButton(dialog_, (char*)"cancel", args, n);
-    n = 0;
-    XtSetArg(args[n], XmNlabelString, ok); n++;
-    XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
-    XtSetArg(args[n], XmNtopWidget, sep); n++;
-    XtSetArg(args[n], XmNtopOffset, scaled(6)); n++;
-    XtSetArg(args[n], XmNrightAttachment, XmATTACH_WIDGET); n++;
-    XtSetArg(args[n], XmNrightWidget, cancel_b); n++;
-    Widget ok_b = XmCreatePushButton(dialog_, (char*)"ok", args, n);
-    XmStringFree(cancel);
-    XmStringFree(ok);
-    XtAddCallback(ok_b, XmNactivateCallback, ok_cb, (XtPointer)this);
-    XtAddCallback(cancel_b, XmNactivateCallback, cancel_cb, (XtPointer)this);
-    XtManageChild(ok_b);
-    XtManageChild(cancel_b);
-
-    Arg dargs[2];
-    XtSetArg(dargs[0], XmNdefaultButton, ok_b);
-    XtSetArg(dargs[1], XmNcancelButton, cancel_b);
-    XtSetValues(dialog_, dargs, 2);
+    pages_.finish("OK saves the settings and restarts ttr.",
+                  tx::PagedDialog::OK | tx::PagedDialog::CANCEL, pressed, this);
 }
 
 static Str text_value(Widget t)
@@ -650,18 +447,13 @@ void SettingsDialog::error(const char* msg)
     XtManageChild(err);
 }
 
-void SettingsDialog::ok_cb(Widget w, XtPointer closure, XtPointer call)
+void SettingsDialog::pressed(void* data, int which)
 {
-    (void)w;
-    (void)call;
-    ((SettingsDialog*)closure)->save();
-}
-
-void SettingsDialog::cancel_cb(Widget w, XtPointer closure, XtPointer call)
-{
-    (void)w;
-    (void)call;
-    XtUnmanageChild(((SettingsDialog*)closure)->dialog_);
+    SettingsDialog* self = (SettingsDialog*)data;
+    if (which == tx::PagedDialog::OK)
+        self->save();
+    else
+        XtUnmanageChild(self->dialog_);
 }
 
 }

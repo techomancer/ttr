@@ -12,6 +12,7 @@
 #include "../../th/motif.h"
 #include "../../tt/pane.h"
 #include "core/settings.h"
+#include "../../tx/scale.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,6 +42,7 @@ struct Resources {
     String terminal_font, text_rendering, terminal_text_rendering;
     String layout, debug_layout, debug_program, debug_args, debug_dir, debug_watch,
         debug_breakpoints, debug_data_breakpoints;
+    String ui_scale;
 };
 
 #define ROFF(f) XtOffsetOf(Resources, f)
@@ -87,7 +89,8 @@ XtResource k_resources[] = {
     RSTR("debugDir", "DebugDir", debug_dir, ""),
     RSTR("debugWatch", "DebugWatch", debug_watch, ""),
     RSTR("debugBreakpoints", "DebugBreakpoints", debug_breakpoints, ""),
-    RSTR("debugDataBreakpoints", "DebugDataBreakpoints", debug_data_breakpoints, "")
+    RSTR("debugDataBreakpoints", "DebugDataBreakpoints", debug_data_breakpoints, ""),
+    RSTR("uiScale", "UiScale", ui_scale, "")
 };
 #undef RSTR
 #undef ROFF
@@ -129,6 +132,7 @@ int main(int argc, char** argv)
         (String)"*fontList: -*-helvetica-medium-r-normal--12-*-*-*-*-*-iso8859-1",
         (String)"*menuBar*fontList: -*-helvetica-bold-r-normal--12-*",
         (String)"*tabs*fontList: -*-helvetica-medium-r-normal--12-*",
+        (String)"*settingsDialog*frame.title.fontList: -*-helvetica-bold-r-normal--12-*",
         (String)"*XmToggleButton.selectColor: #3c5a8c",
         (String)"*XmScrollBar.width: 17",
         (String)"*XmScrollBar.height: 17",
@@ -168,10 +172,27 @@ int main(int argc, char** argv)
         first_file = 2;
     }
 
+    /* The UI scale: Motif's fonts and sizes, before the widgets are made,
+     * and the font picked when none is set. */
+    static const tx::ScaledFont fonts[] = {
+        { "*fontList", "-*-helvetica-medium-r-normal--12-*-*-*-*-*-iso8859-1" },
+        { "*menuBar*fontList", "-*-helvetica-bold-r-normal--12-*-*-*-*-*-iso8859-1" },
+        { "*tabs*fontList", "-*-helvetica-medium-r-normal--12-*-*-*-*-*-iso8859-1" },
+        { "*settingsDialog*frame.title.fontList",
+          "-*-helvetica-bold-r-normal--12-*-*-*-*-*-iso8859-1" }
+    };
+    int scale = tx::ui_scale_of(res.ui_scale);
+    tx::apply_ui_scale(top, scale, fonts, (int)(sizeof(fonts) / sizeof(fonts[0])));
+    static ttr::Str auto_font;
+    auto_font = scale == 100 ? ttr::Str(tt::pick_font(dpy))
+                             : tx::scale_font(dpy, tt::pick_font(dpy), scale);
+
     static char fdirs[2048];
     tt::font_path(argv[0], TTR_DATADIR, fdirs, sizeof(fdirs));
     ttrcode::Options o;
-    o.font = res.font && res.font[0] ? res.font : tt::pick_font(dpy);
+    o.font = res.font ? res.font : "";
+    o.auto_font = auto_font.c_str();
+    o.ui_scale = res.ui_scale ? res.ui_scale : "";
     o.fallback_fonts = fdirs;
     o.workspace = workspace;
     o.tab_width = res.tab_width > 0 ? res.tab_width : 8;

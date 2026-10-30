@@ -1,6 +1,7 @@
 #include "x11/config.h"
 
 #include "../../th/motif.h"
+#include "../../tx/scale.h"
 #include "core/scale.h"
 #include "core/settings.h"
 #include "core/theme.h"
@@ -165,228 +166,6 @@ void merge_settings_file(Widget toplevel, int argc, char** argv)
     delete [] copy;
 }
 
-/* Split an XLFD into its 14 fields; false if it is not one. */
-static bool xlfd_split(const char* name, char fields[14][128])
-{
-    if (name[0] != '-')
-        return false;
-    const char* p = name + 1;
-    int f;
-    for (f = 0; f < 14; f++) {
-        const char* e = strchr(p, '-');
-        if (f == 13)
-            e = p + strlen(p);
-        if (!e || e - p >= 128)
-            return false;
-        memcpy(fields[f], p, e - p);
-        fields[f][e - p] = 0;
-        p = *e ? e + 1 : e;
-    }
-    return true;
-}
-
-static Str xlfd_join(char fields[14][128])
-{
-    char buf[14 * 129 + 2];
-    char* o = buf;
-    int f;
-    for (f = 0; f < 14; f++) {
-        *o++ = '-';
-        strcpy(o, fields[f]);
-        o += strlen(o);
-    }
-    *o = 0;
-    return Str(buf);
-}
-
-static bool loadable(Display* dpy, const char* name)
-{
-    XFontStruct* f = XLoadQueryFont(dpy, name);
-    if (f)
-        XFreeFont(dpy, f);
-    return f != 0;
-}
-
-/* The full XLFD of an alias such as "fixed", from its FONT property, or
- * empty. */
-static Str alias_xlfd(Display* dpy, const char* name)
-{
-    XFontStruct* f = XLoadQueryFont(dpy, name);
-    if (!f)
-        return Str("");
-    Str r("");
-    unsigned long atom = 0;
-    if (XGetFontProperty(f, XA_FONT, &atom) && atom) {
-        char* n = XGetAtomName(dpy, (Atom)atom);
-        if (n) {
-            r = n;
-            XFree(n);
-        }
-    }
-    XFreeFont(dpy, f);
-    return r;
-}
-
-/* Families to try, in order, when the one asked for is not installed or
- * has no size near the one wanted: common sans serif fonts (bitmap, or
- * scalable through the X server's font path), then the misc fixed fonts,
- * then anything. */
-static const char* const k_substitutes[] = {
-    "helvetica", "nimbus sans", "nimbus sans l", "liberation sans",
-    "dejavu sans", "arial", "luxi sans", "bitstream vera sans", "noto sans",
-    "droid sans", "fixed", "*", 0
-};
-
-/* The installed font nearest to 'target' pixels with these fields (the
- * size fields are replaced). *dist is how far off it is, -1 if there is
- * none. */
-static Str nearest_font(Display* dpy, char fields[14][128], int target,
-                        int* dist)
-{
-    char f[14][128];
-    memcpy(f, fields, sizeof(f));
-    sprintf(f[6], "%d", target);
-    strcpy(f[7], "*");
-    strcpy(f[8], "*");
-    strcpy(f[9], "*");
-    strcpy(f[11], "*");
-    Str want = xlfd_join(f);
-    if (loadable(dpy, want.c_str())) {
-        *dist = 0;      /* that size, or a scalable font */
-        return want;
-    }
-
-    /* Bitmap fonts come in a few sizes: take the nearest one there is. */
-    strcpy(f[6], "*");
-    Str pattern = xlfd_join(f);
-    int n = 0;
-    char** names = XListFonts(dpy, pattern.c_str(), 2000, &n);
-    Str best("");
-    int best_d = -1, i;
-    for (i = 0; i < n; i++) {
-        char f2[14][128];
-        if (!xlfd_split(names[i], f2))
-            continue;
-        int size = atoi(f2[6]);
-        if (size <= 0)
-            continue;
-        int d = size > target ? size - target : target - size;
-        if (best_d < 0 || d < best_d) {
-            best_d = d;
-            best = names[i];
-        }
-    }
-    if (names)
-        XFreeFontNames(names);
-    *dist = best_d;
-    return best;
-}
-
-/* A font that can be loaded, as near as there is to 'name' at 'percent'
- * of its size. Fields are numbered from 0 here: 1 is the family, 2 the
- * weight, 6 the pixel size, 7 the point size (in tenths). */
-static Str resolve_font(Display* dpy, const char* name, int percent,
-                        bool warn)
-{
-    if (percent == 100 && loadable(dpy, name))
-        return Str(name);   /* as before the scale existed */
-    char fields[14][128];
-    if (!xlfd_split(name, fields)) {
-        Str real = alias_xlfd(dpy, name);
-        if (real.empty() || !xlfd_split(real.c_str(), fields))
-            return Str(name);
-    }
-
-    int px = atoi(fields[6]), pt = atoi(fields[7]);
-    /* Without a pixel size, take points (in tenths) as pixels. */
-    int base = px > 0 ? px : pt > 0 ? (pt + 5) / 10 : 12;
-    int target = (base * percent + 50) / 100;
-    int close = target / 10;    /* near enough to keep the family */
-
-    /* The family asked for, then the substitutes; all of them first in
-     * the weight asked for, then in any weight. */
-    Str best("");
-    int best_d = -1, pass, i;
-    for (pass = 0; pass < 2; pass++) {
-        for (i = -1; i < 0 || k_substitutes[i]; i++) {
-            char f[14][128];
-            memcpy(f, fields, sizeof(f));
-            if (i >= 0) {
-                strcpy(f[0], "*");
-                strcpy(f[1], k_substitutes[i]);
-            }
-            if (pass == 1)
-                strcpy(f[2], "*");
-            strcpy(f[3], "r");
-            int d = -1;
-            Str got = nearest_font(dpy, f, target, &d);
-            if (d >= 0 && (best_d < 0 || d < best_d)) {
-                best_d = d;
-                best = got;
-            }
-            if (best_d >= 0 && best_d <= close)
-                break;
-        }
-        if (best_d >= 0 && best_d <= close)
-            break;
-    }
-    if (best.empty())
-        return Str(name);
-
-    if (warn) {
-        char bf[14][128];
-        int size = xlfd_split(best.c_str(), bf) ? atoi(bf[6]) : 0;
-        if (size > 0 && size < target * 8 / 10)
-            fprintf(stderr, "ttr: no font near %d pixels is installed "
-                            "(using %d); see README.md, Fonts\n",
-                    target, size);
-        else if (size > 0 && strcmp(bf[1], fields[1]) != 0)
-            fprintf(stderr, "ttr: font family '%s' is not installed, "
-                            "using '%s'\n", fields[1], bf[1]);
-    }
-    return best;
-}
-
-Str scale_font(Display* dpy, const char* name, int percent)
-{
-    return resolve_font(dpy, name, percent, false);
-}
-
-/* Motif sizes its widgets from their fonts, but shadows, focus
- * highlights and scroll bars are in pixels. Scaled per class, at Motif's
- * defaults, so classes that have none (labels, layout managers) do not
- * get one. */
-static void scale_motif_resources(XrmDatabase* db)
-{
-    static const struct { const char* spec; int base; } k_res[] = {
-        { "*XmPushButton.shadowThickness", 2 },
-        { "*XmPushButtonGadget.shadowThickness", 2 },
-        { "*XmCascadeButton.shadowThickness", 2 },
-        { "*XmCascadeButtonGadget.shadowThickness", 2 },
-        { "*XmArrowButton.shadowThickness", 2 },
-        { "*XmText.shadowThickness", 2 },
-        { "*XmTextField.shadowThickness", 2 },
-        { "*XmList.shadowThickness", 2 },
-        { "*XmScrollBar.shadowThickness", 2 },
-        { "*XmScale.shadowThickness", 2 },
-        { "*XmComboBox.shadowThickness", 2 },
-        { "*XmMenuShell*XmRowColumn.shadowThickness", 2 },
-        { "*XmPushButton.highlightThickness", 2 },
-        { "*XmToggleButton.highlightThickness", 2 },
-        { "*XmText.highlightThickness", 2 },
-        { "*XmTextField.highlightThickness", 2 },
-        { "*XmList.highlightThickness", 2 },
-        { "*XmComboBox.arrowSize", 14 }
-    };
-    int i;
-    for (i = 0; i < (int)(sizeof(k_res) / sizeof(k_res[0])); i++) {
-        char v[16];
-        int base = k_res[i].base;
-        sprintf(v, "%d", strstr(k_res[i].spec, "Thickness") ? scaled_line(base)
-                                                             : scaled(base));
-        XrmPutStringResource(db, k_res[i].spec, v);
-    }
-}
 
 XrmOptionDescRec* config_options()
 {
@@ -907,18 +686,18 @@ void read_config(Widget toplevel, Config* cfg)
     }
     cfg->ui_scale = scale;
     set_ui_scale(scale);
-    cfg->title_xfont = resolve_font(dpy, cfg->title_font.c_str(), scale,
-                                    true);
-    cfg->menu_xfont = resolve_font(dpy, cfg->menu_font.c_str(), scale, true);
-    cfg->taskbar_xfont = resolve_font(dpy, cfg->taskbar_font.c_str(), scale,
-                                      true);
+    cfg->title_xfont = tx::scale_font(dpy, cfg->title_font.c_str(), scale,
+                                      "ttr");
+    cfg->menu_xfont = tx::scale_font(dpy, cfg->menu_font.c_str(), scale, "ttr");
+    cfg->taskbar_xfont = tx::scale_font(dpy, cfg->taskbar_font.c_str(), scale,
+                                        "ttr");
 
     /* Motif widgets created from now on use the menu font. */
     XrmDatabase db = XtDatabase(dpy);
     XrmPutStringResource(&db, "*fontList", cfg->menu_xfont.c_str());
     XrmPutStringResource(&db, "*buttonFontList", cfg->menu_xfont.c_str());
     if (scale != 100)
-        scale_motif_resources(&db);
+        tx::scale_motif_resources(&db);
     apply_scroll_bars(&db, r, cfg);
 }
 

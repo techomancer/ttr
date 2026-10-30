@@ -467,9 +467,11 @@ ttrt -e top                 # run a program instead of the shell
 ttrt has its own settings and does not need ttr: use it under any window
 manager, and use any terminal under ttr. Terminal > Settings... (or
 Ctrl+right click in the window, which works with the menu bar hidden)
-sets the font, colors, scrollback, login shell, menu bar, Backspace key
-and bell. OK and Apply change the window you opened it from right away,
-except scrollback and the login shell, which apply to new windows. They
+has three pages, as ttr's Settings: Terminal (scrollback, login shell,
+menu bar, Backspace key and bell), Appearance (UI scale, font and
+drawing) and Colors. OK and Apply change the window you opened it from
+right away, except scrollback, the login shell, the renderer and the UI
+scale, which apply to new windows. They
 are saved in `~/.config/ttrt/settings` (or `$XDG_CONFIG_HOME/ttrt/`),
 which you can also edit by hand:
 
@@ -492,6 +494,7 @@ bell: visual
 | `renderer` | `auto`, `core`, `soft`, `gl` (new windows) | `auto`: core, or gl for a background |
 | `dynamicBackground` | `night`, `sunset`, `ocean`, `aurora`, `embers`, `static`, or empty | none |
 | `textRendering` | `sharp`, `smooth`, `auto` (see below) | `auto` |
+| `uiScale` | 100 to 300 (percent): menus, dialogs, scroll bars and the automatic font (see "High-resolution screens") | ttr's |
 
 **Smooth text.** With the OpenGL renderer, ttrt can draw text smoothed:
 each character's outline comes from the same font drawn four times
@@ -500,8 +503,8 @@ At larger sizes this looks much better than the font's own pixels; at
 small sizes the font's hinted pixels are sharper, so `auto` smooths
 scalable fonts of 18 pixels and more and leaves the rest sharp. `smooth`
 also makes the `auto` renderer pick OpenGL. Boards that texture in
-software (the Indy) always draw sharp text. Settings > Drawing > Text
-sets it.
+software (the Indy) always draw sharp text. Settings > Appearance >
+Drawing > Text sets it.
 
 The same names work as X resources of class `TTRt` (`TTRt*saveLines:
 5000`). The settings file wins over X resources, and the command line wins
@@ -863,14 +866,16 @@ by the file's name (`.c`, `.cpp`, `.h`, `.py`, `.sh`, `Makefile`, ...) or
 its `#!` line; the status bar shows the language. The colors come from the
 color scheme (`comment`, `keyword`, `string`, `number`, `preprocessor`).
 
-**Colors.** View > Color Scheme colors the editor and the terminal pane:
+**Colors.** Tools > Settings > Colors > Color scheme colors the editor
+and the terminal pane:
 Light (the default, black on white) and Dark are built in, and Amber,
 Classic Blue, Green Screen, Solarized Light and Solarized Dark come in
 `share/ttr/schemes/text`. ttrt can use the same schemes. To make your
 own, put a file such as `~/.config/ttr/schemes/Mine.scheme` there with
 `key: #rrggbb` lines; the keys are listed in
 [data/schemes/text/README.md](data/schemes/text/README.md), and anything
-left out is derived. View > UI Theme colors the menus, panes and dialogs
+left out is derived. UI theme, on the same page, colors the menus, panes
+and dialogs
 with ttr's themes and the 30 IRIX color schemes, at once and without a
 restart. Its default, "Same as ttr", follows the theme chosen in ttr's
 Settings; any other choice is ttrcode's own.
@@ -975,29 +980,32 @@ and asks first. Open files are changed in the editor, unsaved changes
 included, and Ctrl+Z takes it back. Other files are saved at once,
 through a new file that replaces the old one.
 
-**Options.** Tools > Options... sets:
-- the renderer for the editor and the terminal pane (Automatic, Core X11,
-  Software or OpenGL, as ttrt's; it takes effect at the next start);
-- the editor's font and the terminal pane's (the same as the editor's
-  unless you choose another), and for each whether text is sharp or
-  smooth (as ttrt's: smooth needs OpenGL);
-- the tab width, how far Tab indents, and whether it inserts spaces;
-- whether Enter keeps the indentation of the line above;
-- whether to show line numbers, the current line, and spaces and tabs
-  (as `·` and `»`);
-- a column marker line (column 80 unless you change it; 0 for none);
-- the cursor's shape (bar, block or underline), its blinking and its
-  color.
+**Settings.** Tools > Settings... has three pages, as ttr's and ttrt's
+Settings:
+- Editor: the tab width, how far Tab indents, and whether it inserts
+  spaces; whether Enter keeps the indentation of the line above; whether
+  to show line numbers, the current line, and spaces and tabs (as `·` and
+  `»`); a column marker line (column 80 unless you change it; 0 for
+  none); the cursor's shape (bar, block or underline), its blinking and
+  its color.
+- Appearance: the UI scale (see "High-resolution screens"; it takes
+  effect at the next start); the editor's font and the terminal pane's
+  (the same as the editor's unless you choose another), and for each
+  whether text is sharp or smooth (as ttrt's: smooth needs OpenGL); the
+  renderer for the editor and the terminal pane (Automatic, Core X11,
+  Software or OpenGL, as ttrt's; it takes effect at the next start).
+- Colors: the color scheme and the UI theme (see "Colors" above).
 
 **Settings** are saved in `~/.config/ttrcode/settings` (or
-`$XDG_CONFIG_HOME/ttrcode/`) as you change them in Tools > Options, the View
-menu or by dragging a divider. The same names work as X resources (`TTRcode*tabWidth: 4`), and
+`$XDG_CONFIG_HOME/ttrcode/`) as you change them in Tools > Settings, the
+View menu or by dragging a divider. The same names work as X resources (`TTRcode*tabWidth: 4`), and
 the file wins over them:
 
 | Setting | Values | Default |
 |---|---|---|
 | `colorScheme` | a scheme's name | `Light` |
 | `uiTheme` | a theme's name; left out: the same as ttr | |
+| `uiScale` | 100 to 300 (percent): menus, dialogs, panes and the automatic fonts | ttr's |
 | `font` | an X font name | the best fixed-width font the server has |
 | `terminalFont` | the terminal pane's font; left out: the editor's | |
 | `renderer` | `auto`, `core`, `soft`, `gl`; `auto` uses OpenGL when the text is smooth or the terminal has an animated background, else core (`-renderer` sets it for one run) | `auto` |
@@ -1011,7 +1019,7 @@ the file wins over them:
 | `cursorShape` | `bar`, `block`, `underline` | `bar` |
 | `cursorBlink` | `true`, `false` | `true` |
 | `cursorColor` | `#rrggbb`; left out: the color scheme's | |
-| `layout` | where the tool panes are: `left:220=workspace;bottom:220=terminal,results;right:240=` (each area's size, its groups split by `\|`, a group's panes by `,`, a group's size after `@`); older `treeWidth` and `bottomHeight` set the first one | |
+| `layout` | where the tool panes are: `left:220=workspace;bottom:220=terminal,results;right:240=` (each area's size in pixels at 100% scale, its groups split by `\|`, a group's panes by `,`, a group's size after `@`); older `treeWidth` and `bottomHeight` set the first one | |
 | `debugLayout` | the same while debugging | |
 | `debugProgram`, `debugArgs`, `debugDir` | Debug > Settings: the program, its arguments, its directory | |
 | `debugBreakpoints`, `debugDataBreakpoints`, `debugWatch` | the breakpoints (`file:line` or a function), the data breakpoints' and Watch's expressions, each list separated by `;` | |
@@ -1031,8 +1039,14 @@ You choose fonts at their normal size, and ttr scales them. X bitmap fonts
 exist only in some sizes, so ttr uses the nearest size that is installed.
 If text stays small, the fonts are missing: see [Fonts](#fonts).
 
-The scale only applies to ttr. Other programs have their own settings. For
-most of them, put this in `~/.Xresources` (192 is 200% of the usual 96):
+ttrt and ttrcode follow ttr's scale unless you set their own: Settings >
+Appearance > UI scale in each, where "Same as ttr" is the default. It
+scales their menus, dialogs and scroll bars, and the font they pick when
+you have not chosen one; a font you choose stays the size you chose. A
+new scale applies to new ttrt windows and the next ttrcode.
+
+Other programs have their own settings. For most of them, put this in
+`~/.Xresources` (192 is 200% of the usual 96):
 
 ```
 Xft.dpi: 192

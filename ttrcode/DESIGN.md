@@ -254,8 +254,10 @@ Colours come from th (`th/DESIGN.md`), shared by every ttr program:
    - Find, replace and go to line dialogs, and the clipboard.
    - F11.
    - Builds and runs on Linux and on IRIX.
-2. **Settings.** Done: Tools > Options (font, tabs, indentation, line
-   numbers, current line, whitespace, column marker, cursor). Still to
+2. **Settings.** Done: Tools > Settings, in pages as ttr's and ttrt's
+   (`tx/pages.h`): Editor (tabs, indentation, line numbers, current line,
+   whitespace, column marker, cursor), Appearance (UI scale, fonts,
+   renderer) and Colors (color scheme, UI theme). Still to
    do: remembering the open files per workspace, recent files and
    workspaces. Remembering open files and pane sizes
    per workspace. Recent files and workspaces.

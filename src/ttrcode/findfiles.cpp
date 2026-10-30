@@ -200,9 +200,9 @@ void App::show_find_in_files(bool replace)
         XtSetArg(a[0], XmNautoUnmanage, False);
         fif_dlg_ = XmCreateFormDialog(top_, (char*)"findInFiles", a, 1);
         tx::fixed_size(fif_dlg_);
-        XtVaSetValues(fif_dlg_, XmNmarginWidth, 10, XmNmarginHeight, 10, (char*)0);
+        XtVaSetValues(fif_dlg_, XmNmarginWidth, scaled(10), XmNmarginHeight, scaled(10), (char*)0);
         Widget page = XtVaCreateManagedWidget("page", xmRowColumnWidgetClass, fif_dlg_,
-                                              XmNorientation, XmVERTICAL, XmNspacing, 4,
+                                              XmNorientation, XmVERTICAL, XmNspacing, scaled(4),
                                               XmNtopAttachment, XmATTACH_FORM,
                                               XmNleftAttachment, XmATTACH_FORM,
                                               XmNrightAttachment, XmATTACH_FORM, (char*)0);
@@ -215,7 +215,7 @@ void App::show_find_in_files(bool replace)
                                                XmNmarginWidth, 0, (char*)0);
             XmString s = XmStringCreateLocalized((char*)labels[i]);
             Widget l = XtVaCreateManagedWidget("label", xmLabelWidgetClass, r,
-                                               XmNlabelString, s, XmNwidth, 100,
+                                               XmNlabelString, s, XmNwidth, scaled(100),
                                                XmNrecomputeSize, False,
                                                XmNalignment, XmALIGNMENT_END, (char*)0);
             XmStringFree(s);
@@ -226,7 +226,8 @@ void App::show_find_in_files(bool replace)
             (void)l;
         }
         Widget r = XtVaCreateManagedWidget("row", xmRowColumnWidgetClass, page,
-                                           XmNorientation, XmHORIZONTAL, XmNmarginWidth, 100,
+                                           XmNorientation, XmHORIZONTAL,
+                                           XmNmarginWidth, scaled(100),
                                            (char*)0);
         fif_case_ = XtVaCreateManagedWidget("Match case", xmToggleButtonWidgetClass, r,
                                             (char*)0);
@@ -236,10 +237,11 @@ void App::show_find_in_files(bool replace)
                                 xmLabelWidgetClass, page, (char*)0);
         /* The buttons in a row of their own, right-aligned under the page. */
         Widget buttons = XtVaCreateManagedWidget("buttons", xmRowColumnWidgetClass, fif_dlg_,
-                                                 XmNorientation, XmHORIZONTAL, XmNspacing, 6,
+                                                 XmNorientation, XmHORIZONTAL,
+                                                 XmNspacing, scaled(6),
                                                  XmNmarginWidth, 0, XmNmarginHeight, 0,
                                                  XmNtopAttachment, XmATTACH_WIDGET,
-                                                 XmNtopWidget, page, XmNtopOffset, 10,
+                                                 XmNtopWidget, page, XmNtopOffset, scaled(10),
                                                  XmNrightAttachment, XmATTACH_FORM,
                                                  XmNbottomAttachment, XmATTACH_FORM, (char*)0);
         static const char* const names[3] = { "Find All", "Replace All", "Close" };

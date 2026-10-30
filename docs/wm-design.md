@@ -399,8 +399,8 @@ ways, all applied once at startup (changing it restarts ttr):
 
 - **Fonts.** The font settings stay at their 100% size, which is what the
   Settings dialog shows and saves. When loading a font, ttr scales its XLFD
-  pixel size ([src/x11/config.cpp](../src/x11/config.cpp)
-  `resolve_font`). It asks for that exact size first, which scalable Type1
+  pixel size ([tx/scale.cpp](../tx/scale.cpp) `scale_font`, which ttrt
+  and ttrcode use too). It asks for that exact size first, which scalable Type1
   and TrueType fonts on the server's font path provide. Otherwise it takes
   the nearest bitmap size of the same family. If the family is missing or
   has nothing near (within 10%), it tries common sans serif families

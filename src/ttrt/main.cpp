@@ -10,6 +10,7 @@
 #include "../../th/scheme.h"
 #include "../../tt/pane.h"
 #include "core/settings.h"
+#include "../../tx/scale.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -47,6 +48,7 @@ struct Resources {
     String renderer;
     String dynamic_background;
     String text_rendering;
+    String ui_scale;
 };
 
 /* Names and defaults come from settings.h, the list the Settings dialog
@@ -82,7 +84,9 @@ XtResource k_resources[] = {
     { TS(S_DYNAMIC_BACKGROUND), (String)"DynamicBackground", (String)XtRString, sizeof(String),
       ROFF(dynamic_background), (String)XtRString, TSD(S_DYNAMIC_BACKGROUND) },
     { TS(S_TEXT_RENDERING), (String)"TextRendering", (String)XtRString, sizeof(String),
-      ROFF(text_rendering), (String)XtRString, TSD(S_TEXT_RENDERING) }
+      ROFF(text_rendering), (String)XtRString, TSD(S_TEXT_RENDERING) },
+    { TS(S_UI_SCALE), (String)"UiScale", (String)XtRString, sizeof(String),
+      ROFF(ui_scale), (String)XtRString, TSD(S_UI_SCALE) }
 };
 #undef TSD
 #undef TS
@@ -137,6 +141,8 @@ public:
     Widget popup;               /* Ctrl+button 3 */
     int base_w, base_h;         /* window size that is not cells */
     const char* current(int setting) const { return cur[setting].c_str(); }
+    ttr::Str auto_font;         /* tt::pick_font() at the UI scale */
+    const char* automatic_font() const { return auto_font.c_str(); }
     void apply(const ttr::Str* values, const bool* changed);
     void update_size_hints();
     void resize_to(int cols, int rows);
@@ -388,7 +394,7 @@ void App::apply(const ttr::Str* v, const bool* changed)
     Display* dpy = XtDisplay(top);
     if (changed[S_FONT]) {
         int cols = pane->cols(), rows = pane->rows();
-        pane->set_font(v[S_FONT].c_str());
+        pane->set_font(v[S_FONT].empty() ? automatic_font() : v[S_FONT].c_str());
         resize_to(cols, rows);
     }
     if (changed[S_FOREGROUND] || changed[S_BACKGROUND] || changed[S_CURSOR_COLOR] ||
@@ -414,7 +420,7 @@ void App::apply(const ttr::Str* v, const bool* changed)
      * another one gets it when it is made. */
     if (changed[S_TEXT_RENDERING])
         pane->set_text_rendering(v[S_TEXT_RENDERING].c_str());
-    /* Scrollback and the login shell apply to new windows. */
+    /* Scrollback, the login shell and the UI scale apply to new windows. */
     for (int i = 0; i < S_COUNT; i++)
         if (changed[i])
             cur[i] = v[i];
@@ -539,6 +545,23 @@ int main(int argc, char** argv)
         a->cur[S_RENDERER] = a->res.renderer ? a->res.renderer : "auto";
         a->cur[S_DYNAMIC_BACKGROUND] = a->res.dynamic_background ? a->res.dynamic_background : "";
         a->cur[S_TEXT_RENDERING] = a->res.text_rendering ? a->res.text_rendering : "auto";
+        a->cur[S_UI_SCALE] = a->res.ui_scale ? a->res.ui_scale : "";
+    }
+
+    /* The UI scale: Motif's fonts and sizes, before the widgets are made,
+     * and the font picked when none is set. */
+    {
+        static const tx::ScaledFont fonts[] = {
+            { "*fontList", "-*-helvetica-medium-r-normal--12-*-*-*-*-*-iso8859-1" },
+            { "*menuBar*fontList", "-*-helvetica-bold-r-normal--12-*-*-*-*-*-iso8859-1" },
+            { "*popupMenu*fontList", "-*-helvetica-bold-r-normal--12-*-*-*-*-*-iso8859-1" },
+            { "*settingsDialog*frame.title.fontList",
+              "-*-helvetica-bold-r-normal--12-*-*-*-*-*-iso8859-1" }
+        };
+        int scale = tx::ui_scale_of(a->res.ui_scale);
+        tx::apply_ui_scale(a->top, scale, fonts, (int)(sizeof(fonts) / sizeof(fonts[0])));
+        const char* pick = tt::pick_font(dpy);
+        a->auto_font = scale == 100 ? ttr::Str(pick) : tx::scale_font(dpy, pick, scale);
     }
 
     a->main_w = XtVaCreateManagedWidget("main", xmFormWidgetClass, a->top, (char*)0);
@@ -554,7 +577,7 @@ int main(int argc, char** argv)
     static char fdirs[2048];
     tt::font_path(argv[0], TTR_DATADIR, fdirs, sizeof(fdirs));
     tt::PaneOptions o;
-    o.font = a->res.font;
+    o.font = a->res.font && *a->res.font ? a->res.font : a->automatic_font();
     o.fallback_fonts = fdirs;
     Colors colors = colors_of(dpy, a->cur);
     o.foreground = colors.fg;

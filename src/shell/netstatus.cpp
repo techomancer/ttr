@@ -1,5 +1,6 @@
 #include "shell/netstatus.h"
 #include "../../tx/dialog.h"
+#include "../../tx/scale.h"
 #include "core/icon.h"
 #include "core/launch.h"
 #include "core/painter.h"
@@ -262,7 +263,7 @@ void NetStatus::build_dialog()
     XtSetArg(args[n], XmNrows, 18); n++;
     XtSetArg(args[n], XmNcolumns, 66); n++;
     XtSetArg(args[n], XmNtraversalOn, False); n++;
-    Str font = scale_font(XtDisplay(parent_), "fixed", ui_scale());
+    Str font = tx::scale_font(XtDisplay(parent_), "fixed", ui_scale());
     XmFontListEntry fe = XmFontListEntryLoad(XtDisplay(parent_),
                                              (char*)font.c_str(),
                                              XmFONT_IS_FONT,

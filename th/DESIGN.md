@@ -41,7 +41,8 @@ There are two ways to apply a theme:
   widgets are created. The window manager and ttrcode do this at startup.
 - `th::recolor(widget, theme, skip)` recolours existing widgets in place
   with `XmChangeColor`, including their popups (menus, dialogs). This is
-  how ttrcode's View > UI Theme works without a restart. Widgets of class
+  how ttrcode's UI theme (Tools > Settings > Colors) changes without a
+  restart. Widgets of class
   `skip` (TwGrid, which has its own colours) are left alone.
 
 Each program chooses its own theme, as everything in ttr does:
@@ -71,7 +72,8 @@ derived:
 - the terminal colours from xterm's.
 
 Who uses them:
-- ttrcode: the editor and its terminal pane (View > Color Scheme, live).
+- ttrcode: the editor and its terminal pane (Tools > Settings > Colors,
+  live).
 - ttrt: its `colorScheme` setting (Settings > Colors > Scheme). Text,
   background and cursor colours set by hand still win over the scheme.
 

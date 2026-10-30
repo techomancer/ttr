@@ -244,7 +244,7 @@ CellList* App::make_list(Widget parent, const char* name, int tag)
 {
     Arg args[8];
     Cardinal n = 0;
-    XtSetArg(args[n], TwNfont, font_ ? font_ : opt_.font); n++;
+    XtSetArg(args[n], TwNfont, opt_.font); n++;
     if (opt_.fallback_fonts) {
         XtSetArg(args[n], TwNfallbackFonts, opt_.fallback_fonts); n++;
     }
@@ -371,10 +371,10 @@ Widget App::build_debug_pane(Pane* p, Widget parent)
                                                XmNtopAttachment, XmATTACH_FORM,
                                                XmNbottomAttachment, XmATTACH_FORM,
                                                XmNleftAttachment, XmATTACH_FORM,
-                                               XmNleftOffset, 4, (char*)0);
+                                               XmNleftOffset, scaled(4), (char*)0);
         mem_addr_w_ = XtVaCreateManagedWidget("address", xmTextFieldWidgetClass, bar,
                                               XmNcolumns, 12, XmNtopAttachment, XmATTACH_FORM,
-                                              XmNtopOffset, 2,
+                                              XmNtopOffset, scaled(2),
                                               XmNleftAttachment, XmATTACH_WIDGET,
                                               XmNleftWidget, label,
                                               XmNrightAttachment, XmATTACH_WIDGET,
@@ -949,9 +949,9 @@ void App::show_quickwatch()
         XtSetArg(a[0], XmNautoUnmanage, False);
         quick_dlg_ = XmCreateFormDialog(top_, (char*)"quickWatch", a, 1);
         XtVaSetValues(XtParent(quick_dlg_), XmNtitle, "QuickWatch", (char*)0);
-        XtVaSetValues(quick_dlg_, XmNmarginWidth, 8, XmNmarginHeight, 8, (char*)0);
+        XtVaSetValues(quick_dlg_, XmNmarginWidth, scaled(8), XmNmarginHeight, scaled(8), (char*)0);
         Widget buttons = XtVaCreateManagedWidget("buttons", xmRowColumnWidgetClass, quick_dlg_,
-                                                 XmNorientation, XmVERTICAL, XmNspacing, 4,
+                                                 XmNorientation, XmVERTICAL, XmNspacing, scaled(4),
                                                  XmNpacking, XmPACK_COLUMN,
                                                  XmNtopAttachment, XmATTACH_FORM,
                                                  XmNrightAttachment, XmATTACH_FORM, (char*)0);
@@ -972,12 +972,12 @@ void App::show_quickwatch()
                                               XmNtopWidget, label,
                                               XmNleftAttachment, XmATTACH_FORM,
                                               XmNrightAttachment, XmATTACH_WIDGET,
-                                              XmNrightWidget, buttons, XmNrightOffset, 8,
+                                              XmNrightWidget, buttons, XmNrightOffset, scaled(8),
                                               (char*)0);
         XtAddCallback(quick_expr_, XmNactivateCallback, quick_enter_cb, (XtPointer)this);
         Widget cur = XtVaCreateManagedWidget("Current value:", xmLabelWidgetClass, quick_dlg_,
                                              XmNtopAttachment, XmATTACH_WIDGET,
-                                             XmNtopWidget, quick_expr_, XmNtopOffset, 6,
+                                             XmNtopWidget, quick_expr_, XmNtopOffset, scaled(6),
                                              XmNleftAttachment, XmATTACH_FORM, (char*)0);
         quick_list_ = make_list(quick_dlg_, "values", -1);
         static const char* const titles[3] = { "Name", "Value", "Type" };

@@ -152,7 +152,8 @@ void App::show_about()
         XtSetArg(a[0], XmNautoUnmanage, False);
         about_dlg_ = XmCreateFormDialog(top_, (char*)"about", a, 1);
         XtVaSetValues(XtParent(about_dlg_), XmNtitle, "About ttrcode", (char*)0);
-        XtVaSetValues(about_dlg_, XmNmarginWidth, 10, XmNmarginHeight, 10, (char*)0);
+        XtVaSetValues(about_dlg_, XmNmarginWidth, scaled(10), XmNmarginHeight, scaled(10),
+                      (char*)0);
         XmString s = XmStringGenerate((XtPointer)k_intro, (char*)XmFONTLIST_DEFAULT_TAG,
                                       XmCHARSET_TEXT, 0);    /* newlines: separate lines */
         Widget intro = XtVaCreateManagedWidget("intro", xmLabelWidgetClass, about_dlg_,
@@ -162,7 +163,7 @@ void App::show_about()
                                                XmNleftAttachment, XmATTACH_FORM, (char*)0);
         XmStringFree(s);
         Widget ok = XtVaCreateManagedWidget("OK", xmPushButtonWidgetClass, about_dlg_,
-                                            XmNwidth, 80, XmNrightAttachment, XmATTACH_FORM,
+                                            XmNwidth, scaled(80), XmNrightAttachment, XmATTACH_FORM,
                                             XmNbottomAttachment, XmATTACH_FORM, (char*)0);
         XtAddCallback(ok, XmNactivateCallback, about_ok_cb, (XtPointer)about_dlg_);
         Arg t[8];
@@ -175,9 +176,9 @@ void App::show_about()
         XtSetArg(t[n], XmNwordWrap, False); n++;
         Widget text = XmCreateScrolledText(about_dlg_, (char*)"credits", t, n);
         XtVaSetValues(XtParent(text), XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget, intro,
-                      XmNtopOffset, 10, XmNleftAttachment, XmATTACH_FORM,
+                      XmNtopOffset, scaled(10), XmNleftAttachment, XmATTACH_FORM,
                       XmNrightAttachment, XmATTACH_FORM, XmNbottomAttachment, XmATTACH_WIDGET,
-                      XmNbottomWidget, ok, XmNbottomOffset, 10, (char*)0);
+                      XmNbottomWidget, ok, XmNbottomOffset, scaled(10), (char*)0);
         td::Text c;
         credits(&c);
         XmTextSetString(text, (char*)c.c_str());

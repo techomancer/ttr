@@ -1,8 +1,9 @@
 /*
- * ttrt's Settings dialog (Terminal > Settings...): font, colours,
- * scrollback, shell, menu bar, Backspace and bell. OK and Apply change
- * the window it was opened from and save what changed in ttrt's settings
- * file (settings.h), for new windows.
+ * ttrt's Settings dialog (Terminal > Settings...), in pages as ttr's
+ * (tx/pages.h): the terminal (scrollback, shell, menu bar, Backspace,
+ * bell), appearance (UI scale, font, drawing) and colours. OK and Apply
+ * change the window it was opened from and save what changed in ttrt's
+ * settings file (settings.h), for new windows.
  */
 #ifndef TTRT_SETTINGSDLG_H
 #define TTRT_SETTINGSDLG_H
@@ -13,6 +14,7 @@
 #include "../../th/scheme.h"
 #include "core/str.h"
 #include "core/vector.h"
+#include "../../tx/pages.h"
 
 #include <X11/Intrinsic.h>
 
@@ -32,6 +34,8 @@ public:
     /* The window's value of a setting; "" where ttrt decides (the font it
      * picked itself, a cursor in the text colour). */
     virtual const char* current(int setting) const = 0;
+    /* The font ttrt picks when none is set, at the window's UI scale. */
+    virtual const char* automatic_font() const = 0;
     /* values[i] is the new value of setting i where changed[i]. */
     virtual void apply(const ttr::Str* values, const bool* changed) = 0;
 };
@@ -55,11 +59,6 @@ private:
 
     void build();
     void destroy();
-    Widget frame(Widget parent, const char* title);
-    Widget row(Widget parent, const char* label);
-    Widget drop_down(Widget parent, const char* name, const char* const* items,
-                     int count, int visible, int columns);
-    Widget radio(Widget parent, const char* a, const char* b, Widget* first);
 
     void update_preview();
     void update_swatches();
@@ -74,13 +73,12 @@ private:
     static void change_cb(Widget w, XtPointer closure, XtPointer call);
     static void reset_cb(Widget w, XtPointer closure, XtPointer call);
     static void picked(void* closure, const ttr::Rgb& c);
-    static void ok_cb(Widget w, XtPointer closure, XtPointer call);
-    static void apply_cb(Widget w, XtPointer closure, XtPointer call);
-    static void cancel_cb(Widget w, XtPointer closure, XtPointer call);
+    static void pressed(void* data, int which);
 
     Widget parent_;
     SettingsHost* host_;
     Display* dpy_;
+    tx::PagedDialog pages_;
     Widget dialog_;
     ttr::Str orig_[S_COUNT];    /* the window's values when shown or applied */
 
@@ -110,6 +108,7 @@ private:
     Widget renderer_w_;
     Widget dynbg_w_;
     Widget text_w_;
+    Widget scale_w_;            /* "Same as ttr", then percents */
 };
 
 }

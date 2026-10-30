@@ -190,7 +190,7 @@ void App::tip_show()
         tip_label_ = XtVaCreateManagedWidget("text", xmLabelWidgetClass, tip_shell_,
                                              XmNbackground, bg, XmNforeground,
                                              BlackPixelOfScreen(XtScreen(top_)),
-                                             XmNmarginWidth, 3, XmNmarginHeight, 1,
+                                             XmNmarginWidth, scaled(3), XmNmarginHeight, scaled(1),
                                              XmNalignment, XmALIGNMENT_BEGINNING, (char*)0);
     }
     XmString s = XmStringCreateLocalized(text);

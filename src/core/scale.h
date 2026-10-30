@@ -19,6 +19,10 @@ int ui_scale();
  * is 0, so one pixel lines stay visible. */
 int scaled(int px);
 
+/* The other way: 'px' pixels at the current scale as pixels at 100%, for
+ * sizes saved in settings that should mean the same at any scale. */
+int unscaled(int px);
+
 /* A line or bevel width: 1 pixel at 100%, growing slowly with the scale
  * (2 at 200%) so lines do not get heavy. */
 int scaled_line(int px);

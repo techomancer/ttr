@@ -31,6 +31,11 @@ int scaled(int px)
     return neg ? -r : r;
 }
 
+int unscaled(int px)
+{
+    return (px * 100 + g_scale / 2) / g_scale;
+}
+
 int scaled_line(int px)
 {
     /* Round down: 1 stays 1 up to 199%. */

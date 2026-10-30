@@ -1,7 +1,7 @@
 #include "settingsdlg.h"
 
 #include "../../tx/fontchooser.h"
-#include "../../tx/dialog.h"
+#include "../../tx/scale.h"
 
 #include "../../tt/pane.h"
 #include "../../tw/backgrounds.h"
@@ -13,14 +13,11 @@
 
 #include <Xm/Xm.h>
 #include <Xm/ComboBox.h>
-#include <Xm/Form.h>
-#include <Xm/Frame.h>
 #include <Xm/Label.h>
 #include <Xm/List.h>
 #include <Xm/MessageB.h>
 #include <Xm/PushB.h>
 #include <Xm/RowColumn.h>
-#include <Xm/Separator.h>
 #include <Xm/ToggleB.h>
 #include <X11/Xatom.h>
 
@@ -34,8 +31,6 @@ using ttr::Str;
 using ttr::scaled;
 
 namespace ttrt {
-
-static const int k_label_width = 130;
 
 static const char* const k_color_labels[3] = {
     "Text:", "Background:", "Cursor:"
@@ -198,7 +193,7 @@ SettingsDialog::SettingsDialog(Widget parent, SettingsHost* host)
       font_(0), preview_fg_(0),
       preview_bg_(0), have_preview_fg_(false), have_preview_bg_(false),
       picker_(new ttr::ColorPicker(picked, this)), picking_(-1), scheme_w_(0),
-      renderer_w_(0), dynbg_w_(0), text_w_(0)
+      renderer_w_(0), dynbg_w_(0), text_w_(0), scale_w_(0)
 {
     int i;
     for (i = 0; i < C_COUNT; i++) {
@@ -236,96 +231,11 @@ void SettingsDialog::destroy()
     if (have_preview_bg_)
         XFreeColors(dpy_, cmap, &preview_bg_, 1, 0);
     have_preview_fg_ = have_preview_bg_ = false;
-    if (dialog_)
-        XtDestroyWidget(XtParent(dialog_));
+    pages_.destroy();
     dialog_ = 0;
     scheme_w_ = 0;
     delete font_;
     font_ = 0;
-}
-
-/* ------------------------------------------------------------------ */
-/* Building blocks                                                     */
-
-Widget SettingsDialog::frame(Widget parent, const char* title)
-{
-    Widget f = XmCreateFrame(parent, (char*)"frame", 0, 0);
-    XmString l = xmstr(title);
-    Arg args[3];
-    XtSetArg(args[0], XmNlabelString, l);
-    XtSetArg(args[1], XmNchildType, XmFRAME_TITLE_CHILD);
-    XtManageChild(XmCreateLabel(f, (char*)"title", args, 2));
-    XmStringFree(l);
-    XtSetArg(args[0], XmNorientation, XmVERTICAL);
-    XtSetArg(args[1], XmNmarginWidth, scaled(8));
-    XtSetArg(args[2], XmNmarginHeight, scaled(6));
-    Widget rc = XmCreateRowColumn(f, (char*)"rows", args, 3);
-    XtManageChild(rc);
-    XtManageChild(f);
-    return rc;
-}
-
-/* A horizontal row starting with a fixed-width label. */
-Widget SettingsDialog::row(Widget parent, const char* text)
-{
-    Arg args[4];
-    XtSetArg(args[0], XmNorientation, XmHORIZONTAL);
-    XtSetArg(args[1], XmNmarginWidth, 0);
-    XtSetArg(args[2], XmNmarginHeight, 0);
-    Widget rc = XmCreateRowColumn(parent, (char*)"row", args, 3);
-    XmString l = xmstr(text);
-    int n = 0;
-    XtSetArg(args[n], XmNlabelString, l); n++;
-    XtSetArg(args[n], XmNwidth, scaled(k_label_width)); n++;
-    XtSetArg(args[n], XmNrecomputeSize, False); n++;
-    XtSetArg(args[n], XmNalignment, XmALIGNMENT_BEGINNING); n++;
-    XtManageChild(XmCreateLabel(rc, (char*)"label", args, n));
-    XmStringFree(l);
-    XtManageChild(rc);
-    return rc;
-}
-
-Widget SettingsDialog::drop_down(Widget parent, const char* name,
-                                 const char* const* items, int count,
-                                 int visible, int columns)
-{
-    XmString* strs = new XmString[count > 0 ? count : 1];
-    int i;
-    for (i = 0; i < count; i++)
-        strs[i] = xmstr(items[i]);
-    Arg args[4];
-    int n = 0;
-    XtSetArg(args[n], XmNvisibleItemCount, visible); n++;
-    XtSetArg(args[n], XmNcolumns, columns); n++;
-    if (count > 0) {    /* Motif reads items[0] even when there are none */
-        XtSetArg(args[n], XmNitems, strs); n++;
-        XtSetArg(args[n], XmNitemCount, count); n++;
-    }
-    Widget cb = XmCreateDropDownList(parent, (char*)name, args, n);
-    for (i = 0; i < count; i++)
-        XmStringFree(strs[i]);
-    delete [] strs;
-    XtManageChild(cb);
-    return cb;
-}
-
-Widget SettingsDialog::radio(Widget parent, const char* a, const char* b,
-                             Widget* first)
-{
-    Arg args[1];
-    XtSetArg(args[0], XmNorientation, XmHORIZONTAL);
-    Widget box = XmCreateRadioBox(parent, (char*)"radio", args, 1);
-    XmString la = xmstr(a), lb = xmstr(b);
-    XtSetArg(args[0], XmNlabelString, la);
-    *first = XmCreateToggleButton(box, (char*)"a", args, 1);
-    XtSetArg(args[0], XmNlabelString, lb);
-    Widget second = XmCreateToggleButton(box, (char*)"b", args, 1);
-    XmStringFree(la);
-    XmStringFree(lb);
-    XtManageChild(*first);
-    XtManageChild(second);
-    XtManageChild(box);
-    return box;
 }
 
 /* ------------------------------------------------------------------ */
@@ -354,50 +264,98 @@ void SettingsDialog::build()
         }
     }
 
-    XmString title = xmstr("ttrt Settings");
-    Arg args[10];
-    int n = 0;
-    XtSetArg(args[n], XmNdialogTitle, title); n++;
-    XtSetArg(args[n], XmNautoUnmanage, False); n++;
-    XtSetArg(args[n], XmNmarginWidth, scaled(10)); n++;
-    XtSetArg(args[n], XmNmarginHeight, scaled(10)); n++;
-    dialog_ = XmCreateFormDialog(parent_, (char*)"settingsDialog", args, n);
-    tx::fixed_size(dialog_);
-    XmStringFree(title);
+    enum { PAGE_TERMINAL, PAGE_APPEARANCE, PAGE_COLORS, PAGE_COUNT };
+    static const char* const page_names[PAGE_COUNT] = { "Terminal", "Appearance", "Colors" };
+    pages_.create(parent_, "settingsDialog", "ttrt Settings", page_names, PAGE_COUNT);
+    dialog_ = pages_.dialog();
+    Arg args[4];
+    int n;
+    using tx::frame;
+    using tx::row;
+    using tx::drop_down;
 
-    /* Two columns, so it fits a 1024x768 screen. */
-    n = 0;
-    XtSetArg(args[n], XmNorientation, XmHORIZONTAL); n++;
-    XtSetArg(args[n], XmNmarginWidth, 0); n++;
-    XtSetArg(args[n], XmNmarginHeight, 0); n++;
-    XtSetArg(args[n], XmNspacing, scaled(10)); n++;
-    XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
-    Widget page = XmCreateRowColumn(dialog_, (char*)"page", args, n);
-    Widget column[2];
-    for (i = 0; i < 2; i++) {
-        n = 0;
-        XtSetArg(args[n], XmNorientation, XmVERTICAL); n++;
-        XtSetArg(args[n], XmNmarginWidth, 0); n++;
-        XtSetArg(args[n], XmNmarginHeight, 0); n++;
-        XtSetArg(args[n], XmNspacing, scaled(8)); n++;
-        column[i] = XmCreateRowColumn(page, (char*)"column", args, n);
-        XtManageChild(column[i]);
-    }
+    /* Terminal */
+    Widget pg = pages_.page(PAGE_TERMINAL);
+    Widget f = frame(pg, "Terminal");
+    Widget r = row(f, "Scrollback:");
+    save_lines_ = drop_down(r, "saveLines", k_save_lines, k_nsave_lines,
+                            k_nsave_lines, 6);
+    label(r, "lines (new windows)");
+    XmString cur = xmstr(orig_[S_SAVE_LINES].c_str());
+    Widget list = XtNameToWidget(save_lines_, "*List");
+    if (list && !XmListItemExists(list, cur))
+        XmComboBoxAddItem(save_lines_, cur, 0, False);
+    XmStringFree(cur);
+    select_item(save_lines_, orig_[S_SAVE_LINES].c_str());
+    login_ = toggle(row(f, "Shell:"), "Login shell (new windows)",
+                    is_true(orig_[S_LOGIN_SHELL].c_str()));
+    menu_bar_ = toggle(row(f, "Menu bar:"), "Show (or Ctrl+right click)",
+                       is_true(orig_[S_MENU_BAR].c_str()));
+    f = frame(pg, "Keys and bell");
+    tx::radio(row(f, "Backspace sends:"), "DEL (^?)", "BS (^H)", &backspace_del_);
+    bool del = strcmp(orig_[S_BACKSPACE].c_str(), "bs") != 0;
+    XmToggleButtonSetState(del ? backspace_del_
+                               : XtNameToWidget(XtParent(backspace_del_), "b"),
+                           True, True);
+    bell_ = drop_down(row(f, "Bell:"), "bell", k_bell_labels, k_nbells,
+                      k_nbells, 14);
+    int b = 0;
+    for (i = 0; i < k_nbells; i++)
+        if (strcmp(orig_[S_BELL].c_str(), k_bell_values[i]) == 0)
+            b = i;
+    select_item(bell_, k_bell_labels[b]);
 
-    /* Font: the chooser every ttr program shares (tx). */
-    Widget f = frame(column[0], "Font");
-    Widget r = row(f, "Font:");
+    /* Appearance: the UI scale (tx/scale.h), the font, how it is drawn. */
+    pg = pages_.page(PAGE_APPEARANCE);
+    f = frame(pg, "Size");
+    r = row(f, "UI scale:");
+    scale_w_ = tx::scale_drop_down(r, orig_[S_UI_SCALE].c_str());
+    label(r, "menus and dialogs (new windows)");
+    /* The chooser every ttr program shares (tx). */
+    f = frame(pg, "Font");
+    r = row(f, "Font:");
     font_ = new tx::FontChooser(r, "font", tx::FontChooser::FIXED | tx::FontChooser::UNICODE |
                                                tx::FontChooser::AUTOMATIC);
-    font_->set_automatic_preview(tt::pick_font(dpy_));
+    font_->set_automatic_preview(host_->automatic_font());
     font_->set(orig_[S_FONT].c_str());
     label(row(f, ""), "Fixed-width fonts only; * scalable.");
     label(row(f, ""), "Characters a font lacks come from ttrt's.");
+    /* tw's renderers and dash's animated backgrounds. */
+    f = frame(pg, "Drawing");
+    r = row(f, "Renderer:");
+    renderer_w_ = drop_down(r, "renderer", k_renderer_labels, k_nrenderers, k_nrenderers, 20);
+    label(r, "(new windows)");
+    int rp = 0;
+    for (i = 0; i < k_nrenderers; i++)
+        if (strcmp(orig_[S_RENDERER].c_str(), k_renderer_values[i]) == 0)
+            rp = i;
+    select_item(renderer_w_, k_renderer_labels[rp]);
+    r = row(f, "Text:");
+    text_w_ = drop_down(r, "textRendering", k_text_labels, k_ntexts, k_ntexts, 12);
+    label(r, "smooth needs OpenGL");
+    int tp = 0;
+    for (i = 0; i < k_ntexts; i++)
+        if (strcmp(orig_[S_TEXT_RENDERING].c_str(), k_text_values[i]) == 0)
+            tp = i;
+    select_item(text_w_, k_text_labels[tp]);
+    label(row(f, ""), "Automatic: smooth from 18 pixels.");
+    {
+        const char* labels[17];
+        const char* values[17];
+        int nb = background_choices(labels, values, 17);
+        r = row(f, "Background:");
+        dynbg_w_ = drop_down(r, "dynamicBackground", labels, nb, nb, 12);
+        int bp = 0;
+        for (i = 0; i < nb; i++)
+            if (strcmp(orig_[S_DYNAMIC_BACKGROUND].c_str(), values[i]) == 0)
+                bp = i;
+        select_item(dynbg_w_, labels[bp]);
+        label(r, "animated, with OpenGL");
+    }
 
-    /* Colours */
-    f = frame(column[0], "Colors");
+    /* Colors */
+    pg = pages_.page(PAGE_COLORS);
+    f = frame(pg, "Colors");
     schemes_.clear();
     th::list_schemes(&schemes_);
     {
@@ -435,80 +393,6 @@ void SettingsDialog::build()
     bold_bright_ = toggle(row(f, ""), "Show bold text in bright colors",
                           is_true(orig_[S_BOLD_IS_BRIGHT].c_str()));
 
-    /* Window and keys */
-    f = frame(column[1], "Window and keys");
-    r = row(f, "Scrollback:");
-    save_lines_ = drop_down(r, "saveLines", k_save_lines, k_nsave_lines,
-                            k_nsave_lines, 6);
-    label(r, "lines (new windows)");
-    XmString cur = xmstr(orig_[S_SAVE_LINES].c_str());
-    Widget list = XtNameToWidget(save_lines_, "*List");
-    if (list && !XmListItemExists(list, cur))
-        XmComboBoxAddItem(save_lines_, cur, 0, False);
-    XmStringFree(cur);
-    select_item(save_lines_, orig_[S_SAVE_LINES].c_str());
-
-    login_ = toggle(row(f, "Shell:"), "Login shell (new windows)",
-                    is_true(orig_[S_LOGIN_SHELL].c_str()));
-    menu_bar_ = toggle(row(f, "Menu bar:"), "Show (or Ctrl+right click)",
-                       is_true(orig_[S_MENU_BAR].c_str()));
-    radio(row(f, "Backspace sends:"), "DEL (^?)", "BS (^H)", &backspace_del_);
-    bool del = strcmp(orig_[S_BACKSPACE].c_str(), "bs") != 0;
-    XmToggleButtonSetState(del ? backspace_del_
-                               : XtNameToWidget(XtParent(backspace_del_), "b"),
-                           True, True);
-    bell_ = drop_down(row(f, "Bell:"), "bell", k_bell_labels, k_nbells,
-                      k_nbells, 14);
-    int b = 0;
-    for (i = 0; i < k_nbells; i++)
-        if (strcmp(orig_[S_BELL].c_str(), k_bell_values[i]) == 0)
-            b = i;
-    select_item(bell_, k_bell_labels[b]);
-
-    /* Drawing: tw's renderers and dash's animated backgrounds. */
-    f = frame(column[1], "Drawing");
-    r = row(f, "Renderer:");
-    renderer_w_ = drop_down(r, "renderer", k_renderer_labels, k_nrenderers, k_nrenderers, 20);
-    label(r, "(new windows)");
-    int rp = 0;
-    for (i = 0; i < k_nrenderers; i++)
-        if (strcmp(orig_[S_RENDERER].c_str(), k_renderer_values[i]) == 0)
-            rp = i;
-    select_item(renderer_w_, k_renderer_labels[rp]);
-    r = row(f, "Text:");
-    text_w_ = drop_down(r, "textRendering", k_text_labels, k_ntexts, k_ntexts, 12);
-    label(r, "smooth needs OpenGL");
-    int tp = 0;
-    for (i = 0; i < k_ntexts; i++)
-        if (strcmp(orig_[S_TEXT_RENDERING].c_str(), k_text_values[i]) == 0)
-            tp = i;
-    select_item(text_w_, k_text_labels[tp]);
-    label(row(f, ""), "Automatic: smooth from 18 pixels.");
-    {
-        const char* labels[17];
-        const char* values[17];
-        int nb = background_choices(labels, values, 17);
-        r = row(f, "Background:");
-        dynbg_w_ = drop_down(r, "dynamicBackground", labels, nb, nb, 12);
-        int bp = 0;
-        for (i = 0; i < nb; i++)
-            if (strcmp(orig_[S_DYNAMIC_BACKGROUND].c_str(), values[i]) == 0)
-                bp = i;
-        select_item(dynbg_w_, labels[bp]);
-        label(r, "animated, with OpenGL");
-    }
-    XtManageChild(page);
-
-    /* Separator, the file it saves to, OK, Apply, Cancel. */
-    n = 0;
-    XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
-    XtSetArg(args[n], XmNtopWidget, page); n++;
-    XtSetArg(args[n], XmNtopOffset, scaled(10)); n++;
-    XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
-    Widget sep = XmCreateSeparator(dialog_, (char*)"sep", args, n);
-    XtManageChild(sep);
-
     /* Where it saves, with the home directory as ~. */
     Str path = settings_path();
     const char* home = getenv("HOME");
@@ -519,43 +403,8 @@ void SettingsDialog::build()
         sprintf(note, "Saved for new windows in ~%.1100s", shown + hl);
     else
         sprintf(note, "Saved for new windows in %.1100s", shown);
-    XmString nl = xmstr(note);
-    n = 0;
-    XtSetArg(args[n], XmNlabelString, nl); n++;
-    XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
-    XtSetArg(args[n], XmNtopWidget, sep); n++;
-    XtSetArg(args[n], XmNtopOffset, scaled(10)); n++;
-    XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
-    XtManageChild(XmCreateLabel(dialog_, (char*)"note", args, n));
-    XmStringFree(nl);
-
-    static const char* const names[3] = { "Cancel", "Apply", "OK" };
-    static const XtCallbackProc cbs[3] = { cancel_cb, apply_cb, ok_cb };
-    Widget buttons[3];
-    for (i = 0; i < 3; i++) {
-        XmString l = xmstr(names[i]);
-        n = 0;
-        XtSetArg(args[n], XmNlabelString, l); n++;
-        XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
-        XtSetArg(args[n], XmNtopWidget, sep); n++;
-        XtSetArg(args[n], XmNtopOffset, scaled(6)); n++;
-        if (i == 0) {
-            XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
-        } else {
-            XtSetArg(args[n], XmNrightAttachment, XmATTACH_WIDGET); n++;
-            XtSetArg(args[n], XmNrightWidget, buttons[i - 1]); n++;
-            XtSetArg(args[n], XmNrightOffset, scaled(6)); n++;
-        }
-        buttons[i] = XmCreatePushButton(dialog_, (char*)names[i], args, n);
-        XmStringFree(l);
-        XtAddCallback(buttons[i], XmNactivateCallback, cbs[i], (XtPointer)this);
-        XtManageChild(buttons[i]);
-    }
-    Arg dargs[2];
-    XtSetArg(dargs[0], XmNdefaultButton, buttons[2]);
-    XtSetArg(dargs[1], XmNcancelButton, buttons[0]);
-    XtSetValues(dialog_, dargs, 2);
-
+    pages_.finish(note, tx::PagedDialog::OK | tx::PagedDialog::APPLY | tx::PagedDialog::CANCEL,
+                  pressed, this);
     update_swatches();
 }
 
@@ -706,6 +555,7 @@ void SettingsDialog::collect(Str* v) const
         if (!isdigit((unsigned char)*p))
             digits = false;
     v[S_SAVE_LINES] = digits ? lines : orig_[S_SAVE_LINES];
+    v[S_UI_SCALE] = tx::scale_drop_down_value(scale_w_);
 }
 
 /* Save what changed and apply it to the window. Settings left alone are
@@ -775,27 +625,13 @@ void SettingsDialog::error(const char* msg)
     XtManageChild(err);
 }
 
-void SettingsDialog::ok_cb(Widget w, XtPointer closure, XtPointer call)
+void SettingsDialog::pressed(void* data, int which)
 {
-    (void)w;
-    (void)call;
-    SettingsDialog* self = (SettingsDialog*)closure;
-    if (self->commit())
+    SettingsDialog* self = (SettingsDialog*)data;
+    if (which == tx::PagedDialog::CANCEL)
         XtUnmanageChild(self->dialog_);
-}
-
-void SettingsDialog::apply_cb(Widget w, XtPointer closure, XtPointer call)
-{
-    (void)w;
-    (void)call;
-    ((SettingsDialog*)closure)->commit();
-}
-
-void SettingsDialog::cancel_cb(Widget w, XtPointer closure, XtPointer call)
-{
-    (void)w;
-    (void)call;
-    XtUnmanageChild(((SettingsDialog*)closure)->dialog_);
+    else if (self->commit() && which == tx::PagedDialog::OK)
+        XtUnmanageChild(self->dialog_);
 }
 
 }

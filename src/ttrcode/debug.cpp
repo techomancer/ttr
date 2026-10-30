@@ -687,7 +687,7 @@ void App::show_debug_settings()
         XtSetArg(a[0], XmNautoUnmanage, False);
         dbg_dlg_ = XmCreateFormDialog(top_, (char*)"debugSettings", a, 1);
         XtVaSetValues(XtParent(dbg_dlg_), XmNtitle, "Debug Settings", (char*)0);
-        XtVaSetValues(dbg_dlg_, XmNmarginWidth, 10, XmNmarginHeight, 10, (char*)0);
+        XtVaSetValues(dbg_dlg_, XmNmarginWidth, scaled(10), XmNmarginHeight, scaled(10), (char*)0);
         Widget rc = XtVaCreateManagedWidget("rows", xmRowColumnWidgetClass, dbg_dlg_,
                                             XmNnumColumns, 3, XmNpacking, XmPACK_COLUMN,
                                             XmNorientation, XmHORIZONTAL,
@@ -706,11 +706,12 @@ void App::show_debug_settings()
             "The program runs with its input and output in the terminal pane; an empty "
             "directory is the workspace.",
             xmLabelWidgetClass, dbg_dlg_, XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget, rc,
-            XmNtopOffset, 6, XmNleftAttachment, XmATTACH_FORM, (char*)0);
+            XmNtopOffset, scaled(6), XmNleftAttachment, XmATTACH_FORM, (char*)0);
         Widget buttons = XtVaCreateManagedWidget("buttons", xmRowColumnWidgetClass, dbg_dlg_,
-                                                 XmNorientation, XmHORIZONTAL, XmNspacing, 6,
+                                                 XmNorientation, XmHORIZONTAL,
+                                                 XmNspacing, scaled(6),
                                                  XmNtopAttachment, XmATTACH_WIDGET,
-                                                 XmNtopWidget, note, XmNtopOffset, 10,
+                                                 XmNtopWidget, note, XmNtopOffset, scaled(10),
                                                  XmNrightAttachment, XmATTACH_FORM,
                                                  XmNbottomAttachment, XmATTACH_FORM, (char*)0);
         static const char* const names[2] = { "OK", "Cancel" };
