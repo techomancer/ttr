@@ -219,8 +219,18 @@ bool Module::contains(Addr pc) const
 bool Module::function_named(const char* name, Addr* start, Addr* end) const
 {
     const Symbol* s = elf_.find(name);
-    if (!s)
+    if (!s) {
+        /* C++ whose symbol does not say its class (MIPSpro's inline member
+         * functions are local symbols, "area"): the DWARF's name. */
+        Addr lo, hi;
+        if (elf_.has_cxx() && strstr(name, "::") && info() &&
+            info()->function_named(name, &lo, &hi)) {
+            *start = lo + bias_;
+            *end = hi + bias_;
+            return true;
+        }
         return false;
+    }
     *start = s->addr + bias_;
     *end = s->addr + s->size + bias_;
     return true;
@@ -229,13 +239,28 @@ bool Module::function_named(const char* name, Addr* start, Addr* end) const
 const char* Module::function_at(Addr pc, Addr* start, Addr* end) const
 {
     const Symbol* s = elf_.function_at(pc - bias_);
-    if (!s)
-        return 0;
+    if (!s) {
+        /* No symbol for it (MIPSpro's local functions): the DWARF's. */
+        const char* n;
+        Addr lo, hi;
+        if (!info() || !info()->function_bounds(pc - bias_, &n, &lo, &hi))
+            return 0;
+        if (start)
+            *start = lo + bias_;
+        if (end)
+            *end = hi + bias_;
+        return n;
+    }
     if (start)
         *start = s->addr + bias_;
     if (end)
         *end = s->addr + s->size + bias_;
-    return s->name;
+    if (elf_.has_cxx() && !strstr(s->display, "::") && info()) {
+        const char* q = info()->qualified_at(pc - bias_);
+        if (q)
+            return q;
+    }
+    return s->display;
 }
 
 bool Module::place_of(Addr pc, Place* p) const

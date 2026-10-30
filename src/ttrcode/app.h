@@ -141,9 +141,13 @@ enum Command {
     CMD_DEBUG_STEP_OVER, CMD_DEBUG_STEP_OUT, CMD_DEBUG_RUN_TO_CURSOR, CMD_DEBUG_TOGGLE_BP,
     CMD_DEBUG_SETTINGS, CMD_VIEW_PROGRAM, CMD_DEBUG_QUICKWATCH, CMD_DEBUG_BREAKPOINTS,
     CMD_DEBUG_CORE,
+    CMD_DEBUG_ATTACH,
     /* View > Debug Windows: one per pane in k_debug_panes (app.cpp). */
     CMD_VIEW_DEBUG
 };
+
+/* The debugging layout until the user makes their own. */
+const char* default_debug_layout();
 
 class App : public tt::PaneHost, public PaneBuilder, public LineMarks, public CellListHost {
 public:
@@ -198,12 +202,20 @@ public:
     int line_marks(const te::View* v, long line) const;
     /* Debugger panes' callbacks (debug.cpp, debugpanes.cpp). */
     void frame_chosen(int i);
+    /* DataTips */
+    void tip_motion(TwGridCallbackStruct* cb);
+    bool tip_expression(int col, int row, ttr::Str* out);
+    void tip_show();
+    void tip_hide();
+    static void tip_timeout(XtPointer data, XtIntervalId* id);
+    void thread_chosen(int row);
     void debug_settings_button(int which);
     void vars_mode(bool autos);
     void memory_address_entered();
     void memory_format_chosen(int f);
     void quickwatch_button(int which);
     void breakpoints_button(int which);
+    void attach_button(int which);
     void breakpoints_entered(bool data);
 
     /* CellListHost: the debugger's panes (debugpanes.cpp). */
@@ -231,6 +243,10 @@ private:
     void debug_open_core();
     /* The Breakpoints dialog (breakpoints.cpp). */
     void show_breakpoints();
+    void show_attach();
+    void fill_attach();
+    bool debug_attach(int pid, const char* name);
+    int source_frame() const;
     void fill_breakpoints();
     bool add_location_breakpoint(const char* spec);
     bool add_data_breakpoint(const char* expr);
@@ -250,6 +266,8 @@ private:
     void fill_callstack();
     void fill_registers();
     void fill_threads();
+    void load_frames();
+    void load_threads();
     void fill_variables();
     void fill_watch();
     void fill_memory();
@@ -359,6 +377,12 @@ private:
     int click_count_, last_col_, last_row_;
     int autoscroll_;
     XtIntervalId autoscroll_id_;
+    /* DataTips (datatip.cpp) */
+    XtIntervalId tip_timer_;
+    Widget tip_shell_, tip_label_;
+    bool tip_up_, tip_watch_;
+    ttr::Str tip_expr_;
+    int tip_x_, tip_y_;         /* where the mouse rests, on the screen */
     /* Search. */
     ttr::Str find_text_, replace_text_;
     bool match_case_;
@@ -409,11 +433,17 @@ private:
     long frame_line_;
     int cur_frame_;
     ttr::Vector<td::Frame> frames_;
+    /* The threads at the last stop, and where each was (the Threads
+     * pane). */
+    ttr::Vector<int> thread_ids_;
+    ttr::Vector<ttr::Str> thread_where_;
     td::Regs last_regs_;        /* the last stop's, to mark the registers that changed */
     bool have_last_regs_;
     td::Regs cur_regs_;         /* this stop's (frame 0) */
     int regs_stop_;             /* the stop cur_regs_ is from */
+    int regs_thread_;           /* and the thread */
     bool dbg_kill_req_;         /* Stop Debugging while it runs */
+    bool dbg_attached_;         /* attached to it: Stop Debugging detaches */
     ttr::Str edit_layout_, debug_layout_;
     /* The debugger's panes (debugpanes.cpp): 0 while closed. */
     CellList* stack_list_;
@@ -436,12 +466,15 @@ private:
     ttr::Vector<unsigned char> mem_prev_, mem_cur_;
     td::Addr mem_prev_addr_, mem_cur_addr_;
     int mem_prev_stop_;
+    int frames_serial_;         /* counts frames_ reloads (stops, thread switches) */
     int stop_serial_;           /* counts stops: what "changed" compares with */
     Widget quick_dlg_, quick_expr_;
     CellList* quick_list_;
     ttr::Str quick_text_;
     Widget dbg_dlg_, dbg_prog_, dbg_args_w_, dbg_dir_w_;
     Widget bp_dlg_, bp_at_w_, bp_expr_w_, bp_list_w_, bp_note_w_;
+    Widget attach_dlg_;
+    ttr::Vector<td::ProcessInfo> attach_procs_;   /* what the dialog lists */
     ttr::Str dbg_msg_;          /* the status bar's first words */
     /* Find Results (0 while its pane is closed). */
     Widget results_;

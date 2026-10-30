@@ -8,7 +8,7 @@
  * +ctrl+c, +shift+Prior, +alt+x; keysym names as in <X11/keysymdef.h>),
  * a click at root coordinates "@x,y" (button 1; "@x,y,b" for button b;
  * "@@x,y" double and "@@@x,y" triple click; "^@x,y,b" with Ctrl held),
- * a button 1 drag "~x1,y1,x2,y2", or
+ * a button 1 drag "~x1,y1,x2,y2", a move without a click "=x,y", or
  * "%WxH" to resize the focused top-level window to W x H pixels.
  * Example: xtype @400,300 'ls -l' +Return
  *
@@ -233,6 +233,10 @@ int main(int argc, char** argv)
             }
             XTestFakeButtonEvent(dpy, 1, False, 0);
             pause_ms(250);
+        } else if (argv[i][0] == '=' && sscanf(argv[i] + 1, "%d,%d", &x, &y) == 2) {
+            /* move only (hovering) */
+            XTestFakeMotionEvent(dpy, -1, x, y, 0);
+            pause_ms(50);
         } else if (argv[i][0] == '%' && sscanf(argv[i] + 1, "%dx%d", &x, &y) == 2) {
             Window t = focused_toplevel();
             if (t)

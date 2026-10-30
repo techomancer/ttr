@@ -82,9 +82,26 @@ and on IRIX (the emulated guest, MIPSpro n32 programs):
     Core File (section 8.2).
   - Both scripts pass on Linux and on the Octane, with n32 and `-64`
     programs. Under lightning (the guest): not run yet.
-- Not yet: threads, Disassembly (needs a disassembler), changing
-  values, C++ (`this`, classes' members by inheritance, demangled
-  names), thread-local variables.
+- Threads, attaching, C++ names and DataTips, 2026-10-29 (milestone 5):
+  - Threads on Linux (section 3.1): every thread traced with
+    `PTRACE_SEIZE`, all stopped when one stops (`PTRACE_INTERRUPT`) and
+    run again together; a single step runs the current one. On IRIX
+    (section 3.2): `PIOCTHREAD`, joint stop, IRIX's M:N pthreads. The
+    Session's current thread (section 7); ttrdb's `t`; Linux core files'
+    threads. `td/test/threads.ttrdb`, with a watchpoint every thread
+    hits.
+  - Attaching: every thread stopped; `td/test/attach.ttrdb` attaches to
+    a running program and detaches, and the runner checks it runs on.
+    ttrcode's Debug > Attach to Process (section 8.2).
+  - C++ names (section 5.5): td's own demanglers for the Itanium ABI and
+    MIPSpro's cfront scheme; breakpoints by those names; names from the
+    DWARF where the symbol has none. `td/test/cpp.ttrdb`.
+  - ttrcode: the Threads pane switches threads; DataTips (section 8.2).
+  - All 11 scripts pass on Linux and on the Octane (n32).
+- Not yet: Disassembly (needs a disassembler), changing values, C++
+  `this` and members by inheritance, thread-local variables, IRIX's
+  pthreads that have no kernel thread (section 3.2), IRIX core files'
+  other threads.
 
 gdb is hard to use, debugging through VS Code is worse, and dbx and
 ProDev WorkShop are not much better. ttr gets its own debugger, in three
@@ -172,16 +189,16 @@ Every operation the Session needs, and how each system provides it.
 
 | Need | How |
 |---|---|
-| Start a program | `fork`; in the child `PTRACE_TRACEME`, then `exec`. It stops at its first instruction with SIGTRAP. |
-| Attach | `PTRACE_SEIZE`, then `PTRACE_INTERRUPT` to stop it. `PTRACE_SEIZE` does not send a SIGSTOP, unlike `PTRACE_ATTACH`. |
-| Events | `waitpid(-1, ..., __WALL)`. Options `PTRACE_O_TRACECLONE`, `TRACEFORK`, `TRACEVFORK`, `TRACEEXEC` and `TRACEEXIT`. `PTRACE_GETSIGINFO` says why a SIGTRAP came. |
+| Start a program | `fork`; the child waits on a pipe while the parent `PTRACE_SEIZE`s it (with `PTRACE_O_TRACEEXEC`), then `exec`s: the exec's stop is at its first instruction. Seized, not `PTRACE_TRACEME`: `PTRACE_INTERRUPT` needs it, and new threads are seized too. |
+| Attach | `PTRACE_SEIZE`, then `PTRACE_INTERRUPT` to stop it. `PTRACE_SEIZE` does not send a SIGSTOP, unlike `PTRACE_ATTACH`. Every thread in `/proc/<pid>/task`, read again until no new one appears (one may start another before it is traced). |
+| Events | `waitpid(tid, ..., __WALL \| WNOHANG)` for each known thread, and `waitid(P_ALL, ..., WNOWAIT)` to block or to see a new thread before its creator says so: never `waitpid(-1)`, which would reap the debugger's other children (ttrcode's terminals). Options `PTRACE_O_TRACECLONE`, `TRACEEXIT` and `EXITKILL`. `PTRACE_GETSIGINFO` says why a SIGTRAP came. |
 | Resume | `PTRACE_CONT`, with or without the pending signal. |
 | Single step | `PTRACE_SINGLESTEP` (the x86 trap flag). |
 | Registers | `PTRACE_GETREGS`/`SETREGS`; `PTRACE_GETREGSET` with `NT_PRFPREG` and `NT_X86_XSTATE` for floating point and vector registers. |
 | Memory | `pread`/`pwrite` on `/proc/<pid>/mem`, any size; `PTRACE_POKEDATA` also writes to read-only text. |
 | Breakpoints | `int3` (0xCC) written over the first byte of the instruction. |
 | Watchpoints | Debug registers DR0 to DR3 and DR7, written with `PTRACE_POKEUSER` at `offsetof(struct user, u_debugreg)`. Four, each 1, 2, 4 or 8 bytes aligned to its size: an area takes as many as its aligned pieces need (32 bytes at most). The trap comes after the write, as a SIGTRAP; DR6 bits 0 to 3 say which register fired (also when it was a single step that wrote), and td clears DR6. |
-| Threads | Every thread is traced on its own. New ones arrive through `PTRACE_O_TRACECLONE`. When attaching, `/proc/<pid>/task` lists the existing ones. `tgkill` stops one. |
+| Threads | Every thread is traced on its own. New ones arrive through `PTRACE_O_TRACECLONE` and stop first with `PTRACE_EVENT_STOP`. When one stops, `PTRACE_INTERRUPT` stops the others; one that stopped for something of its own meanwhile keeps it for later, except a breakpoint: its pc goes back to the int3, which it reaches again if the breakpoint is still there. An interrupt left over from that is a `PTRACE_EVENT_STOP` nobody asked for: run on. Debug registers are each thread's: all get the same, new ones when they start. A thread that ends while being stepped lets the others run. |
 | Memory map | `/proc/<pid>/maps`. |
 | Load address | `/proc/<pid>/auxv`: `AT_PHDR` and `AT_ENTRY` give the offset of a position-independent executable. |
 | Kill, detach | `PTRACE_KILL` or `kill`; `PTRACE_DETACH`. |
@@ -202,7 +219,7 @@ information) and issue ioctls on it.
 |---|---|
 | Start a program | `fork`, the child stops itself; the parent opens its `/proc` file, sets the events (`PIOCSFAULT`, `PIOCSENTRY` on `exec`) and lets it `exec`. *To verify:* the exact handshake dbx uses. |
 | Attach | open `/proc/<pid>` read-write, then `PIOCSTOP`. |
-| Wait for a stop | `PIOCWSTOP`, or `poll` on the file (*to verify* on IRIX). |
+| Wait for a stop | `PIOCSTATUS` until `PR_ISTOP` (and every thread stopped), with short naps; and `waitpid(WNOHANG)` for our own child. Not the process's `PIOCWSTOP`: with threads it can go on waiting after the process has ended (checked on the Octane). A single step waits on its thread's `PIOCWSTOP`. |
 | Why it stopped | `PIOCSTATUS`: `pr_why` and `pr_what` (a signal, a fault, a system call). |
 | Resume | `PIOCRUN` with a `prrun_t`. Its flags: `PRCSIG` (clear the signal), `PRCFAULT` (clear the fault), `PRSTRACE`/`PRSFAULT` (change the traced sets), `PRSTEP` (single step), `PRSABORT`, `PRSTOP`. |
 | Events | `PIOCSFAULT` with a fault set: `FLTBPT` (breakpoint), `FLTTRACE` (step), `FLTWATCH` (watchpoint), `FLTILL`, `FLTACCESS` and the rest from `<sys/fault.h>`. `PIOCSTRACE` for signals. `PIOCSENTRY`/`PIOCSEXIT` for system calls. `PIOCSFORK` makes children inherit the tracing. |
@@ -210,7 +227,7 @@ information) and issue ioctls on it.
 | Memory | `lseek` and `read`/`write` on the same file. `PIOCREAD` takes a 64-bit offset. |
 | Breakpoints | The MIPS `break` instruction, reported as `FLTBPT`. |
 | Watchpoints | `PIOCNWATCH`, `PIOCGWATCH`, `PIOCSWATCH` with a `prwatch_t` (address, size, `MA_READ`/`MA_WRITE`/`MA_EXEC`), reported as `FLTWATCH`. |
-| Threads | `PIOCGUTID` lists the thread ids. `PIOCTHREAD` with a `prthreadctl_t` runs any of these ioctls on one thread, or on all, the stopped ones, or the ones with new events (`PTFD_*`, `PTFS_*` flags). A `sproc` member is a process of its own. |
+| Threads | `PIOCTHREAD` with a `prthreadctl_t` runs an ioctl on one thread (`PIOCSTATUS`, `PIOCGREG`, `PIOCSREG`, `PIOCRUN`, `PIOCWSTOP`, `PIOCGHOLD`...). Walking them: `PIOCSTATUS` with `PTFD_GEQ` from id 0, then `PTFD_GTR` from each `pr_who`, until ENOENT (`PIOCGUTID` answers EINVAL however asked). A `sproc` member is a process of its own. Section 3.2's notes. |
 | Memory map | `PIOCNMAP` and `PIOCMAP` (`prmap_t`), `PIOCMAP_SGI` with more detail. |
 | The file behind a mapping | `PIOCOPENM` returns an open descriptor for a mapped object, no path needed. |
 
@@ -253,6 +270,43 @@ Notes:
   So they work on any machine that handles ordinary page faults,
   lightning included (*to verify*). The cost: every access to a watched
   page traps, so a watched local variable slows the program a lot.
+- **Threads** (checked on the Octane):
+  - `PIOCSET` with `PR_JOINTSTOP | PR_JOINTPOLL`: when one thread stops
+    for an event, the others stop too (`pr_why` `PR_REQUESTED`), and the
+    process's `PIOCSTATUS` says stopped only once all have. The process's
+    `PIOCWSTOP` names a stand-in thread (`pr_who`), not the one that
+    stopped: td walks the threads for the one with a fault or a signal.
+  - The process's `PIOCRUN` runs them all; `PIOCTHREAD` with `PIOCRUN`
+    and `PRSTEP` steps one while the others stay stopped, and its
+    `PIOCWSTOP` waits for it. `PIOCRUN` on each thread instead does not
+    run them (the joint stop takes them back).
+  - libpthread is M:N: it runs pthreads on kernel threads (uthreads,
+    ids from 0), as many as it sees fit. Pthreads that block in the
+    kernel (`usleep`, I/O) keep one each; ones that compute share them,
+    switched by its signals `SIGPTINTR` (47) and `SIGPTRESCHED` (48).
+    So td's threads on IRIX are the kernel's: a pthread waiting for one
+    is not listed, and a pthread may come back on another. td does not
+    trace those two signals, holds them during a single step (else the
+    step lands in their handler), and `run_to` also accepts its frame
+    in another thread (section 7). Listing pthreads would need
+    libpthread's own table (`__pt_lib_info`, what dbx reads; not
+    documented).
+  - A store-conditional on a watched page (a `pthread_mutex_lock` next
+    to a watched variable) cannot be stepped: the trap between its `ll`
+    and `sc` clears the link and the `sc` fails, so the lock retries
+    forever; untraced, the kernel sends SIGTRAP instead. The Octane
+    reports it as a SIGTRAP at the `sc`. td puts the thread back at its
+    `ll` (a few instructions before, the same base and offset) and runs
+    it alone, the watched areas out, to a break after the `sc`: untrapped,
+    so atomic as the program meant; again if the `sc` failed. Alone it may
+    spin on a lock a stopped thread holds: after 50 ms it is stopped
+    where it is (a consistent place: starting at the `ll` is what a failed
+    `sc` does) and all run on. Reported as a watched write. (Making the
+    store for it instead broke locks: another thread's store could have
+    come between its `ll` and `sc`.)
+  - `PR_KLC` (kill on last close) for a program td starts, `PR_RLC` (run
+    on last close) for one it attached to: if the debugger dies, the
+    first ends and the second runs on.
 - **The ABIs.** Our builds are n32, and an n32 debugger debugs 64-bit
   programs (checked on the Octane, as dbx, itself n32, does): registers
   come 64 bits wide to n32 callers, memory is read at 64-bit offsets, and
@@ -490,14 +544,45 @@ results but is not linked into anything.
 
 ### 5.5 Names
 
-- C++ names have to be demangled for display.
-- Linux uses the Itanium C++ ABI. `abi::__cxa_demangle` exists, but
-  pulling in libstdc++'s interface goes against the no-STL rule, so td
-  gets its own demangler, to be written later.
-- MIPSpro uses cfront-style mangling. IRIX has a demangler,
-  `<dem.h>` (`demangle(in, out)`, from cfront's tools). *To verify:*
-  which library provides it, and whether it handles MIPSpro 7.4's
-  templates.
+C++ names are demangled for display and for breakpoints by name
+(`td/demangle.h`), when a module loads: each symbol keeps its mangled
+name and gets one as written. Both schemes are read on either system
+(cores, cross debugging later); cfront's is tried in MIPS files only, as
+C names may hold "__".
+
+- **Itanium C++ ABI** (GCC and Clang): td's own demangler, as
+  `abi::__cxa_demangle` would bring libstdc++ in. Types as small trees
+  printed left and right of the declarator (`void (*)(int)`, `char const
+  (&) [64]`), the substitution table, template parameters looked up
+  where they are printed, packs and their expansions, reference
+  collapsing, lambdas, ABI tags, GCC's clones. Its output is c++filt's,
+  except `std::string` for `Ss` (gdb's; c++filt's long form with
+  `TD_DEMANGLE_VERBOSE`). Checked against c++filt: libstdc++'s 5,973
+  names all equal; libLLVM's 45,771 all but 199 (76 left mangled:
+  decltype and expressions; the rest lambdas within template arguments,
+  where c++filt and LLVM's demangler scope template parameters in ways
+  td does not copy). Bad input fails: types 200 deep, texts 64 KB, no
+  exponential output; fuzzed under AddressSanitizer.
+- **MIPSpro** (EDG writing cfront's scheme): `get__1SCGv` is `S::get()
+  const`. Classes and namespaces `<length><name>` or `Q<n>_...`; `G`
+  where cfront had `F` for functions; templates `name__pt__<n>_<args>`
+  with values as `X<type>L<digits' count><digits>`; function templates
+  `Z<n>Z` for their parameters and `_<return type>`; `T<n>` and
+  `N<count><n>` repeat parameters. Written as IRIX's tools do (`const
+  S&`). IRIX's own `demangle()` (`<dem.h>`) is in libC.so and libexc.so
+  but not exported (neither links nor `dlsym` finds it), so td has its
+  own, checked by hand on a sample of every construct and on libC's
+  names.
+- MIPSpro emits inline member functions as local symbols with plain
+  names (`area`, size 0) and its DWARF has no namespaces: td names such
+  functions from the DWARF (the class they are in, or the declaration a
+  definition completes; also where no symbol covers the address), and a
+  breakpoint on `geo::Rect::area` finds `Rect::area`, the name it then
+  shows. Size-0 functions run to the next symbol.
+- Breakpoints by name: the mangled name, the name as written with or
+  without its parameters (`geo::scale(int, int)`, `geo::scale`), after
+  a template's return type and with or without its arguments (`twice`,
+  `twice<int>`), or without its classes and namespaces (`area`).
 
 ### 5.6 Unwinding
 
@@ -557,8 +642,8 @@ for crash reports in ttr's own programs, not for a debugger.
 
 Stepping off a breakpoint: put the original instruction back, step one
 instruction, put the breakpoint back. Other threads must not run during
-that step; the Session stops them, or steps with a copy of the
-instruction placed elsewhere. *To decide:* which, for each system.
+that step: they stay stopped (decided: a single step runs one thread on
+both systems).
 
 ## 7. Session
 
@@ -567,7 +652,17 @@ instruction placed elsewhere. *To decide:* which, for each system.
   thread, a library change, exec, or exit. The Session then either
   answers it internally (a conditional breakpoint whose condition is
   false, a library event) or reports a stop to the user interface.
-- **All threads stop together** when one stops, Visual C++ style.
+- **All threads stop together** when one stops, Visual C++ style, and
+  run together; a single step runs only the current thread. The current
+  thread (the stack, the values, the steps) is the one that stopped,
+  until `select_thread()`. Stepping off a breakpoint steps the thread
+  that stopped at it (and the current one, if it is at one too): other
+  threads that reached one while being stopped were moved back to it.
+  `run_to` (step over, step out) waits for its thread: a temporary
+  breakpoint another thread reaches is passed, unless its stack pointer
+  says it is the same frame (IRIX's pthreads change kernel threads). A
+  watched local belongs to its thread's frame. `thread_number()` gives
+  threads small numbers, 1 for the first.
 - **Breakpoints** are kept by file and line, or by function name. They
   are planted when the module containing them loads, and a breakpoint
   with no code yet waits for one.
@@ -659,7 +754,12 @@ section 2), and the debugger keeps that up:
 The windows:
 
 - **The source view** shows a yellow arrow at the current line and red
-  dots for breakpoints. Hovering over a variable shows its value.
+  dots for breakpoints. **DataTips:** resting the mouse on a variable for
+  half a second shows `name = value` in a pale yellow window, evaluated
+  in the frame shown: the word under the mouse with the members it is
+  reached through (`p->next->val` over `val`), or the selection when the
+  mouse is on it; not for keywords, numbers or functions called. Moving
+  off it, a key, a click or a run hides it (`src/ttrcode/datatip.cpp`).
 - **Variables** shows locals and "auto" values (the variables of the
   current line and the previous one), as VC6 did, for the frame chosen
   in its Context menu.
@@ -675,8 +775,17 @@ The windows:
 - **Registers, Memory, Disassembly**: changed values are shown in red.
 - **Output**: the program's own output (it runs on a pty, like the
   terminal pane), and debugger messages.
-- **Threads** and **Modules** are dialogs, as in VC6. (Threads is a pane
-  for now.)
+- **Threads**: a pane (VC6 had a dialog), every thread with its number,
+  its id and where it is, the current one with the yellow arrow.
+  Double-click switches to it (VC6's Switch To): its stack, values and
+  registers; one waiting in the system's code shows its first frame with
+  source. Registers in red compare with that thread's last stop only.
+  **Modules** is a dialog, as in VC6 (not yet).
+- **Attach to Process** (Debug menu; VC6's Build > Start Debug): the
+  user's processes, newest last (`Target::processes()`: Linux's `/proc`,
+  IRIX's `/proc/pinfo` with `PIOCPSINFO`); Attach stops one and shows
+  where it is, its first frame with source. Stop Debugging detaches it
+  (VC6 killed it), and the status bar says it runs on.
 - **QuickWatch** (Shift+F9): an expression and its tree in a dialog,
   with Add Watch.
 - **Breakpoints** (Debug > Breakpoints; VC6's Edit > Breakpoints,
@@ -697,12 +806,10 @@ How this fits ttrcode:
 
 - The debugger windows are tool panes in ttrcode's dock areas
   (ttrcode/DESIGN.md 4.1), in a debugging layout of their own.
-- The Session runs inside ttrcode's single Xt event loop:
-  - Linux: a SIGCHLD handler writes to a pipe watched by
-    `XtAppAddInput`, then `waitpid(WNOHANG)`.
-  - IRIX: the same SIGCHLD pipe if stops send SIGCHLD to a /proc tracer
-    (*to verify*). Otherwise a short `XtAppAddTimeOut` poll of
-    `PIOCSTATUS` while the program runs.
+- The Session runs inside ttrcode's single Xt event loop: while the
+  program runs, td polls it (`Target::poll`: `waitpid` with `WNOHANG` on
+  Linux, `PIOCSTATUS` on IRIX) between 20 ms of Xt events (ttrcode's
+  idle function), so the window goes on and Debug > Break works.
 - Run and debug settings (the program, its arguments, its working
   directory) belong to the workspace and are stored with ttrcode's
   workspace settings. Building first is ttrcode's later Build menu, not
@@ -775,7 +882,7 @@ serialising it. Nothing is built for it now.
    - The Session in the Xt loop.
    - The program's output on a pty.
 5. **Threads and polish.**
-   - Threads on both systems.
-   - Attaching to a running program.
-   - Demangling for both ABIs.
-   - Hover tips.
+   - Threads on both systems. *Done* (IRIX: kernel threads, section 3.2).
+   - Attaching to a running program. *Done.*
+   - Demangling for both ABIs. *Done.*
+   - Hover tips. *Done* (DataTips).

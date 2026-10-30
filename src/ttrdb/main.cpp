@@ -30,6 +30,7 @@ td::Session* g_s;
 td::Sources g_src;      /* "dir" adds to where sources are looked for */
 int g_frame;            /* "fr N": the frame p and locals look in */
 char** g_argv;          /* the program's, for "r" after it ended */
+int g_last_thread = -1; /* the thread of the last stop reported */
 bool g_script;
 /* What the last command printed, for "expect". */
 char* g_out;
@@ -106,6 +107,11 @@ void report(const td::Stop& s, bool core = false)
     default:
         break;
     }
+    /* Which thread, when there are several and it is another one. */
+    ttr::Vector<int> ids;
+    if (s.thread != g_last_thread && g_s->threads(&ids) > 1)
+        out("[Thread %d (%d)]\n", g_s->thread_number(s.thread), s.thread);
+    g_last_thread = s.thread;
     g_s->describe(s.pc, false, &f);
     ttr::Str where = td::format_place(f);
     if (!f.func || (f.has_place && !f.place.exact)) {
@@ -136,6 +142,47 @@ void report(const td::Stop& s, bool core = false)
     else
         out("%s\n", where.c_str());
     show_line(f);
+}
+
+/* "t": the threads, where each is; "t N": switch to thread N. */
+void cmd_threads(const char* args)
+{
+    ttr::Vector<int> ids;
+    if (!g_s->threads(&ids)) {
+        out("The program is not running.\n");
+        return;
+    }
+    int cur = g_s->current_thread(), i;
+    if (*args) {
+        int n = atoi(args);
+        for (i = 0; i < ids.size() && g_s->thread_number(ids[i]) != n; i++)
+            ;
+        if (i == ids.size() || !g_s->select_thread(ids[i])) {
+            out("No thread %s.\n", args);
+            return;
+        }
+        g_frame = 0;
+        g_last_thread = ids[i];
+        td::Regs r;
+        td::Frame f;
+        out("[Thread %d (%d)]\n", n, ids[i]);
+        if (g_s->regs(&r) && g_s->describe(r.pc, false, &f)) {
+            ttr::Str w = td::format_place(f);
+            out("%s\n", w.c_str());
+            show_line(f);
+        }
+        return;
+    }
+    for (i = 0; i < ids.size(); i++) {
+        td::Regs r;
+        td::Frame f;
+        ttr::Str w("??");
+        if (g_s->select_thread(ids[i]) && g_s->regs(&r) && g_s->describe(r.pc, false, &f))
+            w = td::format_place(f);
+        out("%c %d  Thread %d  %s\n", ids[i] == cur ? '*' : ' ', g_s->thread_number(ids[i]),
+            ids[i], w.c_str());
+    }
+    g_s->select_thread(cur);
 }
 
 void cmd_bt()
@@ -488,6 +535,8 @@ bool command(char* line)
     } else if (!strcmp(c, "d") || !strcmp(c, "delete")) {
         if (!g_s->remove_breakpoint(atoi(args)))
             out("No breakpoint %s.\n", args);
+    } else if (!strcmp(c, "t") || !strcmp(c, "thread")) {
+        cmd_threads(args);
     } else if (!strcmp(c, "bt") || !strcmp(c, "backtrace")) {
         cmd_bt();
     } else if (!strcmp(c, "dir")) {
@@ -537,9 +586,9 @@ bool command(char* line)
     } else if (!strcmp(c, "help") || !strcmp(c, "h")) {
         out("r run, c continue, s step, n next, si step instruction, f finish,\n"
             "b SPEC (file:line, function, *addr), b list, w EXPR watch, d N delete,\n"
-            "bt backtrace, fr N frame, where, l list, regs, x ADDR [N] memory,\n"
-            "p EXPR print (EXPR,x hex; p,N N elements), locals, e EXPR expand,\n"
-            "pt EXPR type, mods modules,\n"
+            "bt backtrace, fr N frame, t threads, t N thread, where, l list, regs,\n"
+            "x ADDR [N] memory, p EXPR print (EXPR,x hex; p,N N elements), locals,\n"
+            "e EXPR expand, pt EXPR type, mods modules,\n"
             "dir DIR source directory, k kill, detach, q quit\n");
     } else {
         out("Unknown command \"%s\" (help lists them).\n", c);
@@ -563,6 +612,9 @@ int main(int argc, char** argv)
     const char* core = 0;
     int pid = 0;
     int i = 1;
+    /* Line by line, also into a file: a test killed for hanging shows
+     * where. */
+    setvbuf(stdout, 0, _IOLBF, BUFSIZ);
     while (i < argc && argv[i][0] == '-') {
         if (!strcmp(argv[i], "-x") && i + 1 < argc) {
             script = argv[i + 1];

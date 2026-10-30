@@ -12,7 +12,7 @@
  *   as bytes, shorts, longs, quads, characters or floats; Up, Down, Page
  *   Up and Page Down move through it.
  * - Call Stack: double-click a frame to show it.
- * - Threads.
+ * - Threads: double-click one to switch to it.
  * - QuickWatch (Shift+F9): one expression in a dialog, to add to Watch.
  */
 #include "app.h"
@@ -273,8 +273,9 @@ Widget App::build_debug_pane(Pane* p, Widget parent)
     }
     if (is_pane(p, "threads")) {
         threads_list_ = make_list(parent, "threads", tag);
+        threads_list_->set_marks(true);
         static const char* const titles[2] = { "ID", "Location" };
-        static const int widths[2] = { 10, 40 };
+        static const int widths[2] = { 14, 40 };
         threads_list_->set_columns(2, titles, widths);
         fill_threads();
         return threads_list_->widget();
@@ -466,11 +467,13 @@ void App::fill_registers()
     if (dbg_ && frames_.size() > 0 && regs_stop_ != stop_serial_) {
         /* A new stop: the last one's registers are what changed compares
          * with. */
+        int thread = dbg_->current_thread();
         last_regs_ = cur_regs_;
-        have_last_regs_ = regs_stop_ >= 0;
+        have_last_regs_ = regs_stop_ >= 0 && regs_thread_ == thread;
         cur_regs_ = frames_[0].regs;
         cur_regs_.pc = frames_[0].pc;
         regs_stop_ = stop_serial_;
+        regs_thread_ = thread;
     }
     if (!regs_list_)
         return;
@@ -533,16 +536,22 @@ void App::fill_threads()
     if (!threads_list_)
         return;
     threads_list_->clear();
-    if (dbg_ && frames_.size() > 0) {
-        char id[32];
-        snprintf(id, sizeof(id), "%d", dbg_->target()->pid());
-        ttr::Str w = td::format_place(frames_[0]);
+    int cur = dbg_ ? dbg_->current_thread() : -1, i, sel = -1;
+    for (i = 0; dbg_ && i < thread_ids_.size(); i++) {
+        char id[48];
+        snprintf(id, sizeof(id), "%d  (%d)", dbg_->thread_number(thread_ids_[i]),
+                 thread_ids_[i]);
         int r = threads_list_->add_row();
         threads_list_->set_cell(r, 0, id);
-        threads_list_->set_cell(r, 1, w.c_str());
-        threads_list_->set_mark(r, 0x25b6, 0xe0b000);
+        threads_list_->set_cell(r, 1, thread_where_[i].c_str());
+        if (thread_ids_[i] == cur) {
+            threads_list_->set_mark(r, 0x25b6, 0xe0b000);
+            sel = r;
+        }
     }
     threads_list_->done();
+    if (sel >= 0)
+        threads_list_->select(sel);
 }
 
 /* VC6's Auto: what the current line and the one before use. */
@@ -572,8 +581,8 @@ void App::fill_variables()
     if (!vars_list_)
         return;
     /* Context: the frames, rebuilt at each stop. */
-    if (vars_menu_ && vars_menu_stop_ != (dbg_ ? stop_serial_ : -2)) {
-        vars_menu_stop_ = dbg_ ? stop_serial_ : -2;
+    if (vars_menu_ && vars_menu_stop_ != (dbg_ ? frames_serial_ : -2)) {
+        vars_menu_stop_ = dbg_ ? frames_serial_ : -2;
         ttr::Vector<Widget> old;
         int k;
         for (k = 0; k < g_context_items.size(); k++)
@@ -1047,6 +1056,10 @@ void App::list_activate(CellList* l, int row)
 {
     if (l == stack_list_) {
         frame_chosen(row);
+        return;
+    }
+    if (l == threads_list_) {
+        thread_chosen(row);
         return;
     }
     if (l == watch_list_) {

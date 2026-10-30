@@ -15,6 +15,7 @@ namespace td {
 
 struct Symbol {
     const char* name;   /* in the file's string table */
+    const char* display;    /* as the source wrote it (C++: demangled) */
     Addr addr;          /* link address */
     uint64_t size;
     bool func;
@@ -48,10 +49,14 @@ public:
     /* Functions and data, sorted by address. */
     int symbol_count() const { return syms_.size(); }
     const Symbol& symbol(int i) const { return syms_[i]; }
-    /* A function by name (link address), or 0. */
+    /* A function by name (link address), or 0: its symbol, or a C++
+     * function's name as written, with its parameters ("Foo::bar(int)")
+     * or without ("Foo::bar", the first of its overloads). */
     const Symbol* find(const char* name) const;
     /* The function containing a link address, or 0. */
     const Symbol* function_at(Addr a) const;
+    /* It has C++ functions (mangled names). */
+    bool has_cxx() const { return cxx_; }
 
 private:
     uint64_t u16(const unsigned char* p) const;
@@ -60,6 +65,7 @@ private:
     uint64_t word(const unsigned char* p) const { return is64_ ? u64(p) : u32(p); }
     void read_symbols(int symtab_type);
     void read_segments();
+    void demangle_symbols();
 
     ttr::Str path_;
     unsigned char* data_;
@@ -74,6 +80,8 @@ private:
     };
     ttr::Vector<Segment> segs_;
     ttr::Vector<Symbol> syms_;
+    ttr::Vector<char*> names_;      /* demangled names */
+    bool cxx_;
 
     ElfFile(const ElfFile&);
     ElfFile& operator=(const ElfFile&);

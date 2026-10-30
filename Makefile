@@ -603,10 +603,10 @@ $(B)/libdwarf.a: $(B)/.dir td/third/libdwarf/config.h
 	$(AR) rc $@ $(B)/libdwarf/*.o
 
 TD_SYS = $(B)/td_target_linux.o
-TD_OBJS = $(B)/td_arch.o $(B)/td_core.o $(B)/td_elf.o $(B)/td_expr.o $(B)/td_info.o \
+TD_OBJS = $(B)/td_arch.o $(B)/td_core.o $(B)/td_demangle.o $(B)/td_elf.o $(B)/td_expr.o $(B)/td_info.o \
 	$(B)/td_module.o $(B)/td_session.o $(B)/td_source.o $(B)/td_text.o $(B)/td_value.o \
 	$(B)/td_watch.o $(TD_SYS)
-TD_H = td/td.h td/target.h td/core.h td/elf.h td/info.h td/module.h td/session.h \
+TD_H = td/td.h td/target.h td/core.h td/demangle.h td/elf.h td/info.h td/module.h td/session.h \
 	td/source.h td/value.h src/core/str.h src/core/vector.h src/core/port.h
 
 $(B)/libtd.a: $(TD_OBJS)
@@ -617,6 +617,8 @@ $(B)/td_arch.o: $(B)/.dir td/arch.cpp $(TD_H)
 	$(COMPILE) -c td/arch.cpp -o $@
 $(B)/td_core.o: $(B)/.dir td/core.cpp $(TD_H)
 	$(COMPILE) -c td/core.cpp -o $@
+$(B)/td_demangle.o: $(B)/.dir td/demangle.cpp $(TD_H)
+	$(COMPILE) -c td/demangle.cpp -o $@
 $(B)/td_elf.o: $(B)/.dir td/elf.cpp $(TD_H)
 	$(COMPILE) -c td/elf.cpp -o $@
 $(B)/td_module.o: $(B)/.dir td/module.cpp $(TD_H) $(B)/libdwarf.a
@@ -677,6 +679,24 @@ $(B)/td_watch: $(B)/td_watch_prog.o
 $(B)/td_watch_prog.o: $(B)/.dir td/test/progs/watch.c
 	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/watch.c -o $@
 
+# Threads (IRIX: pthreads are in libpthread too).
+TD_TEST_THREADLIBS = -lpthread
+$(B)/td_threads: $(B)/td_threads.o
+	$(CC) $(TD_TEST_CFLAGS) -o $@ $(B)/td_threads.o $(TD_TEST_THREADLIBS)
+$(B)/td_threads.o: $(B)/.dir td/test/progs/threads.c
+	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/threads.c -o $@
+
+# C++ (MIPSpro's CC on IRIX).
+$(B)/td_cpp: $(B)/td_cpp.o
+	$(CXX) $(TD_TEST_CFLAGS) -o $@ $(B)/td_cpp.o
+$(B)/td_cpp.o: $(B)/.dir td/test/progs/cpp.cpp
+	$(CXX) $(TD_TEST_CFLAGS) -c td/test/progs/cpp.cpp -o $@
+
+$(B)/td_spin: $(B)/td_spin.o
+	$(CC) $(TD_TEST_CFLAGS) -o $@ $(B)/td_spin.o $(TD_TEST_THREADLIBS)
+$(B)/td_spin.o: $(B)/.dir td/test/progs/spin.c
+	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/spin.c -o $@
+
 $(B)/libtdshlib.so: $(B)/td_shlib.o
 	$(CC) $(TD_TEST_CFLAGS) -shared $(TD_TEST_SONAME) -o $@ $(B)/td_shlib.o
 $(B)/td_shlib.o: $(B)/.dir td/test/progs/shlib.c
@@ -692,7 +712,7 @@ $(B)/td_dlmain.o: $(B)/.dir td/test/progs/dlmain.c
 	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/dlmain.c -o $@
 
 td-test: $(B)/ttrdb $(B)/td_demo $(B)/td_crash $(B)/td_shmain $(B)/td_dlmain $(B)/td_values \
-	$(B)/td_watch
+	$(B)/td_watch $(B)/td_threads $(B)/td_spin $(B)/td_cpp
 	sh td/test/run.sh $(B)
 
 # ttrc, To The Roots Commander (ttrc/DESIGN.md): tu + tf (+ tl) on a
@@ -809,8 +829,10 @@ $(B)/ttrt_settingsdlg.o: $(B)/.dir src/ttrt/settingsdlg.cpp $(TTRT_H) \
 # ttrcode, the code editor (ttrcode/DESIGN.md): te + tw + tt in Motif.
 TTRCODE_OBJS = $(B)/ttrcode_main.o \
 	$(B)/ttrcode_app.o \
+	$(B)/ttrcode_attach.o \
 	$(B)/ttrcode_breakpoints.o \
 	$(B)/ttrcode_celllist.o \
+	$(B)/ttrcode_datatip.o \
 	$(B)/ttrcode_debug.o \
 	$(B)/ttrcode_debugpanes.o \
 	$(B)/ttrcode_dock.o \
@@ -843,8 +865,12 @@ $(B)/ttrcode_debug.o: $(B)/.dir src/ttrcode/debug.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/debug.cpp -o $@
 $(B)/ttrcode_debugpanes.o: $(B)/.dir src/ttrcode/debugpanes.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/debugpanes.cpp -o $@
+$(B)/ttrcode_attach.o: $(B)/.dir src/ttrcode/attach.cpp $(TTRCODE_H)
+	$(COMPILE) -c src/ttrcode/attach.cpp -o $@
 $(B)/ttrcode_breakpoints.o: $(B)/.dir src/ttrcode/breakpoints.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/breakpoints.cpp -o $@
+$(B)/ttrcode_datatip.o: $(B)/.dir src/ttrcode/datatip.cpp $(TTRCODE_H)
+	$(COMPILE) -c src/ttrcode/datatip.cpp -o $@
 $(B)/ttrcode_celllist.o: $(B)/.dir src/ttrcode/celllist.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/celllist.cpp -o $@
 $(B)/ttrcode_valuetree.o: $(B)/.dir src/ttrcode/valuetree.cpp $(TTRCODE_H)

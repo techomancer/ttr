@@ -309,20 +309,21 @@ App::App(Widget top, const Options& o)
       ncascades_(0), term_(0), prog_term_(0), opt_(o), cur_(-1), untitled_(0), fullscreen_(false),
       close_pixmap_(0), save_w_(0), save_h_(0), save_x_(0), save_y_(0),
       in_scroll_update_(false), selecting_(false), last_click_(0), click_count_(0),
-      last_col_(-1), last_row_(-1), autoscroll_(0), autoscroll_id_(0), match_case_(false),
+      last_col_(-1), last_row_(-1), autoscroll_(0), autoscroll_id_(0), tip_timer_(0), tip_shell_(0),
+      tip_label_(0), tip_up_(false), tip_watch_(false), tip_x_(0), tip_y_(0), match_case_(false),
       find_dlg_(0), find_what_(0), replace_with_(0), case_toggle_(0), replace_row_(0),
       primary_(0), primary_len_(0), clipboard_(0), clipboard_len_(0), answer_(-1),
       scheme_items_(0), theme_items_(0), font_(0), term_font_(0), opt_font_(0), opt_term_font_(0),
       opt_text_(0), opt_term_text_(0), opt_dlg_(0), fif_dlg_(0), fif_replace_(false),
       dbg_(0), stop_line_(-1), frame_line_(-1), cur_frame_(0), have_last_regs_(false),
-      regs_stop_(-1),
-      dbg_kill_req_(false), stack_list_(0), regs_list_(0), threads_list_(0), watch_list_(0),
+      regs_stop_(-1), regs_thread_(-1),
+      dbg_kill_req_(false), dbg_attached_(false), stack_list_(0), regs_list_(0), threads_list_(0), watch_list_(0),
       vars_list_(0), mem_list_(0), vars_box_(0), vars_context_(0), vars_menu_(0),
       vars_auto_w_(0), vars_locals_w_(0), mem_box_(0), mem_addr_w_(0), mem_format_w_(0),
       vars_auto_(true), vars_menu_stop_(-1), mem_format_(0), mem_addr_(0), mem_per_row_(16), mem_prev_addr_(0),
-      mem_cur_addr_(0), mem_prev_stop_(-1), stop_serial_(0), quick_dlg_(0), quick_expr_(0),
+      mem_cur_addr_(0), mem_prev_stop_(-1), frames_serial_(0), stop_serial_(0), quick_dlg_(0), quick_expr_(0),
       quick_list_(0), dbg_dlg_(0), dbg_prog_(0), dbg_args_w_(0), dbg_dir_w_(0), bp_dlg_(0),
-      bp_at_w_(0), bp_expr_w_(0), bp_list_w_(0), bp_note_w_(0), results_(0), searched_(false), cur_result_(-1),
+      bp_at_w_(0), bp_expr_w_(0), bp_list_w_(0), bp_note_w_(0), attach_dlg_(0), results_(0), searched_(false), cur_result_(-1),
       scanned_(0), result_files_(0), fif_case_on_(false), fif_word_on_(false)
 {
     opt_renderer_ = 0;
@@ -574,6 +575,7 @@ void App::build_menus()
     menu_item(m, "Breakpoints...", 'p', 0, CMD_DEBUG_BREAKPOINTS);
     menu_item(m, "QuickWatch...", 'Q', "Shift+F9", CMD_DEBUG_QUICKWATCH);
     separator(m);
+    menu_item(m, "Attach to Process...", 'A', 0, CMD_DEBUG_ATTACH);
     menu_item(m, "Open Core File...", 'F', 0, CMD_DEBUG_CORE);
     menu_item(m, "Settings...", 't', 0, CMD_DEBUG_SETTINGS);
 
@@ -1782,6 +1784,7 @@ void App::command(int cmd)
     case CMD_DEBUG_QUICKWATCH:
     case CMD_DEBUG_BREAKPOINTS:
     case CMD_DEBUG_CORE:
+    case CMD_DEBUG_ATTACH:
         debug_command(cmd);
         break;
     default:
@@ -1837,6 +1840,7 @@ bool App::global_key(KeySym ks, unsigned state)
 
 void App::editor_key(TwGridCallbackStruct* cb)
 {
+    tip_hide();
     KeySym ks = cb->keysym;
     unsigned state = cb->state;
     if (ks == XK_Shift_L || ks == XK_Shift_R || ks == XK_Control_L || ks == XK_Control_R ||
@@ -2031,6 +2035,11 @@ void App::editor_pointer(TwGridCallbackStruct* cb)
     Doc* d = doc();
     if (!d)
         return;
+    if (cb->reason == TW_CR_MOTION && !selecting_ && !(cb->state & Button1Mask)) {
+        tip_motion(cb);
+        return;
+    }
+    tip_hide();
     te::View& v = d->view;
     Time t = cb->event ? cb->event->xbutton.time : CurrentTime;
     if (cb->reason == TW_CR_BUTTON_PRESS) {

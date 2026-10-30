@@ -1,0 +1,16 @@
+# attach: td_spin
+# Attaching to a running program: all of its threads stop, a breakpoint
+# in one, and detaching lets it go on (run.sh checks it still runs).
+t
+expect * 1  Thread
+expect   4  Thread
+p g_ticks > 0
+expect = 1
+b tick
+c
+expect Breakpoint 1, tick (spin.c:10)
+bt
+expect loop (spin.c:16)
+d 1
+detach
+expect Detached.

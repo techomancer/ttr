@@ -79,7 +79,7 @@ const int k_c_name = 16, k_c_sigcause = 16 + CORE_NAMESIZE + CORE_ARGSIZE,
 } /* namespace */
 
 CoreTarget::CoreTarget()
-    : fd_(-1), arch_(0), have_regs_(false), sig_(0), pid_(0), entry_(0)
+    : fd_(-1), arch_(0), cur_(0), sig_(0), pid_(0), entry_(0)
 {
 }
 
@@ -155,7 +155,7 @@ bool CoreTarget::open_elf(const unsigned char* h, ttr::Str* err)
             elf_notes(le(p + 8, 8), le(p + 32, 8));
         }
     }
-    if (!have_regs_) {
+    if (threads_.empty()) {
         if (err)
             *err = "the core file has no registers";
         return false;
@@ -182,16 +182,20 @@ void CoreTarget::elf_notes(uint64_t off, uint64_t size)
         if (desc + descsz > size)
             break;
         const unsigned char* d = p + desc;
-        if (type == NT_PRSTATUS_ && !have_regs_ && descsz >= (uint64_t)(k_pr_reg + 27 * 8)) {
-            sig_ = (int)le(d + k_pr_cursig, 2);
-            pid_ = (int)le(d + k_pr_pid, 4);
-            regs_.clear();
+        if (type == NT_PRSTATUS_ && descsz >= (uint64_t)(k_pr_reg + 27 * 8)) {
+            int tid = (int)le(d + k_pr_pid, 4);
+            if (threads_.empty()) {
+                sig_ = (int)le(d + k_pr_cursig, 2);
+                pid_ = tid;
+            }
+            Regs r;
+            r.clear();
             int i;
             for (i = 0; i < 27; i++)
                 if (k_x86_order[i] >= 0)
-                    regs_.set(k_x86_order[i], le(d + k_pr_reg + 8 * i, 8));
-            regs_.pc = regs_.r[16];
-            have_regs_ = true;
+                    r.set(k_x86_order[i], le(d + k_pr_reg + 8 * i, 8));
+            r.pc = r.r[16];
+            add_thread(tid, r);
         } else if (type == NT_PRPSINFO_ && descsz >= (uint64_t)(k_ps_fname + 16)) {
             char n[17];
             memcpy(n, d + k_ps_fname, 16);
@@ -288,17 +292,18 @@ bool CoreTarget::open_irix(const unsigned char* h, ttr::Str* err)
             *err = "the core file has no registers";
         return false;
     }
-    regs_.clear();
+    Regs r;
+    r.clear();
     for (i = 0; i < 32; i++)
-        regs_.set(i, be(g + 8 * i, 8));
-    regs_.pc = be(sp, 8);
+        r.set(i, be(g + 8 * i, 8));
+    r.pc = be(sp, 8);
     if (arch_->ptr_size == 4) {
         /* n32: 64-bit registers holding 32-bit addresses. */
-        regs_.pc = (uint32_t)regs_.pc;
-        regs_.r[29] = (uint32_t)regs_.r[29];
-        regs_.r[31] = (uint32_t)regs_.r[31];
+        r.pc = (uint32_t)r.pc;
+        r.r[29] = (uint32_t)r.r[29];
+        r.r[31] = (uint32_t)r.r[31];
     }
-    have_regs_ = true;
+    add_thread(pid_ ? pid_ : 1, r);
     return true;
 }
 
@@ -355,10 +360,44 @@ bool CoreTarget::poll(Event* ev, bool* got)
     return wait(ev);
 }
 
+void CoreTarget::add_thread(int id, const Regs& r)
+{
+    Thread t;
+    t.id = id;
+    t.regs = r;
+    threads_.push_back(t);
+}
+
+int CoreTarget::threads(ttr::Vector<int>* ids)
+{
+    int i;
+    for (i = 0; i < threads_.size(); i++)
+        ids->push_back(threads_[i].id);
+    return ids->size();
+}
+
+int CoreTarget::current_thread() const
+{
+    return threads_.empty() ? 0 : threads_[cur_].id;
+}
+
+bool CoreTarget::select_thread(int id)
+{
+    int i;
+    for (i = 0; i < threads_.size(); i++)
+        if (threads_[i].id == id) {
+            cur_ = i;
+            return true;
+        }
+    return false;
+}
+
 bool CoreTarget::get_regs(Regs* r)
 {
-    *r = regs_;
-    return have_regs_;
+    if (threads_.empty())
+        return false;
+    *r = threads_[cur_].regs;
+    return true;
 }
 
 int CoreTarget::add_watch(Addr, size_t, ttr::Str* err)

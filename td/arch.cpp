@@ -185,6 +185,21 @@ void Target::setup_child(const LaunchOptions& o)
     }
 }
 
+/* An insertion sort: there are hundreds at most. */
+void Target::sort_processes(ttr::Vector<ProcessInfo>* list)
+{
+    int i, k;
+    for (i = 1; i < list->size(); i++)
+        for (k = i; k > 0 && ((*list)[k - 1].start > (*list)[k].start ||
+                              ((*list)[k - 1].start == (*list)[k].start &&
+                               (*list)[k - 1].pid > (*list)[k].pid));
+             k--) {
+            ProcessInfo t = (*list)[k];
+            (*list)[k] = (*list)[k - 1];
+            (*list)[k - 1] = t;
+        }
+}
+
 bool Target::read_string(Addr a, char* buf, size_t n)
 {
     size_t i;

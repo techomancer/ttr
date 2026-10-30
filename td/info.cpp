@@ -378,6 +378,8 @@ Info::~Info()
         delete functions_[i];
     for (i = 0; i < globals_.size(); i++)
         delete globals_[i];
+    for (i = 0; i < strings_.size(); i++)
+        free(strings_[i]);
     free(slots_);
 }
 
@@ -387,6 +389,13 @@ namespace {
 int compare_funcs(const void* pa, const void* pb)
 {
     Addr a = *(const Addr*)pa, b = *(const Addr*)pb;
+    return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/* Info::Decl's first field is its die. */
+int compare_decls(const void* pa, const void* pb)
+{
+    uint64_t a = *(const uint64_t*)pa, b = *(const uint64_t*)pb;
     return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -411,16 +420,54 @@ void Info::index()
             drop(dbg, &e);
             break;
         }
-        index_children(cu, die_offset(dbg, cu), 0);
+        index_children(cu, die_offset(dbg, cu), 0, "");
         dwarf_dealloc_die(cu);
     }
     if (!names_.empty())
         qsort(&names_[0], (size_t)names_.size(), sizeof(Name), compare_names);
+    /* Member functions defined outside their class: their qualified
+     * names from the declarations. */
+    if (!decls_.empty()) {
+        qsort(&decls_[0], (size_t)decls_.size(), sizeof(Decl), compare_decls);
+        int i;
+        for (i = 0; i < functions_.size(); i++) {
+            Function* f = functions_[i];
+            if (f->qualified || !f->spec)
+                continue;
+            int lo = 0, hi = decls_.size() - 1;
+            while (lo <= hi) {
+                int mid = (lo + hi) / 2;
+                if (decls_[mid].die == f->spec) {
+                    f->qualified = decls_[mid].qualified;
+                    break;
+                }
+                if (decls_[mid].die < f->spec)
+                    lo = mid + 1;
+                else
+                    hi = mid - 1;
+            }
+        }
+    }
     if (!funcs_.empty())
         qsort(&funcs_[0], (size_t)funcs_.size(), sizeof(FuncRange), compare_funcs);
 }
 
-void Info::index_children(void* parent, uint64_t cu, int depth)
+/* prefix "name::", kept until the Info goes. */
+const char* Info::keep(const char* prefix, const char* name)
+{
+    size_t a = strlen(prefix), b = strlen(name);
+    char* s = (char*)malloc(a + b + 1);
+    if (!s)
+        return "";
+    memcpy(s, prefix, a);
+    memcpy(s + a, name, b + 1);
+    strings_.push_back(s);
+    return s;
+}
+
+/* The DIEs under parent; prefix: the namespaces and classes they are in,
+ * "geo::Rect::" (C++). */
+void Info::index_children(void* parent, uint64_t cu, int depth, const char* prefix)
 {
     Dwarf_Debug dbg = D(dbg_);
     Dwarf_Die c = first_child(dbg, (Dwarf_Die)parent);
@@ -432,9 +479,21 @@ void Info::index_children(void* parent, uint64_t cu, int depth)
         n.cu = cu;
         n.kind = 0;
         switch (tag) {
-        case DW_TAG_subprogram:
-            index_function(c, cu);
+        case DW_TAG_subprogram: {
+            const char* q = 0;
+            if (*prefix) {
+                const char* nm = die_name(dbg, c);
+                if (nm) {
+                    q = keep(prefix, nm);
+                    Decl d;
+                    d.die = n.die;
+                    d.qualified = q;
+                    decls_.push_back(d);
+                }
+            }
+            index_function(c, cu, q);
             break;
+        }
         case DW_TAG_variable: {
             Attr a;
             if (get_attr(dbg, c, DW_AT_location, &a) || get_attr(dbg, c, DW_AT_const_value, &a)) {
@@ -464,6 +523,9 @@ void Info::index_children(void* parent, uint64_t cu, int depth)
         }
         case DW_TAG_base_type:
         case DW_TAG_typedef:
+            n.name = die_name(dbg, c);
+            n.kind = 't';
+            break;
         case DW_TAG_structure_type:
         case DW_TAG_union_type:
         case DW_TAG_class_type:
@@ -471,10 +533,24 @@ void Info::index_children(void* parent, uint64_t cu, int depth)
                 break;
             n.name = die_name(dbg, c);
             n.kind = 't';
+            /* C++: its member functions, for their qualified names */
+            if (n.name && depth < 8) {
+                Text p;
+                p.add(prefix);
+                p.add(n.name);
+                p.add("::");
+                index_children(c, cu, depth + 1, keep(p.c_str(), ""));
+            }
             break;
         case DW_TAG_namespace:
-            if (depth < 8)
-                index_children(c, cu, depth + 1);
+            if (depth < 8) {
+                const char* nm = die_name(dbg, c);
+                Text p;
+                p.add(prefix);
+                p.add(nm ? nm : "(anonymous namespace)");
+                p.add("::");
+                index_children(c, cu, depth + 1, keep(p.c_str(), ""));
+            }
             break;
         default:
             break;
@@ -484,7 +560,7 @@ void Info::index_children(void* parent, uint64_t cu, int depth)
     }
 }
 
-void Info::index_function(void* die, uint64_t cu)
+void Info::index_function(void* die, uint64_t cu, const char* qualified)
 {
     Dwarf_Debug dbg = D(dbg_);
     ttr::Vector<LocRange> rs;
@@ -492,6 +568,10 @@ void Info::index_function(void* die, uint64_t cu)
         return;
     Function* f = new Function;
     f->name = die_name(dbg, (Dwarf_Die)die);
+    f->qualified = qualified;
+    uint64_t spec = 0;
+    if (get_ref(dbg, (Dwarf_Die)die, DW_AT_specification, &spec))
+        f->spec = spec;
     f->die = die_offset(dbg, (Dwarf_Die)die);
     f->cu = cu;
     f->lo = rs[0].lo;
@@ -664,6 +744,72 @@ const Info::Name* Info::find_name(const char* name, char kind, uint64_t cu) cons
             any = &names_[i];
     }
     return any;
+}
+
+bool Info::function_bounds(Addr a, const char** name, Addr* lo, Addr* hi)
+{
+    const FuncRange* r = range_at(a);
+    if (!r || !(r->f->qualified || r->f->name))
+        return false;
+    *name = r->f->qualified ? r->f->qualified : r->f->name;
+    *lo = r->f->lo;
+    *hi = r->f->hi;
+    return true;
+}
+
+const char* Info::qualified_at(Addr a)
+{
+    const FuncRange* r = range_at(a);
+    return r ? r->f->qualified : 0;
+}
+
+/* The name as given, or (MIPSpro's DWARF has no namespaces) one that
+ * ends it after a "::": "Rect::area" for "geo::Rect::area". */
+bool Info::function_named(const char* qualified, Addr* lo, Addr* hi)
+{
+    if (!indexed_)
+        index();
+    size_t n = strlen(qualified);
+    int i, pass;
+    for (pass = 0; pass < 2; pass++)
+        for (i = 0; i < functions_.size(); i++) {
+            const Function* f = functions_[i];
+            if (!f->qualified)
+                continue;
+            size_t m = strlen(f->qualified);
+            bool match = pass == 0 ? !strcmp(f->qualified, qualified)
+                                   : m + 2 <= n && !strcmp(qualified + n - m, f->qualified) &&
+                                         qualified[n - m - 1] == ':' &&
+                                         qualified[n - m - 2] == ':';
+            if (match) {
+                *lo = f->lo;
+                *hi = f->hi;
+                return true;
+            }
+        }
+    return false;
+}
+
+/* The innermost function range holding a. */
+const Info::FuncRange* Info::range_at(Addr a)
+{
+    if (!indexed_)
+        index();
+    int lo = 0, hi = funcs_.size() - 1, best = -1;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        if (funcs_[mid].lo <= a) {
+            best = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    int i;
+    for (i = best; i >= 0 && i > best - 8; i--)
+        if (a >= funcs_[i].lo && a < funcs_[i].hi)
+            return &funcs_[i];
+    return 0;
 }
 
 const Function* Info::function_at(Addr a)

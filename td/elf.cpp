@@ -1,5 +1,7 @@
 #include "elf.h"
 
+#include "demangle.h"
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,13 +46,16 @@ int compare_symbols(const void* pa, const void* pb)
 
 ElfFile::ElfFile()
     : data_(0), size_(0), is64_(false), big_(false), type_(0), machine_(0), entry_(0),
-      load_lo_(0), load_hi_(0), dyn_(0)
+      load_lo_(0), load_hi_(0), dyn_(0), cxx_(false)
 {
 }
 
 ElfFile::~ElfFile()
 {
     free(data_);
+    int i;
+    for (i = 0; i < names_.size(); i++)
+        free(names_[i]);
 }
 
 uint64_t ElfFile::u16(const unsigned char* p) const
@@ -108,7 +113,48 @@ bool ElfFile::load(const char* path, ttr::Str* err)
         read_symbols(SHT_DYNSYM_);
     if (!syms_.empty())
         qsort(&syms_[0], (size_t)syms_.size(), sizeof(Symbol), compare_symbols);
+    /* Functions without a size (MIPSpro's local ones): up to the next
+     * symbol. */
+    int i;
+    for (i = 0; i < syms_.size(); i++) {
+        if (!syms_[i].func || syms_[i].size)
+            continue;
+        int k;
+        for (k = i + 1; k < syms_.size() && syms_[k].addr == syms_[i].addr; k++)
+            ;
+        if (k < syms_.size())
+            syms_[i].size = syms_[k].addr - syms_[i].addr;
+    }
+    demangle_symbols();
     return true;
+}
+
+/* C++ functions' names as written (td/demangle.h). Only names that look
+ * mangled are tried: Itanium's start with _Z; cfront's have "__", and are
+ * tried in IRIX's (MIPS) files only. */
+void ElfFile::demangle_symbols()
+{
+    bool cfront = machine_ == EM_MIPS_;     /* MIPSpro's */
+    int i;
+    for (i = 0; i < syms_.size(); i++) {
+        Symbol& s = syms_[i];
+        if (!s.func)
+            continue;
+        Text t;
+        if (!strncmp(s.name, "_Z", 2)) {
+            if (!demangle_itanium(s.name, &t))
+                continue;
+        } else if (!cfront || !strstr(s.name + 1, "__") || !demangle_cfront(s.name, &t)) {
+            continue;
+        }
+        char* c = (char*)malloc(t.length() + 1);
+        if (!c)
+            continue;
+        memcpy(c, t.c_str(), t.length() + 1);
+        names_.push_back(c);
+        s.display = c;
+        cxx_ = true;
+    }
 }
 
 void ElfFile::read_segments()
@@ -191,6 +237,7 @@ void ElfFile::read_symbols(int symtab_type)
                 continue;
             Symbol sym;
             sym.name = strtab + name;
+            sym.display = sym.name;
             sym.addr = value;
             sym.size = ssize;
             sym.func = type == STT_FUNC_;
@@ -239,6 +286,27 @@ const Symbol* ElfFile::find(const char* name) const
     for (i = 0; i < syms_.size(); i++)
         if (syms_[i].func && strcmp(syms_[i].name, name) == 0)
             return &syms_[i];
+    /* As written: up to its parameters, or with them; after a template's
+     * return type ("int twice<int>(int)"), with its arguments or without
+     * ("twice"); or without its class or namespace ("area" for
+     * "geo::Rect::area() const"). */
+    size_t n = strlen(name);
+    bool with_params = strchr(name, '(') != 0;
+    for (i = 0; i < syms_.size(); i++) {
+        const Symbol& s = syms_[i];
+        if (!s.func || s.display == s.name)
+            continue;
+        const char* d = s.display;
+        const char* paren = strchr(d, '(');
+        const char* at;
+        for (at = strstr(d, name); at && (!paren || at < paren); at = strstr(at + 1, name)) {
+            bool start = at == d || at[-1] == ' ' || (at - d >= 2 && at[-1] == ':' && at[-2] == ':');
+            bool end = with_params ? !at[n]
+                                   : (at[n] == '(' || !at[n] || (at[n] == '<' && !strchr(name, '<')));
+            if (start && end)
+                return &s;
+        }
+    }
     return 0;
 }
 

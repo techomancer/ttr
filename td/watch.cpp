@@ -44,6 +44,7 @@ int Session::add_watch(const Frame& f, const char* expr, ttr::Str* err)
     w.hits = 0;
     w.scope_sp = 0;
     w.scope_pc = 0;
+    w.scope_thread = target_->current_thread();
     if (!w.size) {
         if (err)
             *err = "it has no size";

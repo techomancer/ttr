@@ -1,0 +1,36 @@
+# program: td_cpp
+# C++: breakpoints by the names the source uses (a member function, one
+# of two overloads, a template, an operator) and the stops and call stack
+# under those names (demangled: Itanium on Linux, cfront on IRIX; IRIX's
+# inline members are named from the DWARF, which has no namespaces:
+# Rect::area).
+b geo::Rect::area
+expect Rect::area
+b geo::scale(int, int)
+expect geo::scale(int, int)
+b twice
+expect twice
+b Counter::operator+=
+expect Counter::operator+=
+r
+expect Breakpoint 1,
+expect Rect::area
+expect (cpp.cpp:14)
+bt
+expect main (cpp.cpp:50)
+c
+expect Breakpoint 4, Counter::operator+=
+c
+expect Breakpoint 4, Counter::operator+=
+c
+expect Breakpoint 2, geo::scale(int, int) (cpp.cpp:24)
+bt
+expect main (cpp.cpp:52)
+c
+expect Breakpoint 4,
+c
+expect Breakpoint 3,
+expect twice
+d 4
+c
+expect Program exited with code 0.

@@ -287,6 +287,13 @@ void CellList::resized(int cols, int rows)
     bool changed = cols != cols_ || rows != nrows_;
     cols_ = cols > 0 ? cols : 1;
     nrows_ = rows > 0 ? rows : 1;
+    /* Taller now (or first laid out): no empty space below the last row
+     * while rows above are scrolled away. */
+    if (top_ > 0 && top_ + visible_rows() > rows_.size()) {
+        top_ = rows_.size() - visible_rows();
+        if (top_ < 0)
+            top_ = 0;
+    }
     if (sel_ >= 0)
         make_visible(sel_);
     else

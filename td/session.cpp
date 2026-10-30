@@ -28,7 +28,7 @@ const char* base_name(const char* p)
 Session::Session()
     : target_(0), alive_(false), started_(false), next_id_(1), pending_sig_(0), idle_(0),
       idle_ctx_(0), busy_(false), interrupted_(false), hit_watch_(0), used_local_(false),
-      core_(0)
+      core_(0), bp_thread_(-1)
 {
 }
 
@@ -393,15 +393,15 @@ Stop Session::to_stop(const Event& e)
     s.status = e.status;
     s.pc = e.pc;
     s.watch = 0;
+    s.thread = e.thread;
+    if (e.kind == EV_BREAK)
+        bp_thread_ = e.thread;
     if (e.kind == EV_EXITED || e.kind == EV_KILLED || e.kind == EV_ERROR) {
         alive_ = false;
         pending_sig_ = 0;
     } else if (e.kind == EV_WATCH) {
         s.watch = hit_watch_;
-    } else if (e.kind == EV_SIGNAL && interrupted_ && (e.sig == 0 || e.sig == SIGSTOP)) {
-        /* What interrupt() asked for: not the program's signal. */
-        s.kind = EV_PAUSED;
-        interrupted_ = false;
+    } else if (e.kind == EV_PAUSED) {
     } else if (e.kind == EV_SIGNAL) {
         pending_sig_ = e.sig;     /* delivered when it runs again */
     } else if (e.kind == EV_BREAK) {
@@ -414,18 +414,19 @@ Stop Session::to_stop(const Event& e)
             s.bp = bps_[i].id;
         }
     }
+    interrupted_ = false;   /* whatever stopped it, it is stopped */
     if (!alive_ || watches_.empty())
         return s;
-    /* A watched local's frame has returned when the stack pointer is
-     * back up to its caller's: the watch ends (it would catch whatever
-     * uses that stack next). */
-    Regs r;
-    if (!target_->get_regs(&r))
-        return s;
+    /* A watched local's frame has returned when its thread's stack
+     * pointer is back up to its caller's (or the thread has ended): the
+     * watch ends (it would catch whatever uses that stack next). */
     int sp = target_->arch()->sp_reg, i;
     for (i = watches_.size() - 1; i >= 0; i--) {
         const Watchpoint& w = watches_[i];
-        if (!w.scope_sp || r.r[sp] < w.scope_sp)
+        if (!w.scope_sp)
+            continue;
+        Regs r;
+        if (thread_regs(w.scope_thread, &r) && r.r[sp] < w.scope_sp)
             continue;
         if (s.kind != EV_WATCH) {
             s.kind = EV_WATCH_ENDED;
@@ -436,27 +437,37 @@ Stop Session::to_stop(const Event& e)
     return s;
 }
 
-/* Off a breakpoint at the pc: run its instruction with the breakpoint
- * out. *done: the step ended the run (a signal, an exit). */
+/* Off a breakpoint: run its instruction with the breakpoint out, in the
+ * thread that stopped there, and in the current thread if it is at one
+ * too (other threads that reached one were moved back to it by the
+ * Target, and reach it again). *done: the step ended the run (a signal,
+ * an exit). */
 Stop Session::step_over_bp(bool* done)
 {
     Stop s;
     memset(&s, 0, sizeof(s));
     *done = false;
-    Regs r;
-    if (!target_->get_regs(&r) || bp_at(r.pc) < 0)
-        return s;
-    int sig = pending_sig_;
-    pending_sig_ = 0;
-    Event e;
-    if (!run_target(true, sig, &e)) {
-        *done = true;
-        return to_stop(e);
+    int cur = target_->current_thread();
+    int list[2], n = 0, i;
+    if (bp_thread_ >= 0 && bp_thread_ != cur)
+        list[n++] = bp_thread_;
+    list[n++] = cur;
+    bp_thread_ = -1;
+    for (i = 0; i < n; i++) {
+        Regs r;
+        if (!target_->select_thread(list[i]) || !target_->get_regs(&r) || bp_at(r.pc) < 0)
+            continue;
+        /* The signal it stopped with is the current thread's. */
+        int sig = list[i] == cur ? pending_sig_ : 0;
+        if (list[i] == cur)
+            pending_sig_ = 0;
+        Event e;
+        if (!run_target(true, sig, &e) || e.kind != EV_STEP) {
+            *done = true;
+            return to_stop(e);
+        }
     }
-    if (e.kind != EV_STEP) {
-        *done = true;
-        return to_stop(e);
-    }
+    target_->select_thread(cur);
     return s;
 }
 
@@ -577,6 +588,7 @@ Stop Session::step_instruction()
 Stop Session::run_to(Addr a, Addr min_sp)
 {
     const Arch* arch = target_->arch();
+    int thread = target_->current_thread();
     for (;;) {
         add_location(0, "", a);
         Stop s = cont();
@@ -592,6 +604,12 @@ Stop Session::run_to(Addr a, Addr min_sp)
             s.bp = bps_[bp_at(a)].id;   /* a user breakpoint there too */
         Regs r;
         target_->get_regs(&r);
+        /* Another thread got there: on. (IRIX runs pthreads on fewer
+         * kernel threads, so the same frame may come back in another
+         * one: its stack pointer, just above min_sp, says it is.) */
+        Addr sp = r.r[arch->sp_reg];
+        if (s.thread != thread && s.bp <= 0 && !(min_sp && sp >= min_sp && sp - min_sp <= 64))
+            continue;
         if (!min_sp || r.r[arch->sp_reg] >= min_sp || s.bp > 0)
             return s;
         /* A deeper recursive call got there first: on. */
@@ -725,6 +743,62 @@ Stop Session::finish()
     if (s.kind == EV_BREAK && !s.bp && s.pc == frames[1].pc)
         s.kind = EV_STEP;
     return s;
+}
+
+/* ------------------------------------------------------------------ */
+/* Threads                                                             */
+
+int Session::threads(ttr::Vector<int>* ids)
+{
+    if (!alive_)
+        return 0;
+    target_->threads(ids);
+    return ids->size();
+}
+
+int Session::current_thread() const
+{
+    return alive_ ? target_->current_thread() : -1;
+}
+
+bool Session::select_thread(int id)
+{
+    return alive_ && target_->select_thread(id);
+}
+
+/* Numbered in the order the Target lists them, which is the order they
+ * started. */
+int Session::thread_number(int id)
+{
+    int i = thread_ids_.find(id);
+    if (i < 0 && alive_) {
+        ttr::Vector<int> ids;
+        target_->threads(&ids);
+        int k;
+        for (k = 0; k < ids.size(); k++)
+            if (thread_ids_.find(ids[k]) < 0)
+                thread_ids_.push_back(ids[k]);
+        i = thread_ids_.find(id);
+    }
+    if (i < 0) {
+        thread_ids_.push_back(id);
+        i = thread_ids_.size() - 1;
+    }
+    return i + 1;
+}
+
+/* Another thread's registers, the current one staying current. False if
+ * it is gone. */
+bool Session::thread_regs(int id, Regs* r)
+{
+    int cur = target_->current_thread();
+    if (id == cur)
+        return target_->get_regs(r);
+    if (!target_->select_thread(id))
+        return false;
+    bool ok = target_->get_regs(r);
+    target_->select_thread(cur);
+    return ok;
 }
 
 void Session::kill()

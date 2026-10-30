@@ -8,7 +8,8 @@
  * (debugpanes.cpp). While the program runs, td calls debug_idle, which
  * goes on handling the window's events (Debug > Break interrupts it).
  * Debug > Open Core File shows a crashed program's core file in the same
- * windows; it does not run.
+ * windows; it does not run. Debug > Attach to Process (attach.cpp) stops
+ * a running program to debug it; Stop Debugging then lets it go on.
  */
 #include "app.h"
 
@@ -93,6 +94,11 @@ const char* signal_name(int sig)
 }
 
 } /* namespace */
+
+const char* default_debug_layout()
+{
+    return k_debug_layout;
+}
 
 /* ---- running ---- */
 
@@ -222,10 +228,16 @@ void App::debug_open_core()
 
 void App::debug_end()
 {
+    tip_hide();
     if (!dbg_)
         return;
-    if (dbg_->running())
-        dbg_->kill();
+    if (dbg_->running()) {
+        if (dbg_attached_)
+            dbg_->detach();     /* it was running before: it runs on */
+        else
+            dbg_->kill();
+    }
+    dbg_attached_ = false;
     delete dbg_;
     dbg_ = 0;
     int i;
@@ -237,6 +249,8 @@ void App::debug_end()
     stop_path_ = "";
     frame_path_ = "";
     frames_.clear();
+    thread_ids_.clear();
+    thread_where_.clear();
     cur_frame_ = 0;
     have_last_regs_ = false;
     /* td's values go with the session; what is open stays. */
@@ -275,17 +289,20 @@ void App::debug_stopped(const td::Stop& s)
         debug_status(msg);
         return;
     }
-    frames_.clear();
-    dbg_->backtrace(&frames_, 64);
-    cur_frame_ = 0;
     stop_serial_++;
-    stop_path_ = "";
-    if (frames_.size() > 0 && frames_[0].has_place && frames_[0].place.file) {
-        stop_path_ = real_path(frames_[0].place.file);
-        stop_line_ = frames_[0].place.line - 1;
+    load_threads();
+    load_frames();
+    /* Stopped from outside (Break, attaching): likely in the system's
+     * code, so the first frame with source is shown. */
+    int shown = s.kind == td::EV_PAUSED ? source_frame() : 0;
+    debug_show_frame(shown, true);
+    ttr::Str where = frames_.size() ? td::format_place(frames_[shown]) : ttr::Str("??");
+    if (thread_ids_.size() > 1) {
+        /* Which thread, when there are several. */
+        char t[1600];
+        snprintf(t, sizeof(t), "%s, thread %d", where.c_str(), dbg_->thread_number(s.thread));
+        where = t;
     }
-    debug_show_frame(0, true);
-    ttr::Str where = frames_.size() ? td::format_place(frames_[0]) : ttr::Str("??");
     int i;
     if (s.kind == td::EV_SIGNAL && dbg_->is_core()) {
         snprintf(msg, sizeof(msg), "Core file of %s: %s in %s", dbg_->core()->program_name(),
@@ -326,6 +343,7 @@ void App::debug_stopped(const td::Stop& s)
 
 void App::debug_command(int cmd)
 {
+    tip_hide();
     if (cmd == CMD_DEBUG_TOGGLE_BP) {
         toggle_breakpoint();
         return;
@@ -354,8 +372,9 @@ void App::debug_command(int cmd)
     }
     if (cmd == CMD_DEBUG_STOP) {
         if (dbg_) {
+            bool attached = dbg_attached_ && dbg_->running();
             debug_end();
-            debug_status("Debugging stopped.");
+            debug_status(attached ? "Detached: the program runs on." : "Debugging stopped.");
         }
         return;
     }
@@ -363,6 +382,10 @@ void App::debug_command(int cmd)
         return;
     if (cmd == CMD_DEBUG_CORE) {
         debug_open_core();
+        return;
+    }
+    if (cmd == CMD_DEBUG_ATTACH) {
+        show_attach();
         return;
     }
     if (dbg_ && dbg_->is_core() && cmd != CMD_DEBUG_RESTART) {
@@ -552,6 +575,71 @@ void App::frame_chosen(int i)
 {
     if (dbg_ && !dbg_->busy())
         debug_show_frame(i, false);
+}
+
+/* The current thread's stack, and the yellow arrow where it is. */
+void App::load_frames()
+{
+    frames_.clear();
+    dbg_->backtrace(&frames_, 64);
+    frames_serial_++;
+    cur_frame_ = 0;
+    stop_path_ = "";
+    if (frames_.size() > 0 && frames_[0].has_place && frames_[0].place.file) {
+        stop_path_ = real_path(frames_[0].place.file);
+        stop_line_ = frames_[0].place.line - 1;
+    }
+}
+
+/* The innermost frame with source (0 if none has). */
+int App::source_frame() const
+{
+    int i;
+    for (i = 0; i < frames_.size(); i++)
+        if (frames_[i].has_place && frames_[i].place.file)
+            return i;
+    return 0;
+}
+
+/* Every thread and where it is, the current one staying current. */
+void App::load_threads()
+{
+    thread_ids_.clear();
+    thread_where_.clear();
+    dbg_->threads(&thread_ids_);
+    int cur = dbg_->current_thread(), i;
+    for (i = 0; i < thread_ids_.size(); i++) {
+        td::Regs r;
+        td::Frame f;
+        ttr::Str w("??");
+        if (dbg_->select_thread(thread_ids_[i]) && dbg_->regs(&r) &&
+            dbg_->describe(r.pc, false, &f))
+            w = td::format_place(f);
+        thread_where_.push_back(w);
+    }
+    dbg_->select_thread(cur);
+}
+
+/* Threads pane: double-click switches to that thread (VC6's Switch To):
+ * its stack, its values, the arrow at its line. */
+void App::thread_chosen(int row)
+{
+    if (!dbg_ || dbg_->busy() || row < 0 || row >= thread_ids_.size())
+        return;
+    if (!dbg_->select_thread(thread_ids_[row]))
+        return;
+    load_frames();
+    /* Its registers are another thread's: nothing to show as changed. */
+    have_last_regs_ = false;
+    /* A thread waiting in the system's code: its first frame with source
+     * is what there is to look at. */
+    int i = source_frame();
+    debug_show_frame(i, false);
+    char msg[600];
+    ttr::Str where = frames_.size() ? td::format_place(frames_[i]) : ttr::Str("??");
+    snprintf(msg, sizeof(msg), "Thread %d: %s", dbg_->thread_number(thread_ids_[row]),
+             where.c_str());
+    debug_status(msg);
 }
 
 /* ---- Debug > Settings ---- */

@@ -115,6 +115,8 @@ struct Block {
 
 struct Function {
     const char* name;
+    const char* qualified;  /* C++: with its classes and namespaces
+                             * ("geo::Rect::area"), else 0 */
     Addr lo, hi;
     uint64_t die;
     uint64_t cu;            /* its compilation unit's DIE */
@@ -122,7 +124,8 @@ struct Function {
     ttr::Vector<Variable> vars;     /* in the order declared */
     ttr::Vector<Block> blocks;
     bool loaded;            /* vars and blocks read */
-    Function() : name(0), lo(0), hi(0), die(0), cu(0), loaded(false) {}
+    uint64_t spec;          /* the declaration it defines (DW_AT_specification) */
+    Function() : name(0), qualified(0), lo(0), hi(0), die(0), cu(0), loaded(false), spec(0) {}
 };
 
 class Info {
@@ -141,6 +144,13 @@ public:
     bool enumerator(const char* name, int64_t* value, Type** type);
     /* A type by name: "int", "unsigned int", "struct pt", "pt". */
     Type* type_named(const char* name);
+    /* C++: the function at an address, or by name, with its classes and
+     * namespaces ("geo::Rect::area"), without reading its variables. */
+    const char* qualified_at(Addr a);
+    /* The function there from the DWARF alone: its name (qualified if
+     * known) and range. */
+    bool function_bounds(Addr a, const char** name, Addr* lo, Addr* hi);
+    bool function_named(const char* qualified, Addr* lo, Addr* hi);
 
     const LocRange& range(int i) const { return ranges_[i]; }
     const Op& op(int i) const { return ops_[i]; }
@@ -160,10 +170,16 @@ private:
         uint64_t die;
         Type* type;
     };
+    struct Decl {           /* a member function's declaration in its class */
+        uint64_t die;
+        const char* qualified;
+    };
 
     void index();
-    void index_children(void* parent, uint64_t cu, int depth);
-    void index_function(void* die, uint64_t cu);
+    void index_children(void* parent, uint64_t cu, int depth, const char* prefix);
+    void index_function(void* die, uint64_t cu, const char* qualified);
+    const char* keep(const char* prefix, const char* name);
+    const FuncRange* range_at(Addr a);
     const Name* find_name(const char* name, char kind, uint64_t cu) const;
     void read_function(Function* f);
     void read_scope(void* die, Function* f, int block);
@@ -182,6 +198,8 @@ private:
     ttr::Vector<Name> names_;           /* sorted by name */
     ttr::Vector<FuncRange> funcs_;      /* sorted by lo */
     ttr::Vector<Function*> functions_;  /* all, to free */
+    ttr::Vector<Decl> decls_;           /* sorted by die */
+    ttr::Vector<char*> strings_;        /* qualified names, to free */
     ttr::Vector<Variable*> globals_;    /* read so far */
     ttr::Vector<uint64_t> global_dies_;
     ttr::Vector<Type*> types_;          /* all, to free */

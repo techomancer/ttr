@@ -4,11 +4,15 @@
  * breakpoints, stepping by line and by instruction, and the call stack.
  * Both user interfaces (ttrdb, later ttrcode) talk only to this.
  *
- * The prototype: one thread, and calls that return when the program
- * stops. While it runs they call the idle function, if one is set, so a
- * user interface can go on handling its events and call interrupt(). Shared objects are read when the program reaches its entry point
- * (the dynamic linker has loaded those it starts with) and again at every
- * stop after that.
+ * Calls that return when the program stops. While it runs they call the
+ * idle function, if one is set, so a user interface can go on handling
+ * its events and call interrupt(). Shared objects are read when the
+ * program reaches its entry point (the dynamic linker has loaded those it
+ * starts with) and again at every stop after that.
+ *
+ * Threads stop together and run together. The current thread is the one
+ * the stack, the values and the steps are of: after a stop, the thread
+ * that stopped; select_thread() changes it.
  *
  * A core file is a session too (open_core): the same stack and values,
  * of a program that does not run.
@@ -52,9 +56,11 @@ struct Watchpoint {
     unsigned char before[WATCH_MAX];   /* before the last change */
     int handle;             /* the Target's */
     int hits;
-    /* A local's: its frame ends when the stack pointer is back up to its
-     * caller's (scope_sp), at scope_pc. 0: a global, for good. */
+    /* A local's: its frame (in thread scope_thread) ends when the stack
+     * pointer is back up to its caller's (scope_sp), at scope_pc. 0: a
+     * global, for good. */
     Addr scope_sp, scope_pc;
+    int scope_thread;
 };
 
 struct Frame {
@@ -76,6 +82,7 @@ struct Stop {
     int sig;
     int status;
     Addr pc;
+    int thread;         /* the thread that stopped (the system's id) */
 };
 
 class Session {
@@ -137,7 +144,15 @@ public:
     /* Let it go on without the debugger. */
     void detach();
 
-    /* The call stack, innermost first. */
+    /* Threads, by the system's ids, in the order they started. */
+    int threads(ttr::Vector<int>* ids);
+    int current_thread() const;
+    bool select_thread(int id);
+    /* A short number for a thread: 1 for the first, 2 for the next one
+     * seen, and so on. */
+    int thread_number(int id);
+
+    /* The call stack of the current thread, innermost first. */
     int backtrace(ttr::Vector<Frame>* frames, int max);
     bool describe(Addr pc, bool caller, Frame* f);
     bool regs(Regs* r);
@@ -175,6 +190,7 @@ private:
     void resolve_pending();
     void set_loader_hook();
     Stop run_to(Addr a, Addr min_sp);
+    bool thread_regs(int id, Regs* r);
     Stop cont_once();
     bool wait_event(Event* e);
 
@@ -215,6 +231,8 @@ private:
     int hit_watch_;         /* the watchpoint whose value changed: its id */
     bool used_local_;       /* the last evaluate() used a frame's variable */
     CoreTarget* core_;      /* target_, when it is a core file */
+    int bp_thread_;         /* the thread the last breakpoint stop was in */
+    ttr::Vector<int> thread_ids_;  /* every thread seen: thread_number() */
 };
 
 /* "main (demo.c:12)" style, for messages. */

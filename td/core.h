@@ -46,6 +46,9 @@ public:
     bool resume(bool, int) { return false; }
     bool wait(Event* ev);
     bool poll(Event* ev, bool* got);
+    int threads(ttr::Vector<int>* ids);
+    int current_thread() const;
+    bool select_thread(int id);
     bool interrupt() { return false; }
     void kill() {}
     void detach() {}
@@ -62,6 +65,7 @@ private:
     bool open_elf(const unsigned char* h, ttr::Str* err);
     bool open_irix(const unsigned char* h, ttr::Str* err);
     void elf_notes(uint64_t off, uint64_t size);
+    void add_thread(int id, const Regs& r);
 
     struct Segment {
         Addr vaddr;
@@ -82,8 +86,14 @@ private:
     ttr::Vector<Segment> segs_;
     ttr::Vector<Image> images_;
     ttr::Vector<Mapped> files_;
-    Regs regs_;
-    bool have_regs_;
+    /* Each thread's registers (Linux: one NT_PRSTATUS each, the one that
+     * crashed first; IRIX: the one that crashed). */
+    struct Thread {
+        int id;
+        Regs regs;
+    };
+    ttr::Vector<Thread> threads_;
+    int cur_;
     int sig_;
     int pid_;
     Addr entry_;            /* AT_ENTRY (Linux), 0 if not known */

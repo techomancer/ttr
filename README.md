@@ -903,8 +903,17 @@ the window switches to its debugging layout, with Visual C++ 6's windows:
 - **Registers** (Alt+5), with those that changed in red.
 - **Call Stack** (Alt+7): double-click a frame to show its line, with a
   green arrow, and its variables.
+- **Threads**: every thread of the program and where it is; the current
+  one has the yellow arrow. Double-click one to switch to it: its call
+  stack, variables and registers, and the steps (F10, F11) step it.
+  All threads stop when one does, and run again together; a step runs
+  only the current one. The status bar says which thread stopped.
 - **QuickWatch** (Shift+F9): one expression in a dialog, as a tree; Add
   Watch moves it to Watch.
+- **DataTips**: rest the mouse on a variable in the editor and its value
+  shows in a small yellow box (`count = 42`), for the frame shown; over
+  a member it is the whole expression (`p->next->val`), over a selection
+  the selection.
 
 Debug > Breakpoints lists every breakpoint. "Break at" adds one on a
 line (`watch.c:24`) or a function (`main`), and "Break when this
@@ -917,6 +926,18 @@ To Code (or a double click) work on the selected one. Linux watches up
 to 32 bytes at once, in at most four aligned pieces (the processor's
 debug registers); IRIX has no such limit, but the program runs slower
 while a variable is watched.
+
+Debug > Attach to Process lists your processes (the newest last):
+Attach, or a double-click, stops the chosen one with all its threads and
+shows where it is, with the breakpoints set. Shift+F5 then lets it go on
+(it is detached, not killed). Restart starts Debug > Settings' program
+instead.
+
+C++ functions show as the source names them (`geo::Rect::area() const`,
+`Counter::operator+=(int)`), and breakpoints take those names: Break at
+`geo::Rect::area`, `geo::scale(int, int)` for one overload, `twice` or
+`twice<int>`, or just `area`. Both compilers' names are read: GCC's and
+Clang's on Linux, MIPSpro's on IRIX.
 
 Debug > Open Core File shows a program that crashed, from its core
 file: where it stopped, its call stack, variables, memory and registers.
@@ -1152,6 +1173,13 @@ The notification area uses common tools when they are installed:
   `ttrdb -c core [program]` reads a core file instead: the stack and
   values of a crashed program. Linux core files name their program;
   ttrdb reads IRIX core files on Linux too, given the program.
+  `ttrdb -p PID` attaches to a running process; `detach` lets it go on.
+
+  `t` lists the threads (the current one with `*`) and where each is,
+  `t N` switches to thread N; a stop in another thread says so
+  (`[Thread 2 (12345)]`). `b` takes C++ names as ttrcode's Break at does.
+  On IRIX the threads are the kernel's: its libpthread can run several
+  pthreads on one, and one waiting for its turn is not listed.
 
   It reads the shared objects a program loads (`mods` lists them), so
   breakpoints, lines and backtraces work in libraries too; a breakpoint

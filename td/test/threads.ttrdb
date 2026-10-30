@@ -1,0 +1,50 @@
+# program: td_threads
+# Threads: a breakpoint two threads reach, the list of threads, switching
+# to one, stepping one while the others stay stopped, and a watchpoint
+# set before the threads started that each of them hits.
+b main
+r
+expect Breakpoint 1, main
+w g_done
+expect Watchpoint 2: g_done
+b work
+c
+expect [Thread 2 (
+expect Breakpoint 3, work (threads.c:15)
+t
+expect   1  Thread
+expect * 2  Thread
+expect   3  Thread
+p n
+expect n = 1
+t 1
+expect [Thread 1 (
+bt
+expect main (threads.c:4
+t 7
+expect No thread 7.
+t 2
+expect work (threads.c:15)
+n
+expect work (threads.c:16)
+n
+n
+expect work (threads.c:18)
+n
+expect Watchpoint 2: g_done
+expect Old value = 0
+expect New value = 1
+expect work (threads.c:19)
+c
+expect [Thread 3 (
+expect Breakpoint 3, work (threads.c:15)
+p n
+expect n = 2
+c
+expect Watchpoint 2: g_done
+expect Old value = 1
+expect New value = 2
+d 2
+d 3
+c
+expect Program exited with code 0.

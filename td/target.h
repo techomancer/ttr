@@ -4,8 +4,9 @@
  * differs between systems: target_linux.cpp (ptrace) and target_irix.cpp
  * (/proc ioctls), one of which the Makefile links (TD_SYS).
  *
- * The prototype follows one thread, the first. core.h has a third
- * Target, a core file, read-only.
+ * All of a program's threads stop together when one stops, and run
+ * together again; a single step runs one. core.h has a third Target, a
+ * core file, read-only.
  */
 #ifndef TD_TARGET_H
 #define TD_TARGET_H
@@ -35,6 +36,7 @@ struct Event {
     int status;
     Addr pc;        /* for stops: where (breakpoints: already moved back) */
     int watch;      /* EV_WATCH: the handle of the area, 0 if not known */
+    int thread;     /* the thread it happened in (the system's id) */
 };
 
 /* How to start a program. */
@@ -51,10 +53,21 @@ struct SharedObject {
     Addr bias;
 };
 
+/* A process one could attach to. */
+struct ProcessInfo {
+    int pid;
+    ttr::Str name;      /* its program's name */
+    ttr::Str args;      /* its command line, as far as the system keeps it */
+    uint64_t start;     /* when it started, in the system's units */
+};
+
 class Target {
 public:
     /* The implementation for this system. */
     static Target* create();
+    /* The user's own processes but this one (the ones attach() can
+     * stop), the newest last. */
+    static int processes(ttr::Vector<ProcessInfo>* out);
     virtual ~Target() {}
 
     /* Start argv[0] (searched in PATH) stopped at its first instruction,
@@ -79,14 +92,25 @@ public:
     virtual bool loader_hook(Addr dynamic, SharedObject* loader, Addr* addr,
                              ttr::Str* symbol) = 0;
 
-    /* Let it run, or run one instruction, passing sig (0: none). */
+    /* Threads (td/DESIGN.md sections 3.1 and 3.2), by the system's ids,
+     * in the order they started. The current one is the one get_regs,
+     * set_pc and a single step act on; wait() and poll() make the thread
+     * that stopped current. */
+    virtual int threads(ttr::Vector<int>* ids) = 0;
+    virtual int current_thread() const = 0;
+    virtual bool select_thread(int id) = 0;
+
+    /* Let all its threads run, passing sig (0: none) to the current one;
+     * or run one instruction of the current thread, the others staying
+     * stopped. A stop another thread had while the program was being
+     * stopped is reported first, without running. */
     virtual bool resume(bool step, int sig) = 0;
-    /* Wait until it stops or ends. */
+    /* Wait until it stops (all of its threads) or ends. */
     virtual bool wait(Event* ev) = 0;
     /* The same without waiting: *got false if it is still running. */
     virtual bool poll(Event* ev, bool* got) = 0;
     /* Ask a running program to stop; wait() or poll() then report it as
-     * a signal (SIGSTOP on Linux, none on IRIX). */
+     * EV_PAUSED. */
     virtual bool interrupt() = 0;
     virtual void kill() = 0;
     virtual void detach() = 0;
@@ -116,6 +140,8 @@ public:
      * link_map through DT_DEBUG, IRIX rld's through DT_MIPS_RLD_MAP. */
     bool glibc_objects(Addr dynamic, ttr::Vector<SharedObject>* out);
     bool rld_objects(Addr dynamic, ttr::Vector<SharedObject>* out);
+    /* processes(): oldest first. */
+    static void sort_processes(ttr::Vector<ProcessInfo>* list);
 };
 
 } /* namespace td */
