@@ -70,6 +70,8 @@ public:
     Stop step_line(bool over);
     Stop finish();
     void kill();
+    /* Let it go on without the debugger. */
+    void detach();
 
     /* The call stack, innermost first. */
     int backtrace(ttr::Vector<Frame>* frames, int max);

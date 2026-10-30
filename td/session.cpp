@@ -409,6 +409,15 @@ void Session::kill()
     alive_ = false;
 }
 
+void Session::detach()
+{
+    if (!target_ || !alive_)
+        return;
+    remove_all();
+    target_->detach();
+    alive_ = false;
+}
+
 /* ------------------------------------------------------------------ */
 /* Stack                                                               */
 

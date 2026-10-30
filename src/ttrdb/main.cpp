@@ -315,6 +315,9 @@ bool command(char* line)
         cmd_x(args);
     } else if (!strcmp(c, "l") || !strcmp(c, "list")) {
         cmd_list();
+    } else if (!strcmp(c, "detach")) {
+        g_s->detach();
+        out("Detached.\n");
     } else if (!strcmp(c, "k") || !strcmp(c, "kill")) {
         g_s->kill();
         out("Killed.\n");
@@ -331,7 +334,8 @@ bool command(char* line)
     } else if (!strcmp(c, "help") || !strcmp(c, "h")) {
         out("r run, c continue, s step, n next, si step instruction, f finish,\n"
             "b SPEC (file:line, function, *addr), b list, d N delete,\n"
-            "bt backtrace, where, l list, regs, x ADDR [N] memory, k kill, q quit\n");
+            "bt backtrace, where, l list, regs, x ADDR [N] memory,\n"
+            "k kill, detach, q quit\n");
     } else {
         out("Unknown command \"%s\" (help lists them).\n", c);
     }
