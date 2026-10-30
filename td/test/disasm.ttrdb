@@ -1,0 +1,38 @@
+# program: td_demo
+# Disassembly: the function with its source lines and the pc marked, calls
+# named (x86-64: the call's target; MIPS: the gp-relative load of what
+# jalr calls); a function by name; one instruction at a time over calls.
+b demo.c:16
+r
+expect Breakpoint 1, main (demo.c:16)
+di
+expect => 0x
+expect <main>:
+expect 16	    int a = square(3);
+expect 17	    int b = fact(4);
+expect square (0x
+expect fact (0x
+absent .word
+absent .byte
+di square
+expect <square>:
+expect 4	    int r = x * x;
+absent =>
+di 0 4
+expect Cannot read 0x0.
+di nosuchfunction
+expect No function nosuchfunction.
+ni
+absent square (demo_util.c
+expect main (demo.c:1
+ni
+absent square (demo_util.c
+expect main (demo.c:1
+ni
+absent square (demo_util.c
+expect main (demo.c:1
+ni
+absent square (demo_util.c
+expect main (demo.c:1
+c
+expect Program exited with code 7.

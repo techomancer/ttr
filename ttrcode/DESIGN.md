@@ -201,10 +201,11 @@ much as for the panes there are now, modelled on Visual C++ 6:
   - left: Workspace;
   - bottom: [Terminal · Find Results] | [Variables] | [Watch];
   - right: [Call Stack · Threads] over [Registers];
-  - Memory goes to the bottom area the first time it is opened.
+  - Memory goes to the bottom area the first time it is opened, and
+    Disassembly to the right one.
 - **Keys** (VC6's): Alt+0 the workspace, Alt+2 the bottom area, Alt+3
   Watch, Alt+4 Variables, Alt+5 Registers, Alt+6 Memory, Alt+7 Call
-  Stack; Shift+Alt+Enter hides every area (section 1).
+  Stack, Alt+8 Disassembly; Shift+Alt+Enter hides every area (section 1).
 
 ### 4.2 The terminal
 

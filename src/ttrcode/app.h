@@ -142,6 +142,8 @@ enum Command {
     CMD_DEBUG_SETTINGS, CMD_VIEW_PROGRAM, CMD_DEBUG_QUICKWATCH, CMD_DEBUG_BREAKPOINTS,
     CMD_DEBUG_CORE,
     CMD_DEBUG_ATTACH,
+    /* F11, F10 and Ctrl+F10 in Disassembly: by instruction. */
+    CMD_DEBUG_STEP_INSN, CMD_DEBUG_NEXT_INSN, CMD_DEBUG_RUN_TO_INSN,
     /* View > Debug Windows: one per pane in k_debug_panes (app.cpp). */
     CMD_VIEW_DEBUG
 };
@@ -272,6 +274,14 @@ private:
     void fill_watch();
     void fill_memory();
     void fill_quickwatch();
+    /* Disassembly (disassembly.cpp). keep: the same instruction stays
+     * selected (else the frame's). */
+    void fill_disassembly(bool keep = false);
+    bool disassembly_key(KeySym ks, unsigned state);
+    void disassembly_toggle_breakpoint();
+    td::Addr disassembly_selected() const;
+    void disassembly_activate(int row);
+    void show_disassembly();
     void auto_values(ttr::Vector<td::Value>* out);
     void show_quickwatch();
     void add_watch(const char* expr);
@@ -452,6 +462,12 @@ private:
     CellList* watch_list_;
     CellList* vars_list_;
     CellList* mem_list_;
+    CellList* dis_list_;
+    /* Disassembly's rows: each one's instruction (a source line's: the
+     * first one after it), and whether it is one. */
+    ttr::Vector<td::Addr> dis_addr_;
+    ttr::Vector<char> dis_insn_;
+    bool insn_step_;            /* the stop is from a command in Disassembly */
     Widget vars_box_, vars_context_, vars_menu_, vars_auto_w_, vars_locals_w_;
     Widget mem_box_, mem_addr_w_, mem_format_w_;
     ValueTree watch_tree_, vars_tree_, quick_tree_;

@@ -15,6 +15,7 @@ enum {
     EM_MIPS_ = 8,
     EM_X86_64_ = 62,
     SHT_SYMTAB_ = 2,
+    SHT_RELA_ = 4,
     SHT_DYNSYM_ = 11,
     STT_OBJECT_ = 1,
     STT_FUNC_ = 2
@@ -126,7 +127,116 @@ bool ElfFile::load(const char* path, ttr::Str* err)
             syms_[i].size = syms_[k].addr - syms_[i].addr;
     }
     demangle_symbols();
+    if (machine_ == EM_X86_64_ && read_plt() && !syms_.empty())
+        qsort(&syms_[0], (size_t)syms_.size(), sizeof(Symbol), compare_symbols);
     return true;
+}
+
+/* x86-64: a symbol for every entry of the procedure linkage table,
+ * "puts@plt", so calls into shared objects have names. Entry i of
+ * .rela.plt is entry i of .plt.sec (16 bytes each, -z ibt), else entry
+ * i + 1 of .plt (after its 16-byte start). */
+bool ElfFile::read_plt()
+{
+    const unsigned char* h = data_;
+    uint64_t shoff = u64(h + 40);
+    int shentsize = (int)u16(h + 58);
+    int shnum = (int)u16(h + 60);
+    int shstrndx = (int)u16(h + 62);
+    if (!is64_ || !shoff || shstrndx >= shnum || shoff + (uint64_t)shnum * shentsize > size_)
+        return false;
+    const unsigned char* strsh = data_ + shoff + (uint64_t)shstrndx * shentsize;
+    uint64_t names = u64(strsh + 24), names_size = u64(strsh + 32);
+    if (names + names_size > size_)
+        return false;
+    const unsigned char* rela = 0;
+    Addr plt = 0, plt_sec = 0;
+    int i;
+    for (i = 0; i < shnum; i++) {
+        const unsigned char* sh = data_ + shoff + (uint64_t)i * shentsize;
+        uint64_t n = u32(sh);
+        if (n >= names_size)
+            continue;
+        const char* name = (const char*)data_ + names + n;
+        if (!strcmp(name, ".rela.plt") && (int)u32(sh + 4) == SHT_RELA_)
+            rela = sh;
+        else if (!strcmp(name, ".plt"))
+            plt = u64(sh + 16);
+        else if (!strcmp(name, ".plt.sec"))
+            plt_sec = u64(sh + 16);
+    }
+    if (!rela || (!plt && !plt_sec))
+        return false;
+    uint64_t off = u64(rela + 24), size = u64(rela + 32);
+    int link = (int)u32(rela + 40);
+    if (off + size > size_ || link >= shnum)
+        return false;
+    /* The symbols it names, and their strings. */
+    const unsigned char* symsh = data_ + shoff + (uint64_t)link * shentsize;
+    uint64_t symoff = u64(symsh + 24), symsize = u64(symsh + 32);
+    int strlink = (int)u32(symsh + 40);
+    if (symoff + symsize > size_ || strlink >= shnum)
+        return false;
+    const unsigned char* sstr = data_ + shoff + (uint64_t)strlink * shentsize;
+    uint64_t stroff = u64(sstr + 24), strsize = u64(sstr + 32);
+    if (stroff + strsize > size_)
+        return false;
+    bool added = false;
+    uint64_t k;
+    int index = 0;
+    for (k = 0; k + 24 <= size; k += 24, index++) {
+        uint64_t sym = u64(data_ + off + k + 8) >> 32;
+        if (!sym || (sym + 1) * 24 > symsize)
+            continue;
+        uint64_t name = u32(data_ + symoff + sym * 24);
+        if (name >= strsize)
+            continue;
+        const char* raw = (const char*)data_ + stroff + name;
+        Text t;
+        if (!demangle_itanium(raw, &t)) {
+            t.clear();
+            t.add(raw);
+        }
+        t.add("@plt");
+        char* c = (char*)malloc(t.length() + 1);
+        if (!c)
+            return added;
+        memcpy(c, t.c_str(), t.length() + 1);
+        names_.push_back(c);
+        Symbol s;
+        s.name = c;
+        s.display = c;
+        s.addr = plt_sec ? plt_sec + 16 * (Addr)index : plt + 16 * (Addr)(index + 1);
+        s.size = 16;
+        s.func = true;
+        s.stub = true;
+        syms_.push_back(s);
+        added = true;
+    }
+    return added;
+}
+
+const Symbol* ElfFile::symbol_at(Addr a) const
+{
+    int lo = 0, hi = syms_.size() - 1, best = -1;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        if (syms_[mid].addr <= a) {
+            best = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    /* The nearest one before a that covers it (a function's size, or
+     * exactly a sizeless symbol). */
+    int k;
+    for (k = best; k >= 0 && k > best - 8; k--) {
+        const Symbol& s = syms_[k];
+        if (a < s.addr + (s.size ? s.size : 1))
+            return &s;
+    }
+    return 0;
 }
 
 /* C++ functions' names as written (td/demangle.h). Only names that look
@@ -241,6 +351,7 @@ void ElfFile::read_symbols(int symtab_type)
             sym.addr = value;
             sym.size = ssize;
             sym.func = type == STT_FUNC_;
+            sym.stub = false;
             syms_.push_back(sym);
         }
     }
@@ -325,7 +436,7 @@ const Symbol* ElfFile::function_at(Addr a) const
     }
     for (; best >= 0; best--) {
         const Symbol& s = syms_[best];
-        if (!s.func)
+        if (!s.func || s.stub)
             continue;
         if (a < s.addr + (s.size ? s.size : 1))
             return &s;

@@ -263,6 +263,16 @@ const char* Module::function_at(Addr pc, Addr* start, Addr* end) const
     return s->display;
 }
 
+const char* Module::symbol_at(Addr pc, Addr* start) const
+{
+    const Symbol* s = elf_.symbol_at(pc - bias_);
+    if (!s || (s->func && !s->stub))
+        return function_at(pc, start, 0);
+    if (start)
+        *start = s->addr + bias_;
+    return s->display;
+}
+
 bool Module::place_of(Addr pc, Place* p) const
 {
     Addr a = pc - bias_;

@@ -25,3 +25,9 @@
 [submodule "third_party/libdwarf"]
 	path = third_party/libdwarf
 	url = https://github.com/davea42/libdwarf-code.git
+[submodule "third_party/zydis"]
+	path = third_party/zydis
+	url = https://github.com/zyantific/zydis
+[submodule "third_party/zycore"]
+	path = third_party/zycore
+	url = https://github.com/zyantific/zycore-c

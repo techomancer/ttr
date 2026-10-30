@@ -31,6 +31,6 @@ exec python3 "$ROOT/tools/irix-sh.py" --timeout 7200 run \
      CPPFLAGS='$CPPFLAGS' DBUS_CFLAGS= LDFLAGS='$LDFLAGS' LIBS='$LIBS' \
      TI_CPPFLAGS='$TI_CPPFLAGS' TI_LIBS='$TI_LIBS' STB_CFLAGS=-c99 \
      TP_SYS=build-irix/tp_sys_irix.o TF_SYS=build-irix/tf_sys_irix.o CC=cc CFLAGS='-n32 -O2' \
-     TD_SYS=build-irix/td_target_irix.o LIBDWARF_CFLAGS=-c99 TD_DWARF_FLAGS= \
+     TD_SYS=build-irix/td_target_irix.o TD_X86=build-irix/td_disasm_nox86.o LIBDWARF_CFLAGS=-c99 TD_DWARF_FLAGS= \
      TD_TEST_CFLAGS='-n32 -g -O0' TD_TEST_PIC= TD_TEST_SONAME='-soname libtdshlib.so' TD_TEST_DLLIBS= \
      $TARGETS 2>&1"

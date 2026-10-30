@@ -20,6 +20,7 @@
 #ifndef TD_SESSION_H
 #define TD_SESSION_H
 
+#include "disasm.h"
 #include "module.h"
 #include "target.h"
 #include "td.h"
@@ -138,6 +139,8 @@ public:
     /* Each runs until the program stops again (or ends). */
     Stop cont();
     Stop step_instruction();
+    /* One instruction, over a call (to its return address). */
+    Stop next_instruction();
     Stop step_line(bool over);
     Stop finish();
     void kill();
@@ -155,6 +158,22 @@ public:
     /* The call stack of the current thread, innermost first. */
     int backtrace(ttr::Vector<Frame>* frames, int max);
     bool describe(Addr pc, bool caller, Frame* f);
+    /* The function containing pc, from where to where; 0 if none. */
+    const char* function_at(Addr pc, Addr* start, Addr* end) const
+    {
+        return func_at(pc, start, end);
+    }
+    /* Its line (place.exact: a line starts there). */
+    bool line_at(Addr pc, Place* p) const { return place_at(pc, p); }
+    /* Machine instructions (td/disasm.h) from a: at most max, none at or
+     * past end (0: no end), stopping where memory cannot be read. The
+     * program's bytes as it runs them (td's breakpoints are out of memory
+     * while it is stopped), addresses named. regs: a frame's registers,
+     * so MIPS's gp-relative loads in its module say what they load (0:
+     * none). Returns how many. */
+    int disassemble(Addr a, Addr end, int max, ttr::Vector<Insn>* out, const Regs* regs = 0);
+    /* "main+0x1c", "g_count": a name for an address, false if none. */
+    bool symbolize(Addr a, Text* out) const;
     bool regs(Regs* r);
 
     /* Values (td/value.h). A frame's arguments and the local variables in

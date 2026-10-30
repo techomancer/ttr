@@ -168,6 +168,7 @@ const DebugPane k_debug_panes[] = {
     { "memory", "Memory", 'M', "Alt+6", XK_6, SIDE_BOTTOM },
     { "callstack", "Call Stack", 'C', "Alt+7", XK_7, SIDE_RIGHT },
     { "threads", "Threads", 'T', 0, 0, SIDE_RIGHT },
+    { "disassembly", "Disassembly", 'D', "Alt+8", XK_8, SIDE_RIGHT },
     { 0, 0, 0, 0, 0, SIDE_LEFT }
 };
 
@@ -318,7 +319,7 @@ App::App(Widget top, const Options& o)
       dbg_(0), stop_line_(-1), frame_line_(-1), cur_frame_(0), have_last_regs_(false),
       regs_stop_(-1), regs_thread_(-1),
       dbg_kill_req_(false), dbg_attached_(false), stack_list_(0), regs_list_(0), threads_list_(0), watch_list_(0),
-      vars_list_(0), mem_list_(0), vars_box_(0), vars_context_(0), vars_menu_(0),
+      vars_list_(0), mem_list_(0), dis_list_(0), insn_step_(false), vars_box_(0), vars_context_(0), vars_menu_(0),
       vars_auto_w_(0), vars_locals_w_(0), mem_box_(0), mem_addr_w_(0), mem_format_w_(0),
       vars_auto_(true), vars_menu_stop_(-1), mem_format_(0), mem_addr_(0), mem_per_row_(16), mem_prev_addr_(0),
       mem_cur_addr_(0), mem_prev_stop_(-1), frames_serial_(0), stop_serial_(0), quick_dlg_(0), quick_expr_(0),
@@ -777,10 +778,10 @@ void App::show_pane(Pane* p)
     else if (p == pane_results_ && results_)
         XmProcessTraversal(results_, XmTRAVERSE_CURRENT);
     else {
-        CellList* lists[6] = { stack_list_, regs_list_, threads_list_, watch_list_, vars_list_,
-                               mem_list_ };
+        CellList* lists[7] = { stack_list_, regs_list_, threads_list_, watch_list_, vars_list_,
+                               mem_list_, dis_list_ };
         int i;
-        for (i = 0; i < 6; i++)
+        for (i = 0; i < 7; i++)
             if (lists[i] && lists[i]->tag() == debug_panes_.find(p))
                 lists[i]->focus();
     }
@@ -1785,6 +1786,9 @@ void App::command(int cmd)
     case CMD_DEBUG_BREAKPOINTS:
     case CMD_DEBUG_CORE:
     case CMD_DEBUG_ATTACH:
+    case CMD_DEBUG_STEP_INSN:
+    case CMD_DEBUG_NEXT_INSN:
+    case CMD_DEBUG_RUN_TO_INSN:
         debug_command(cmd);
         break;
     default:

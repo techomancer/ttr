@@ -93,7 +93,8 @@ make
 
 In a checkout made without `--recursive`, run
 `git submodule update --init` first (the submodules bring nanosvg and
-ttrt's Unicode fonts, and stb_image, ttr's built-in image decoder). The programs are `build/ttr`,
+ttrt's Unicode fonts, stb_image, ttr's built-in image decoder, and the
+debugger's DWARF reader and x86-64 disassembler). The programs are `build/ttr`,
 `build/ttrt` (the terminal), `build/ttrc` (the file manager), `build/ttre`
 (the text editor) and `build/ttrcode` (the code editor).
 
@@ -834,7 +835,7 @@ are not shown in the tree.
 | Ctrl+W, Ctrl+F4 | close the file (asks about unsaved changes) |
 | Ctrl+Tab, Ctrl+Shift+Tab | next, previous file |
 | Alt+0, Alt+2 | show or hide the workspace, the bottom area |
-| Alt+3, Alt+4, Alt+5, Alt+6, Alt+7 | Watch, Variables, Registers, Memory, Call Stack (VC6's keys) |
+| Alt+3, Alt+4, Alt+5, Alt+6, Alt+7, Alt+8 | Watch, Variables, Registers, Memory, Call Stack, Disassembly (VC6's keys) |
 | Ctrl+` | to the terminal and back |
 | Shift+Alt+Enter | full screen with only the text (again, Esc or F11 to come back); on window managers without full-screen support, such as 4Dwm and mwm, the window drops its frame and covers the screen |
 | F5, Shift+F5, Ctrl+Shift+F5 | debug: go or continue, stop, restart |
@@ -848,7 +849,7 @@ numbers selects the line, Shift+click extends, the middle button pastes
 the X selection, and the wheel scrolls.
 
 In the terminal pane every key goes to the shell except Shift+Alt+Enter,
-Alt+0, Alt+2 to Alt+7, Ctrl+` and Ctrl+Tab; the menus' Alt+letter keys are off while it
+Alt+0, Alt+2 to Alt+8, Ctrl+` and Ctrl+Tab; the menus' Alt+letter keys are off while it
 has the focus. When the shell ends, Enter starts a new one.
 
 Files are saved through a new file that replaces the old one, so a full
@@ -903,6 +904,17 @@ the window switches to its debugging layout, with Visual C++ 6's windows:
 - **Registers** (Alt+5), with those that changed in red.
 - **Call Stack** (Alt+7): double-click a frame to show its line, with a
   green arrow, and its variables.
+- **Disassembly** (Alt+8): the machine code of the frame's function,
+  each source line followed by its instructions, with the yellow arrow
+  at the current instruction, a green one where a caller's call returns,
+  and red dots at breakpoints. Calls and jumps name what they go to
+  (`call square (0x401136)`, `call printf@plt (0x401030)`); on IRIX the
+  loads of what `jalr` calls say what it is (`; printf (0x...)`). With
+  it focused F11 and F10 step one instruction (F10 over calls), Ctrl+F10
+  runs to the selected instruction and F9 sets or clears a breakpoint on
+  it; Enter or a double click shows its source line. A stop where there
+  is no source (a crash in a library) opens it. x86-64 is shown in
+  Intel syntax, MIPS as IRIX's `dis` shows it.
 - **Threads**: every thread of the program and where it is; the current
   one has the yellow arrow. Double-click one to switch to it: its call
   stack, variables and registers, and the steps (F10, F11) step it.
@@ -1181,6 +1193,11 @@ The notification area uses common tools when they are installed:
   On IRIX the threads are the kernel's: its libpthread can run several
   pthreads on one, and one waiting for its turn is not listed.
 
+  `di` shows the frame's function as machine code, with its source
+  lines and `=>` at the pc; `di FUNCTION` another function, `di ADDR
+  [N]` N instructions from an address. `si` steps one instruction, `ni`
+  one too but over calls.
+
   It reads the shared objects a program loads (`mods` lists them), so
   breakpoints, lines and backtraces work in libraries too; a breakpoint
   in a library not yet loaded waits for it. `dir DIR` says where to look
@@ -1194,4 +1211,7 @@ BSD 3-Clause. See [LICENSE](LICENSE).
 
 ttrdb includes libdwarf (`third_party/libdwarf`,
 https://github.com/davea42/libdwarf-code), which is under the GNU Lesser
-General Public License 2.1; see its `COPYING`.
+General Public License 2.1; see its `COPYING`. On Linux it also includes
+Zydis (`third_party/zydis` and `third_party/zycore`,
+https://github.com/zyantific/zydis), its x86-64 disassembler, under the
+MIT License; see their `LICENSE` files.

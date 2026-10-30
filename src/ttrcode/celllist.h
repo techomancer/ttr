@@ -103,10 +103,13 @@ public:
     /* The visible rows, and how many fit. */
     int visible_rows() const;
     int top() const { return top_; }
+    /* Scroll so that row is the first visible one (as far as it goes). */
+    void scroll_to(int row);
 
     /* Edit column col of a row in place, starting with text. */
     void begin_edit(int row, int col, const char* text);
     bool editing() const { return edit_row_ >= 0; }
+    bool has_focus() const { return focused_; }
     void cancel_edit();
     void focus();
 

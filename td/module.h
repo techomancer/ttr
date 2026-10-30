@@ -48,6 +48,9 @@ public:
     /* Symbols, in program addresses. */
     bool function_named(const char* name, Addr* start, Addr* end) const;
     const char* function_at(Addr pc, Addr* start, Addr* end) const;
+    /* Any symbol containing pc (a function, data, a PLT entry), and where
+     * it starts; 0 if none. */
+    const char* symbol_at(Addr pc, Addr* start) const;
     bool contains(Addr pc) const;
 
     /* Lines. */

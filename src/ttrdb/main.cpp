@@ -377,6 +377,83 @@ void cmd_x(const char* args)
     }
 }
 
+/* "di": the frame's function (or 16 instructions from its pc); "di
+ * ADDR [N]": N from an address; "di FUNCTION": that function. Lines of
+ * source where they start, "=>" at the pc. */
+void cmd_disassemble(const char* args)
+{
+    td::Frame f;
+    bool have_frame = g_s->running();
+    if (have_frame) {
+        ttr::Vector<td::Frame> frames;
+        int n = g_s->backtrace(&frames, g_frame + 1);
+        have_frame = n > 0;
+        if (have_frame)
+            f = frames[g_frame < n ? g_frame : n - 1];
+    }
+    td::Addr from = 0, to = 0;
+    int max = 500;
+    if (*args >= '0' && *args <= '9') {
+        const char* end = 0;
+        from = td::parse_number(args, &end);
+        max = end && *end ? atoi(end) : 16;
+        if (max <= 0 || max > 4096)
+            max = 16;
+    } else if (*args) {
+        int i;
+        for (i = 0; i < g_s->module_count(); i++)
+            if (g_s->module(i)->function_named(args, &from, &to))
+                break;
+        if (i == g_s->module_count()) {
+            out("No function %s.\n", args);
+            return;
+        }
+    } else if (!have_frame) {
+        out("The program is not running.\n");
+        return;
+    } else {
+        /* A caller's frame: around its call. */
+        td::Addr pc = f.caller ? f.pc - 1 : f.pc;
+        if (!g_s->function_at(pc, &from, &to) || to <= from || to - from > 64 * 1024) {
+            from = f.pc;
+            to = 0;
+            max = 16;
+        }
+    }
+    ttr::Vector<td::Insn> insns;
+    if (!g_s->disassemble(from, to, max, &insns, have_frame ? &f.regs : 0)) {
+        char h[24];
+        out("Cannot read %s.\n", td::hex(from, h));
+        return;
+    }
+    int i, last_line = 0;
+    const char* last_file = 0;
+    for (i = 0; i < insns.size(); i++) {
+        const td::Insn& in = insns[i];
+        td::Place p;
+        char text[1024];
+        if (g_s->line_at(in.addr, &p) && p.exact && p.file &&
+            (p.line != last_line || !last_file || strcmp(p.file, last_file))) {
+            last_line = p.line;
+            last_file = p.file;
+            if (source_line(p.file, p.line, text, sizeof(text)))
+                out("%d\t%s\n", p.line, text);
+        }
+        td::Text name;
+        char h[24];
+        bool named = g_s->symbolize(in.addr, &name);
+        out("%s%s%s%s%s:\t%s", have_frame && in.addr == f.pc ? "=> " : "   ",
+            td::hex(in.addr, h), named ? " <" : "", named ? name.c_str() : "", named ? ">" : "",
+            in.mnemonic);
+        if (in.operands[0])
+            out("%*s%s", (int)(strlen(in.mnemonic) < 8 ? 8 - strlen(in.mnemonic) : 1), "",
+                in.operands);
+        if (in.comment[0])
+            out("  ; %s", in.comment);
+        out("\n");
+    }
+}
+
 void cmd_list()
 {
     td::Regs r;
@@ -477,6 +554,7 @@ bool command(char* line)
         return false;
     if (g_s->is_core() && (!strcmp(c, "r") || !strcmp(c, "run") || !strcmp(c, "c") ||
                            !strcmp(c, "s") || !strcmp(c, "n") || !strcmp(c, "si") ||
+                           !strcmp(c, "ni") ||
                            !strcmp(c, "f") || !strcmp(c, "w"))) {
         out("A core file cannot run.\n");
         return true;
@@ -507,6 +585,8 @@ bool command(char* line)
         report(g_s->step_line(true));
     } else if (!strcmp(c, "si")) {
         report(g_s->step_instruction());
+    } else if (!strcmp(c, "ni")) {
+        report(g_s->next_instruction());
     } else if (!strcmp(c, "f") || !strcmp(c, "finish")) {
         report(g_s->finish());
     } else if (!strcmp(c, "b") || !strcmp(c, "break")) {
@@ -567,6 +647,8 @@ bool command(char* line)
         cmd_x(args);
     } else if (!strcmp(c, "l") || !strcmp(c, "list")) {
         cmd_list();
+    } else if (!strcmp(c, "di") || !strcmp(c, "disassemble")) {
+        cmd_disassemble(args);
     } else if (!strcmp(c, "detach")) {
         g_s->detach();
         out("Detached.\n");
@@ -584,10 +666,12 @@ bool command(char* line)
             out("The program is not running.\n");
         }
     } else if (!strcmp(c, "help") || !strcmp(c, "h")) {
-        out("r run, c continue, s step, n next, si step instruction, f finish,\n"
+        out("r run, c continue, s step, n next, si step instruction, ni next\n"
+            "instruction (over calls), f finish,\n"
             "b SPEC (file:line, function, *addr), b list, w EXPR watch, d N delete,\n"
             "bt backtrace, fr N frame, t threads, t N thread, where, l list, regs,\n"
-            "x ADDR [N] memory, p EXPR print (EXPR,x hex; p,N N elements), locals,\n"
+            "x ADDR [N] memory, di [ADDR [N] | FUNCTION] disassemble,\n"
+            "p EXPR print (EXPR,x hex; p,N N elements), locals,\n"
             "e EXPR expand, pt EXPR type, mods modules,\n"
             "dir DIR source directory, k kill, detach, q quit\n");
     } else {
@@ -630,7 +714,9 @@ int main(int argc, char** argv)
             i += 2;
         } else if (!strcmp(argv[i], "--version")) {
             printf("ttrdb (ttr). DWARF through libdwarf "
-                   "(https://github.com/davea42/libdwarf-code), LGPL 2.1.\n");
+                   "(https://github.com/davea42/libdwarf-code), LGPL 2.1.\n"
+                   "On Linux, x86-64 instructions through Zydis "
+                   "(https://github.com/zyantific/zydis), MIT.\n");
             return 0;
         } else {
             usage();

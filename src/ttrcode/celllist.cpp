@@ -261,6 +261,16 @@ void CellList::make_visible(int row)
     update_scrollbar();
 }
 
+void CellList::scroll_to(int row)
+{
+    int vis = visible_rows();
+    if (row > rows_.size() - vis)
+        row = rows_.size() - vis;
+    top_ = row > 0 ? row : 0;
+    update_scrollbar();
+    damage();
+}
+
 void CellList::update_scrollbar()
 {
     if (!scroll_)

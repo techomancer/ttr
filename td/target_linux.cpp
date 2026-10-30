@@ -514,6 +514,29 @@ bool LinuxTarget::trap_was_breakpoint(pid_t tid)
     return errno || !(dr6 & 0xf);
 }
 
+/* A SIGTRAP the kernel has queued for a thread but not reported: it
+ * reached an int3 just as PTRACE_INTERRUPT stopped it, so it reported
+ * the interrupt first (its pc already past the int3). Its thread's own
+ * pending signals are /proc's SigPnd. */
+bool trap_queued(pid_t tid)
+{
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%d/status", (int)tid);
+    FILE* f = fopen(path, "r");
+    if (!f)
+        return false;
+    char line[256];
+    bool yes = false;
+    while (fgets(line, sizeof(line), f))
+        if (!strncmp(line, "SigPnd:", 7)) {
+            unsigned long m = strtoul(line + 7, 0, 16);     /* 64 bits: Linux is LP64 */
+            yes = (m >> (SIGTRAP - 1)) & 1;
+            break;
+        }
+    fclose(f);
+    return yes;
+}
+
 /* Stop every thread but one, keeping what each stopped for if it was
  * not the stop asked for. A breakpoint another thread reached is not
  * kept: its pc goes back to the int3, which it reaches again if the
@@ -551,8 +574,27 @@ void LinuxTarget::stop_others(pid_t except)
             if (ev == PTRACE_EVENT_STOP)
                 continue;
         }
-        if (ev == PTRACE_EVENT_STOP)
-            continue;
+        if (ev == PTRACE_EVENT_STOP) {
+            if (!trap_queued(tid))
+                continue;
+            /* Let it take that SIGTRAP now (it stops again at once, before
+             * running anything), as if it had come first. Left queued, it
+             * would arrive after the breakpoint is gone, or kill the
+             * program once detached. */
+            if (ptrace(PTRACE_CONT, tid, 0, 0) != 0)
+                continue;
+            do
+                r = waitpid(tid, &st, __WALL);
+            while (r < 0 && errno == EINTR);
+            if (r != tid || WIFEXITED(st) || WIFSIGNALED(st)) {
+                if (tid != pid_) {
+                    drop(tid);
+                    i--;
+                }
+                continue;
+            }
+            ev = event_of(st);
+        }
         if (ev == PTRACE_EVENT_CLONE) {
             unsigned long nt = 0;
             ptrace(PTRACE_GETEVENTMSG, tid, 0, &nt);

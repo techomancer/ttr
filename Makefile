@@ -520,6 +520,9 @@ $(B)/tf_test_tf.o: $(B)/.dir tf/test/test_tf.cpp $(TF_H)
 # loop; dwarf_line.c and dwarf_print_lines.c go through wrappers in
 # td/third. LIBDWARF_CFLAGS: -c99 for MIPSpro.
 # TD_SYS: td_target_linux.o (ptrace) or td_target_irix.o (/proc).
+# TD_X86: x86-64 instructions through Zydis (third_party/zydis and
+# third_party/zycore, pinned, MIT, C99, built through td/third/zydis*.c);
+# IRIX has no use for them: TD_X86=build-irix/td_disasm_nox86.o.
 LIBDWARF_CFLAGS =
 # For td/module.cpp, which includes libdwarf's C header: its 64-bit types
 # are long long, which g++ -pedantic warns about in C++98. Empty for
@@ -603,10 +606,13 @@ $(B)/libdwarf.a: $(B)/.dir td/third/libdwarf/config.h
 	$(AR) rc $@ $(B)/libdwarf/*.o
 
 TD_SYS = $(B)/td_target_linux.o
-TD_OBJS = $(B)/td_arch.o $(B)/td_core.o $(B)/td_demangle.o $(B)/td_elf.o $(B)/td_expr.o $(B)/td_info.o \
+TD_X86 = $(B)/td_disasm_x86.o $(B)/td_zydis.o $(B)/td_zydis_att.o $(B)/td_zydis_intel.o
+TD_OBJS = $(B)/td_arch.o $(B)/td_core.o $(B)/td_demangle.o $(B)/td_disasm.o \
+	$(B)/td_disasm_mips.o $(B)/td_elf.o $(B)/td_expr.o $(B)/td_info.o \
 	$(B)/td_module.o $(B)/td_session.o $(B)/td_source.o $(B)/td_text.o $(B)/td_value.o \
-	$(B)/td_watch.o $(TD_SYS)
-TD_H = td/td.h td/target.h td/core.h td/demangle.h td/elf.h td/info.h td/module.h td/session.h \
+	$(B)/td_watch.o $(TD_SYS) $(TD_X86)
+TD_H = td/td.h td/target.h td/core.h td/demangle.h td/disasm.h td/elf.h td/info.h td/module.h \
+	td/session.h \
 	td/source.h td/value.h src/core/str.h src/core/vector.h src/core/port.h
 
 $(B)/libtd.a: $(TD_OBJS)
@@ -619,6 +625,22 @@ $(B)/td_core.o: $(B)/.dir td/core.cpp $(TD_H)
 	$(COMPILE) -c td/core.cpp -o $@
 $(B)/td_demangle.o: $(B)/.dir td/demangle.cpp $(TD_H)
 	$(COMPILE) -c td/demangle.cpp -o $@
+$(B)/td_disasm.o: $(B)/.dir td/disasm.cpp $(TD_H)
+	$(COMPILE) -c td/disasm.cpp -o $@
+$(B)/td_disasm_mips.o: $(B)/.dir td/disasm_mips.cpp $(TD_H)
+	$(COMPILE) -c td/disasm_mips.cpp -o $@
+$(B)/td_disasm_nox86.o: $(B)/.dir td/disasm_nox86.cpp $(TD_H)
+	$(COMPILE) -c td/disasm_nox86.cpp -o $@
+ZYDIS_INC = -Ithird_party/zydis/include -Ithird_party/zycore/include -Ithird_party/zydis/src
+$(B)/td_disasm_x86.o: $(B)/.dir td/disasm_x86.cpp $(TD_H)
+	$(COMPILE) -isystem third_party/zydis/include -isystem third_party/zycore/include \
+		-c td/disasm_x86.cpp -o $@
+$(B)/td_zydis.o: $(B)/.dir td/third/zydis.c td/third/zydis_config.h
+	$(CC) $(CFLAGS) $(ZYDIS_INC) -c td/third/zydis.c -o $@
+$(B)/td_zydis_att.o: $(B)/.dir td/third/zydis_att.c td/third/zydis_config.h
+	$(CC) $(CFLAGS) $(ZYDIS_INC) -c td/third/zydis_att.c -o $@
+$(B)/td_zydis_intel.o: $(B)/.dir td/third/zydis_intel.c td/third/zydis_config.h
+	$(CC) $(CFLAGS) $(ZYDIS_INC) -c td/third/zydis_intel.c -o $@
 $(B)/td_elf.o: $(B)/.dir td/elf.cpp $(TD_H)
 	$(COMPILE) -c td/elf.cpp -o $@
 $(B)/td_module.o: $(B)/.dir td/module.cpp $(TD_H) $(B)/libdwarf.a
@@ -833,6 +855,7 @@ TTRCODE_OBJS = $(B)/ttrcode_main.o \
 	$(B)/ttrcode_breakpoints.o \
 	$(B)/ttrcode_celllist.o \
 	$(B)/ttrcode_datatip.o \
+	$(B)/ttrcode_disassembly.o \
 	$(B)/ttrcode_debug.o \
 	$(B)/ttrcode_debugpanes.o \
 	$(B)/ttrcode_dock.o \
@@ -871,6 +894,8 @@ $(B)/ttrcode_breakpoints.o: $(B)/.dir src/ttrcode/breakpoints.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/breakpoints.cpp -o $@
 $(B)/ttrcode_datatip.o: $(B)/.dir src/ttrcode/datatip.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/datatip.cpp -o $@
+$(B)/ttrcode_disassembly.o: $(B)/.dir src/ttrcode/disassembly.cpp $(TTRCODE_H)
+	$(COMPILE) -c src/ttrcode/disassembly.cpp -o $@
 $(B)/ttrcode_celllist.o: $(B)/.dir src/ttrcode/celllist.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/celllist.cpp -o $@
 $(B)/ttrcode_valuetree.o: $(B)/.dir src/ttrcode/valuetree.cpp $(TTRCODE_H)

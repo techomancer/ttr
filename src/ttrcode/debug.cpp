@@ -295,7 +295,15 @@ void App::debug_stopped(const td::Stop& s)
     /* Stopped from outside (Break, attaching): likely in the system's
      * code, so the first frame with source is shown. */
     int shown = s.kind == td::EV_PAUSED ? source_frame() : 0;
-    debug_show_frame(shown, true);
+    /* After a command in Disassembly it keeps the focus; a stop where
+     * there is no source shows it (VC6 offered to). */
+    bool in_disassembly = insn_step_;
+    insn_step_ = false;
+    debug_show_frame(shown, !in_disassembly);
+    if (in_disassembly && dis_list_)
+        dis_list_->focus();
+    else if (frames_.size() > shown && !frames_[shown].has_place)
+        show_disassembly();
     ttr::Str where = frames_.size() ? td::format_place(frames_[shown]) : ttr::Str("??");
     if (thread_ids_.size() > 1) {
         /* Which thread, when there are several. */
@@ -397,6 +405,8 @@ void App::debug_command(int cmd)
         debug_end();
         cmd = CMD_DEBUG_GO;
     }
+    /* Disassembly keeps the focus through F5 too, as in VC6. */
+    insn_step_ = dis_list_ && dis_list_->has_focus();
     bool fresh = false;
     if (!dbg_) {
         if (!debug_start())
@@ -427,6 +437,31 @@ void App::debug_command(int cmd)
     case CMD_DEBUG_STEP_OUT:
         s = fresh ? dbg_->cont() : dbg_->finish();
         break;
+    case CMD_DEBUG_STEP_INSN:
+    case CMD_DEBUG_NEXT_INSN:
+    case CMD_DEBUG_RUN_TO_INSN: {
+        td::Addr a = cmd == CMD_DEBUG_RUN_TO_INSN ? disassembly_selected() : 0;
+        insn_step_ = true;
+        if (fresh) {
+            /* As F10 at the start: to main. */
+            int id = dbg_->add_breakpoint("main", &err);
+            s = dbg_->cont();
+            if (id)
+                dbg_->remove_breakpoint(id);
+        } else if (cmd == CMD_DEBUG_STEP_INSN) {
+            s = dbg_->step_instruction();
+        } else if (cmd == CMD_DEBUG_NEXT_INSN) {
+            s = dbg_->next_instruction();
+        } else {
+            char spec[40], h[24];
+            snprintf(spec, sizeof(spec), "*%s", td::hex(a, h));
+            int id = a ? dbg_->add_breakpoint(spec, &err) : 0;
+            s = dbg_->cont();
+            if (id)
+                dbg_->remove_breakpoint(id);
+        }
+        break;
+    }
     case CMD_DEBUG_RUN_TO_CURSOR: {
         Doc* d = doc();
         if (!d || d->path.empty()) {

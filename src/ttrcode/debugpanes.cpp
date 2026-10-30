@@ -230,13 +230,14 @@ ListColors App::list_colors() const
 
 void App::recolor_lists()
 {
-    CellList* lists[7] = { stack_list_, regs_list_, threads_list_, watch_list_, vars_list_,
-                           mem_list_, quick_list_ };
+    CellList* lists[8] = { stack_list_, regs_list_, threads_list_, watch_list_, vars_list_,
+                           mem_list_, quick_list_, dis_list_ };
     ListColors c = list_colors();
     int i;
-    for (i = 0; i < 7; i++)
+    for (i = 0; i < 8; i++)
         if (lists[i])
             lists[i]->set_colors(c);
+    fill_disassembly(true);     /* its addresses have a colour of their own */
 }
 
 CellList* App::make_list(Widget parent, const char* name, int tag)
@@ -270,6 +271,12 @@ Widget App::build_debug_pane(Pane* p, Widget parent)
         regs_list_ = make_list(parent, "registers", tag);
         fill_registers();
         return regs_list_->widget();
+    }
+    if (is_pane(p, "disassembly")) {
+        dis_list_ = make_list(parent, "disassembly", tag);
+        dis_list_->set_marks(true);
+        fill_disassembly();
+        return dis_list_->widget();
     }
     if (is_pane(p, "threads")) {
         threads_list_ = make_list(parent, "threads", tag);
@@ -398,6 +405,9 @@ void App::drop_debug_pane(Pane* p)
     } else if (is_pane(p, "threads")) {
         delete threads_list_;
         threads_list_ = 0;
+    } else if (is_pane(p, "disassembly")) {
+        delete dis_list_;
+        dis_list_ = 0;
     } else if (is_pane(p, "watch")) {
         delete watch_list_;
         watch_list_ = 0;
@@ -434,6 +444,7 @@ void App::debug_fill()
     fill_variables();
     fill_watch();
     fill_memory();
+    fill_disassembly();
     if (quick_dlg_ && XtIsManaged(quick_dlg_))
         fill_quickwatch();
 }
@@ -1062,6 +1073,10 @@ void App::list_activate(CellList* l, int row)
         thread_chosen(row);
         return;
     }
+    if (l == dis_list_) {
+        disassembly_activate(row);
+        return;
+    }
     if (l == watch_list_) {
         /* A watch, or the empty row: edit it. */
         int w = watch_index(row);
@@ -1080,6 +1095,8 @@ bool App::list_key(CellList* l, TwGridCallbackStruct* cb)
 {
     KeySym ks = cb->keysym;
     unsigned state = cb->state;
+    if (l == dis_list_ && disassembly_key(ks, state))
+        return true;
     if (global_key(ks, state) || debug_key(ks, state))
         return true;
     /* The grid takes Escape before the dialog's Cancel would see it. */
@@ -1206,6 +1223,8 @@ void App::list_resized(CellList* l)
     }
     if (l == regs_list_)
         fill_registers();
+    else if (l == dis_list_)
+        fill_disassembly(true);
     else if (l == mem_list_)
         fill_memory();
 }

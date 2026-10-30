@@ -219,6 +219,88 @@ bool Session::place_at(Addr pc, Place* p) const
     return m && m->place_of(pc, p);
 }
 
+namespace {
+
+class SessionNames : public Symbolizer {
+public:
+    explicit SessionNames(const Session* s) : s_(s) {}
+    bool symbol(Addr a, Text* out) const { return s_->symbolize(a, out); }
+
+private:
+    const Session* s_;
+};
+
+} /* namespace */
+
+bool Session::symbolize(Addr a, Text* out) const
+{
+    const Module* m = module_at(a);
+    Addr start = 0;
+    const char* n = m ? m->symbol_at(a, &start) : 0;
+    if (!n)
+        return false;
+    out->add(n);
+    if (a != start) {
+        out->add("+");
+        out->add_hex(a - start);
+    }
+    return true;
+}
+
+int Session::disassemble(Addr a, Addr end, int max, ttr::Vector<Insn>* out, const Regs* regs)
+{
+    if (!target_)
+        return 0;
+    const Arch* arch = target_->arch();
+    SessionNames names(this);
+    /* Read in blocks; near memory that cannot be read, one instruction's
+     * bytes at a time. */
+    unsigned char buf[1024];
+    Addr have = 0;
+    size_t have_n = 0;
+    const Module* gp_module = 0;
+    int gp = arch->id == ARCH_X86_64 ? -1 : 28;
+    if (regs && gp >= 0 && regs->valid[gp])
+        gp_module = module_at(regs->pc);
+    int count = 0;
+    while (count < max && (!end || a < end)) {
+        if (a < have || a + INSN_MAX > have + have_n) {
+            have = a;
+            have_n = sizeof(buf);
+            if (!target_->read(a, buf, have_n)) {
+                for (have_n = INSN_MAX + 1; have_n > 0; have_n--)
+                    if (target_->read(a, buf, have_n - 1))
+                        break;
+                if (have_n <= 1)
+                    break;
+                have_n--;
+            }
+        }
+        const unsigned char* p = buf + (a - have);
+        size_t n = have_n - (size_t)(a - have);
+        if (end && n > end - a)
+            n = (size_t)(end - a);
+        Insn insn;
+        td::disassemble(arch, a, p, n, &names, &insn);
+        /* MIPS: "lw t9,-32740(gp)" loads a word of the module's global
+         * offset table: name what it holds. */
+        if (gp_module && insn.base_reg == gp && module_at(a) == gp_module) {
+            uint64_t v;
+            Text t;
+            if (target_->read_uint(regs->r[gp] + (Addr)insn.disp, arch->ptr_size, &v) && v &&
+                symbolize((Addr)v, &t)) {
+                t.clear();
+                format_address((Addr)v, &names, &t);
+                snprintf(insn.comment, sizeof(insn.comment), "%s", t.c_str());
+            }
+        }
+        out->push_back(insn);
+        count++;
+        a += (Addr)insn.len;
+    }
+    return count;
+}
+
 /* ------------------------------------------------------------------ */
 /* Breakpoints                                                         */
 
@@ -580,6 +662,24 @@ Stop Session::step_instruction()
     if (core_)
         return not_running();
     return run_until_stop(true);
+}
+
+Stop Session::next_instruction()
+{
+    if (core_)
+        return not_running();
+    Regs r;
+    ttr::Vector<Insn> insn;
+    if (!alive_ || !target_->get_regs(&r) || disassemble(r.pc, 0, 1, &insn) != 1 ||
+        insn[0].kind != INSN_CALL)
+        return step_instruction();
+    /* The call returns past it (MIPS: past its delay slot too), with the
+     * stack pointer where it is now. */
+    Addr ret = r.pc + (Addr)insn[0].len + (insn[0].delay_slot ? 4 : 0);
+    Stop s = run_to(ret, r.r[target_->arch()->sp_reg]);
+    if (s.kind == EV_BREAK && !s.bp && s.pc == ret)
+        s.kind = EV_STEP;
+    return s;
 }
 
 /* Run until the pc is a with the stack pointer at least min_sp (0: any),

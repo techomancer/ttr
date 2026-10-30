@@ -19,6 +19,7 @@ struct Symbol {
     Addr addr;          /* link address */
     uint64_t size;
     bool func;
+    bool stub;          /* a PLT entry (read_plt): symbol_at only */
 };
 
 class ElfFile {
@@ -55,6 +56,9 @@ public:
     const Symbol* find(const char* name) const;
     /* The function containing a link address, or 0. */
     const Symbol* function_at(Addr a) const;
+    /* A function, data or PLT entry symbol containing a link address,
+     * or 0. */
+    const Symbol* symbol_at(Addr a) const;
     /* It has C++ functions (mangled names). */
     bool has_cxx() const { return cxx_; }
 
@@ -66,6 +70,7 @@ private:
     void read_symbols(int symtab_type);
     void read_segments();
     void demangle_symbols();
+    bool read_plt();
 
     ttr::Str path_;
     unsigned char* data_;

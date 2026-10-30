@@ -98,7 +98,17 @@ and on IRIX (the emulated guest, MIPSpro n32 programs):
     DWARF where the symbol has none. `td/test/cpp.ttrdb`.
   - ttrcode: the Threads pane switches threads; DataTips (section 8.2).
   - All 11 scripts pass on Linux and on the Octane (n32).
-- Not yet: Disassembly (needs a disassembler), changing values, C++
+- Disassembly, 2026-10-29 (section 6.1):
+  - x86-64 through Zydis, MIPS by td's own decoder; addresses named by
+    the symbols, PLT entries (`printf@plt`) and, on MIPS, the global
+    offset table words that `jalr` calls go through.
+  - ttrdb's `di` and `ni`; ttrcode's Disassembly window (section 8.2).
+    `td/test/disasm.ttrdb`.
+  - Linux: a breakpoint SIGTRAP left queued behind `PTRACE_INTERRUPT`
+    (section 3.1) killed a program after detaching; fixed.
+  - All 12 scripts pass on Linux and on the Octane, with n32 and `-64`
+    programs.
+- Not yet: changing values, C++
   `this` and members by inheritance, thread-local variables, IRIX's
   pthreads that have no kernel thread (section 3.2), IRIX core files'
   other threads.
@@ -198,7 +208,7 @@ Every operation the Session needs, and how each system provides it.
 | Memory | `pread`/`pwrite` on `/proc/<pid>/mem`, any size; `PTRACE_POKEDATA` also writes to read-only text. |
 | Breakpoints | `int3` (0xCC) written over the first byte of the instruction. |
 | Watchpoints | Debug registers DR0 to DR3 and DR7, written with `PTRACE_POKEUSER` at `offsetof(struct user, u_debugreg)`. Four, each 1, 2, 4 or 8 bytes aligned to its size: an area takes as many as its aligned pieces need (32 bytes at most). The trap comes after the write, as a SIGTRAP; DR6 bits 0 to 3 say which register fired (also when it was a single step that wrote), and td clears DR6. |
-| Threads | Every thread is traced on its own. New ones arrive through `PTRACE_O_TRACECLONE` and stop first with `PTRACE_EVENT_STOP`. When one stops, `PTRACE_INTERRUPT` stops the others; one that stopped for something of its own meanwhile keeps it for later, except a breakpoint: its pc goes back to the int3, which it reaches again if the breakpoint is still there. An interrupt left over from that is a `PTRACE_EVENT_STOP` nobody asked for: run on. Debug registers are each thread's: all get the same, new ones when they start. A thread that ends while being stepped lets the others run. |
+| Threads | Every thread is traced on its own. New ones arrive through `PTRACE_O_TRACECLONE` and stop first with `PTRACE_EVENT_STOP`. When one stops, `PTRACE_INTERRUPT` stops the others; one that stopped for something of its own meanwhile keeps it for later, except a breakpoint: its pc goes back to the int3, which it reaches again if the breakpoint is still there. An interrupt left over from that is a `PTRACE_EVENT_STOP` nobody asked for: run on. A thread can reach an int3 just as the interrupt stops it: it reports the interrupt, its SIGTRAP still queued (`SigPnd` in `/proc/<tid>/status`), its pc past the int3; td lets it take the signal at once and treats it as any breakpoint met while stopping (left queued, it would come after the breakpoint is gone, or kill the program once detached). Debug registers are each thread's: all get the same, new ones when they start. A thread that ends while being stepped lets the others run. |
 | Memory map | `/proc/<pid>/maps`. |
 | Load address | `/proc/<pid>/auxv`: `AT_PHDR` and `AT_ENTRY` give the offset of a position-independent executable. |
 | Kill, detach | `PTRACE_KILL` or `kill`; `PTRACE_DETACH`. |
@@ -645,6 +655,41 @@ instruction, put the breakpoint back. Other threads must not run during
 that step: they stay stopped (decided: a single step runs one thread on
 both systems).
 
+### 6.1 Disassembly
+
+`td/disasm.h`: one instruction at an address from its bytes, as a
+mnemonic and operands, with its length, its kind (jump, branch, call,
+return), its target, and MIPS's delay slot. The Session reads the
+program's memory (breakpoints are out of it while it is stopped), names
+addresses through the symbols, and steps over a call by instruction
+(`next_instruction`: to the return address, past MIPS's delay slot).
+
+- **x86-64: Zydis** (`third_party/zydis` at v4.1.1 and its
+  `third_party/zycore`, MIT), compiled through `td/third/zydis*.c`
+  without its encoder and Xeon Phi tables, about 450 KB of code. Chosen
+  2026-10-29 over Capstone v4 (frozen, its x86 tables from an old LLVM:
+  part of AVX-512 only), udis86 (2014, no AVX-512) and diStorm (2021, no
+  AVX-512): glibc runs AVX-512 versions of `memcpy` and `strlen` where
+  the processor has them. Zydis is C99, which the rest of td is not, so
+  it is built only where x86-64 programs run; IRIX links
+  `td/disasm_nox86.cpp` (`TD_X86`). Intel syntax as Visual C++ wrote it:
+  `mov dword ptr [rbp-0x4], eax`, `je`, `ja` (Zydis says `jz`, `jnbe`).
+  Checked against GNU objdump: the same instruction lengths for all of
+  libc (387,410 instructions) and libLLVM 19 (21.5 million); 21 of
+  libcrypto's 880,454 differ, redundant REX prefixes in data in `.text`.
+- **MIPS: td's own** (`td/disasm_mips.cpp`), MIPS I to IV with the
+  floating point unit and COP1X, about 600 lines, written as IRIX's
+  `dis` does (`lw a0,16(sp)`, with the short forms `move`, `li`, `b`,
+  `beqz`, `neg`). Checked against llvm-objdump: the same text for IRIX
+  6.5's n32 and 64-bit `libc` and mips4 `libm`, `libGLU` and a
+  MIPSpro-built ttrcode, 780,000 instructions in all.
+- **Names**: `call square (0x401136)`, `jg fact+0x1c (0x40118c)`,
+  `printf@plt` for the procedure linkage table's entries (x86-64:
+  `.rela.plt` with `.plt` or `.plt.sec`; they are names only, so stepping
+  into a library still goes through them as code without lines). MIPS
+  code calls through the global offset table (`lw t9,-32740(gp)` then
+  `jalr t9`): with the frame's gp, td reads the word and names it.
+
 ## 7. Session
 
 - **The stop-run loop:** resume, wait for an event, classify it. The
@@ -726,6 +771,7 @@ ttrdb ./prog args          ttrdb -p PID          ttrdb -c core [./prog]
 | `pt expr` | its type, and a struct's members |
 | `l` | list the source around the current line |
 | `x addr [n]` | dump memory |
+| `di`, `di func`, `di addr [n]` | disassemble the frame's function (`=>` at the pc), another one, or n instructions |
 | `regs` | the registers |
 | `t`, `t N` | list threads, switch to one |
 | `mods` | the loaded objects and whether they have debug information |
@@ -772,7 +818,17 @@ The windows:
   last stop are kept by expression (`src/ttrcode/valuetree.h`), so a
   step keeps the tree as it was and shows what changed.
 - **Call Stack**: double-clicking a frame shows its source and variables.
-- **Registers, Memory, Disassembly**: changed values are shown in red.
+- **Registers, Memory**: changed values are shown in red.
+- **Disassembly** (`src/ttrcode/disassembly.cpp`): the function of the
+  frame Call Stack shows, each source line followed by its instructions
+  (VC6's Source Annotation), the yellow arrow at the current instruction,
+  the green one where a caller's call returns, red dots at breakpoints
+  (any breakpoint at that address: a line's, a function's, its own).
+  With it focused, F11 and F10 step one instruction (F10 over calls),
+  Ctrl+F10 runs to the selected instruction and F9 sets or clears a
+  breakpoint there (`*0x401020`, kept with the others); a command given
+  there leaves the focus there. A stop where the frame shown has no
+  source opens it (VC6 offered to).
 - **Output**: the program's own output (it runs on a pty, like the
   terminal pane), and debugger messages.
 - **Threads**: a pane (VC6 had a dialog), every thread with its number,
@@ -886,3 +942,5 @@ serialising it. Nothing is built for it now.
    - Attaching to a running program. *Done.*
    - Demangling for both ABIs. *Done.*
    - Hover tips. *Done* (DataTips).
+6. **Disassembly.** *Done* (section 6.1): Zydis for x86-64, td's own
+   MIPS decoder, ttrdb's `di` and `ni`, ttrcode's Disassembly window.
