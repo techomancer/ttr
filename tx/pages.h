@@ -28,8 +28,9 @@ public:
                 const char* const* pages, int count);
     Widget dialog() const { return dialog_; }
     Widget page(int i) const { return pages_[i]; }
-    /* With the pages filled: the page area as big as the biggest page,
-     * then the note (or none) and the buttons. */
+    /* With the pages filled: the page area as big as the biggest page (it
+     * scrolls where the screen is too small for that), then the note (or
+     * none) and the buttons. */
     void finish(const char* note, int buttons, Pressed pressed, void* data);
     void show_page(int i);
     int shown() const { return shown_; }
@@ -48,6 +49,7 @@ private:
     };
     Widget dialog_;
     Widget list_;
+    Widget scroll_;             /* the page area's window */
     Widget content_;
     Widget pages_[MAX_PAGES];
     int count_;

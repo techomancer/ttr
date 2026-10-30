@@ -12,6 +12,7 @@
 #include <Xm/List.h>
 #include <Xm/PushB.h>
 #include <Xm/RowColumn.h>
+#include <Xm/ScrolledW.h>
 #include <Xm/Separator.h>
 #include <Xm/ComboBox.h>
 #include <Xm/ToggleB.h>
@@ -30,7 +31,7 @@ XmString xmstr(const char* s)
 } /* namespace */
 
 PagedDialog::PagedDialog()
-    : dialog_(0), list_(0), content_(0), count_(0), shown_(0), pressed_(0), data_(0)
+    : dialog_(0), list_(0), scroll_(0), content_(0), count_(0), shown_(0), pressed_(0), data_(0)
 {
     for (int i = 0; i < MAX_PAGES; i++)
         pages_[i] = 0;
@@ -74,13 +75,23 @@ void PagedDialog::create(Widget parent, const char* name, const char* title,
     XtSetValues(XtParent(list_), args, n);
     XtManageChild(list_);
 
+    /* The page area: in a window that scrolls when the screen is too
+     * small for it (a large UI scale), which looks the same as the pages
+     * alone when they fit. A window manager would otherwise squeeze the
+     * dialog to the screen, and rows lose what does not fit. */
+    Arg sargs[10];
     n = 0;
-    XtSetArg(args[n], XmNtopAttachment, XmATTACH_FORM); n++;
-    XtSetArg(args[n], XmNleftAttachment, XmATTACH_WIDGET); n++;
-    XtSetArg(args[n], XmNleftWidget, XtParent(list_)); n++;
-    XtSetArg(args[n], XmNleftOffset, scaled(10)); n++;
-    XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
-    content_ = XmCreateForm(dialog_, (char*)"pages", args, n);
+    XtSetArg(sargs[n], XmNtopAttachment, XmATTACH_FORM); n++;
+    XtSetArg(sargs[n], XmNleftAttachment, XmATTACH_WIDGET); n++;
+    XtSetArg(sargs[n], XmNleftWidget, XtParent(list_)); n++;
+    XtSetArg(sargs[n], XmNleftOffset, scaled(10)); n++;
+    XtSetArg(sargs[n], XmNrightAttachment, XmATTACH_FORM); n++;
+    XtSetArg(sargs[n], XmNscrollingPolicy, XmAUTOMATIC); n++;
+    XtSetArg(sargs[n], XmNscrollBarDisplayPolicy, XmAS_NEEDED); n++;
+    XtSetArg(sargs[n], XmNshadowThickness, 0); n++;
+    XtSetArg(sargs[n], XmNspacing, 0); n++;
+    scroll_ = XmCreateScrolledWindow(dialog_, (char*)"pageArea", sargs, n);
+    content_ = XmCreateForm(scroll_, (char*)"pages", 0, 0);
 
     /* One page: a column of frames in the page area, shown alone. */
     for (i = 0; i < count; i++) {
@@ -118,11 +129,36 @@ void PagedDialog::finish(const char* note, int buttons, Pressed pressed, void* d
     XtSetValues(content_, args, n);
     XtManageChild(content_);
     show_page(shown_);
+    /* At most most of the screen, beside the list and above the buttons;
+     * scroll bars where the pages need more. */
+    Screen* scr = XtScreen(dialog_);
+    XtWidgetGeometry lp;
+    XtQueryGeometry(XtParent(list_), 0, &lp);
+    int max_w = WidthOfScreen(scr) * 9 / 10 - (int)lp.width - scaled(40);
+    int max_h = HeightOfScreen(scr) * 9 / 10 - scaled(90);
+    int w = pw, h = ph;
+    if (w > max_w || h > max_h) {
+        /* Room for the scroll bar across the other way. */
+        int bar = scaled(17) + scaled(4);
+        if (w > max_w)
+            h += bar;
+        if (h > max_h)
+            w += bar;
+    }
+    if (w > max_w && max_w > scaled(200))
+        w = max_w;
+    if (h > max_h && max_h > scaled(150))
+        h = max_h;
+    n = 0;
+    XtSetArg(args[n], XmNwidth, w); n++;
+    XtSetArg(args[n], XmNheight, h); n++;
+    XtSetValues(scroll_, args, n);
+    XtManageChild(scroll_);
 
     /* The note and the buttons along the bottom. */
     n = 0;
     XtSetArg(args[n], XmNtopAttachment, XmATTACH_WIDGET); n++;
-    XtSetArg(args[n], XmNtopWidget, content_); n++;
+    XtSetArg(args[n], XmNtopWidget, scroll_); n++;
     XtSetArg(args[n], XmNtopOffset, scaled(10)); n++;
     XtSetArg(args[n], XmNleftAttachment, XmATTACH_FORM); n++;
     XtSetArg(args[n], XmNrightAttachment, XmATTACH_FORM); n++;
@@ -202,7 +238,7 @@ void PagedDialog::destroy()
 {
     if (dialog_)
         XtDestroyWidget(XtParent(dialog_));
-    dialog_ = list_ = content_ = 0;
+    dialog_ = list_ = scroll_ = content_ = 0;
     for (int i = 0; i < MAX_PAGES; i++)
         pages_[i] = 0;
     count_ = 0;

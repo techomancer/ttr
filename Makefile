@@ -973,7 +973,7 @@ SHELL_H = src/shell/shell.h src/shell/startmenu.h src/shell/taskbar.h \
 	src/shell/volume.h src/shell/netstatus.h src/shell/trayitem.h \
 	src/shell/storagemenu.h src/shell/popup.h src/shell/notifier.h \
 	src/shell/notifysrc.h src/shell/pickers.h src/shell/startuppage.h \
-	src/shell/colorpicker.h src/shell/colorspage.h
+	src/shell/colorpicker.h src/shell/colorspage.h tx/pages.h
 
 $(B)/main.o: $(B)/.dir src/main.cpp $(X11_H) $(SHELL_H)
 	$(COMPILE) -c src/main.cpp -o $@

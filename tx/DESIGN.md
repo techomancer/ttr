@@ -47,7 +47,10 @@ all build theirs with it, so they look and work alike:
   controls of every frame line up. `tx::radio()`, `tx::drop_down()`,
   `tx::note()`, `tx::choose()` and `tx::chosen()` fill them.
 - `finish()` makes the page area as big as the biggest page, so switching
-  pages does not resize the dialog, and adds a note (where the settings
+  pages does not resize the dialog. Where the screen is too small for
+  that (a large UI scale), the page area scrolls: a window manager would
+  otherwise squeeze the dialog to the screen, and Motif rows drop what no
+  longer fits (ttrt's font chooser vanished). and adds a note (where the settings
   are saved, or that ttr restarts) and OK, Apply and Cancel as the
   program asks. The program decides what each button does.
 
