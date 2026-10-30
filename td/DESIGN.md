@@ -250,47 +250,28 @@ stepping by instruction.
 
 ### 5.4 libdwarf
 
-td reads DWARF through libdwarf, from one of two places:
+td reads DWARF through the current libdwarf
+(https://github.com/davea42/libdwarf-code, LGPL 2.1, about 62,000 lines
+of C in 64 files), vendored in `third_party/libdwarf` as a pinned
+submodule and built the same way on Linux and IRIX. Decided 2026-10-24.
 
-- **SGI's**, on IRIX: a 2001 version, static only (`/usr/lib32/libdwarf.a`,
-  `libdwarf_sgi.a`, `libelf.a`, headers in `/usr/include`), also under
-  the LGPL 2.1. It reads DWARF 2, which is what MIPSpro writes.
-- **The current one** (https://github.com/davea42/libdwarf-code, LGPL
-  2.1, about 62,000 lines of C in 64 files), vendored in
-  `third_party/libdwarf` as a pinned submodule. Needed on Linux (DWARF
-  4 and 5), and usable on IRIX too.
+IRIX also ships SGI's own 2001 libdwarf (`/usr/lib32/libdwarf.a`,
+`libdwarf_sgi.a`, `libelf.a`, headers in `/usr/include`). td does not
+use it:
 
-The Makefile chooses: `TD_DWARF=vendored` (the default) or
-`TD_DWARF=system` (IRIX only).
+- It reads only DWARF 2.
+- Its API differs: compared against commit 71f0401, the calls for opening
+  a file, walking compilation units, siblings, line tables, address
+  ranges, register rules and location lists were all renamed with more
+  arguments since, and the old names are gone. Using it would mean a shim
+  and a second code path to test.
+- It lacks 25 years of fixes for malformed input, which a debugger meets.
+- We cannot ship its source (below).
 
-**The two APIs are not interchangeable as they are.** Compared on
-2026-10-24 (the guest's `/usr/include/libdwarf.h` against commit 71f0401):
+It stays useful as a cross-check: SGI's `dwarfdump` and dbx on IRIX
+confirm that td reads MIPSpro's output correctly.
 
-- The same in both: `dwarf_child`, `dwarf_tag`, `dwarf_diename`,
-  `dwarf_attr`, the `dwarf_form*` readers, `dwarf_lowpc`,
-  `dwarf_lineaddr`/`dwarf_lineno`/`dwarf_linesrc`, `dwarf_get_fde_list`,
-  `dwarf_get_fde_list_eh`, `dwarf_get_fde_at_pc`, `dwarf_get_globals`,
-  `dwarf_dealloc`, `dwarf_finish`.
-- Renamed with more arguments, the old names gone from the current
-  library:
-
-  | SGI | current |
-  |---|---|
-  | `dwarf_init`, `dwarf_elf_init` | `dwarf_init_b`, `dwarf_object_init_b` |
-  | `dwarf_next_cu_header` | `dwarf_next_cu_header_d` |
-  | `dwarf_siblingof` | `dwarf_siblingof_b` |
-  | `dwarf_srclines` | `dwarf_srclines_b` (a line context) |
-  | `dwarf_highpc` | `dwarf_highpc_b` (an offset or an address) |
-  | `dwarf_get_fde_info_for_reg` | `dwarf_get_fde_info_for_reg3_c`, `..._all_regs3` |
-  | `dwarf_loclist` | `dwarf_get_loclist_c` (location lists of DWARF 5 too) |
-
-So td is written against the current API, and `td/dwarf_sgi.cpp`
-provides the dozen renamed calls it uses on top of SGI's old ones: for
-DWARF 2, the extra arguments have fixed answers. Only that file knows
-which library is underneath. If SGI's turns out to miss too much, IRIX
-uses the vendored one, which builds there (below).
-
-About the current libdwarf:
+About the vendored libdwarf:
 
 - **It builds with MIPSpro.** Tried on 2026-10-24 with commit 71f0401
   (`cc -c99 -n32`, a hand-written `config.h` with `WORDS_BIGENDIAN`):
@@ -339,15 +320,12 @@ libdwarf in it (not legal advice; this is the plan):
   ttrcode's About dialog lists it with its licence and the repository
   address, and so does `ttrdb --version`.
 
-SGI's libdwarf (`TD_DWARF=system`) is for local IRIX builds only. It was
-already LGPL 2.1: the guest's `/usr/include/libdwarf.h` says "Copyright
-(C) 2000, 2001, 2002 Silicon Graphics, Inc." under the LGPL 2.1, and SGI
-published the source on oss.sgi.com. That site is gone, and the libdwarf
-repository's oldest release tag is from 2011, so we do not have the
-source of the exact version in `/usr/lib32/libdwarf.a` and cannot meet
-the first point for a binary linked with it. If a matching 2000-2002
-snapshot turns up (a mirror, the Wayback Machine), shipping it alongside
-would allow it. Until then, released tardists use the vendored one.
+SGI's libdwarf was LGPL 2.1 too: the guest's `/usr/include/libdwarf.h`
+says "Copyright (C) 2000, 2001, 2002 Silicon Graphics, Inc." under the
+LGPL 2.1, and SGI published the source on oss.sgi.com. That site is gone,
+and the libdwarf repository's oldest release tag is from 2011, so the
+source of the exact version in `/usr/lib32/libdwarf.a` is not at hand,
+another reason not to link it into anything we ship.
 
 (Current libdwarf's files carry SGI copyrights from 2000 to 2010. Three
 files, `dwarf.h`, `libdwarf.h` and `dwarf_form.c`, also say "Copyright
@@ -569,7 +547,7 @@ serialising it. Nothing is built for it now.
    C++. Proposal: F11 steps, and full screen moves to Shift+Alt+Enter,
    Visual Studio's later key for full screen.
 4. **libdwarf** as a `third_party` submodule (section 5.4), built as a
-   shared library for the LGPL, with SGI's as the alternative on IRIX.
+   shared library for the LGPL (decided: the vendored one on both systems).
    Pending: libdwarf's upstreaming policy. And **zstd** for compressed
    debug sections on Linux: a submodule too, or leave such files unread
    for now (our own builds don't compress them).
@@ -588,8 +566,6 @@ serialising it. Nothing is built for it now.
    - Built from: libdwarf (vendored), the ptrace Target, the x86-64
      Arch, and both unwinders (libunwind when present, td's own loop).
 2. **The same on IRIX.**
-   - With both libdwarfs: the vendored one, and SGI's through
-     `td/dwarf_sgi.cpp`.
    - The /proc Target and the MIPS Arch, with delay slots.
    - Tested on the guest and on the Octane, with MIPSpro-built programs.
    - The *to verify* items of sections 3 to 6 get answered here.
