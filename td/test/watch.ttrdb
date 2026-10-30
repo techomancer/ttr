@@ -1,0 +1,60 @@
+# program: td_watch
+# Watchpoints: they stop only when the value changes, after the write;
+# a bit field is not stopped for by its neighbour; a local's ends when
+# its frame returns.
+b main
+r
+expect Breakpoint 1,
+w g_same
+expect Watchpoint 2: g_same (4 bytes
+w g_counter
+expect Watchpoint 3: g_counter
+c
+absent Watchpoint 2:
+expect Watchpoint 3: g_counter
+expect Old value = 0
+expect New value = 1
+expect main (watch.c:26)
+d 3
+w g_flags.b
+expect Watchpoint 4: g_flags.b
+c
+expect Watchpoint 4: g_flags.b
+expect Old value = 0
+expect New value = 9
+expect main (watch.c:28)
+d 4
+w g_pair
+c
+expect Watchpoint 5: g_pair
+expect Old value = {0, 0}
+expect New value = {0, 5}
+d 5
+b watch.c:18
+c
+expect Breakpoint 6, count (watch.c:18)
+w total
+expect until its frame returns
+d 6
+c
+expect Watchpoint 7: total
+expect Old value = 0
+expect New value = 1
+c
+expect New value = 3
+c
+expect New value = 6
+c
+expect Watchpoint 7 ended: its frame returned.
+expect main
+b
+absent watch total
+w g_counter
+c
+expect Watchpoint 8: g_counter
+expect Old value = 1
+expect New value = 6
+d 2
+d 8
+c
+expect Program exited with code 0.

@@ -50,7 +50,8 @@ struct Options {
     const char* debug_args;
     const char* debug_dir;
     const char* debug_watch;    /* Watch's expressions, separated by ';' */
-    const char* debug_breakpoints;  /* file:line;file:line */
+    const char* debug_breakpoints;  /* file:line;file:line;function */
+    const char* debug_data_breakpoints; /* expressions, separated by ';' */
     bool auto_indent;           /* Enter keeps the previous line's indentation */
     bool show_whitespace;
     bool highlight_line;
@@ -103,10 +104,21 @@ ttr::Str settings_path();
 /* The UI theme ttr uses (its settings file), or "". */
 const char* ttr_theme();
 
-/* A breakpoint set in the editor: a file and a line (from 0). */
+/* A breakpoint set in the editor: a file and a line (from 0); or one on
+ * a function, from the Breakpoints dialog. */
 struct SourceBreakpoint {
     ttr::Str path;
     long line;
+    ttr::Str func;      /* not empty: this function, path and line unused */
+};
+
+/* A data breakpoint (Breakpoints dialog): stop when the expression's
+ * value changes. */
+struct DataBreakpoint {
+    ttr::Str expr;
+    int id;             /* td's watchpoint while debugging; 0: not set */
+    bool local;         /* ends with its frame */
+    ttr::Str why;       /* why it is not set */
 };
 
 /* A match of Find in Files. */
@@ -127,7 +139,8 @@ enum Command {
     /* Debug (debug.cpp). */
     CMD_DEBUG_GO, CMD_DEBUG_STOP, CMD_DEBUG_RESTART, CMD_DEBUG_BREAK, CMD_DEBUG_STEP_INTO,
     CMD_DEBUG_STEP_OVER, CMD_DEBUG_STEP_OUT, CMD_DEBUG_RUN_TO_CURSOR, CMD_DEBUG_TOGGLE_BP,
-    CMD_DEBUG_SETTINGS, CMD_VIEW_PROGRAM, CMD_DEBUG_QUICKWATCH,
+    CMD_DEBUG_SETTINGS, CMD_VIEW_PROGRAM, CMD_DEBUG_QUICKWATCH, CMD_DEBUG_BREAKPOINTS,
+    CMD_DEBUG_CORE,
     /* View > Debug Windows: one per pane in k_debug_panes (app.cpp). */
     CMD_VIEW_DEBUG
 };
@@ -190,6 +203,8 @@ public:
     void memory_address_entered();
     void memory_format_chosen(int f);
     void quickwatch_button(int which);
+    void breakpoints_button(int which);
+    void breakpoints_entered(bool data);
 
     /* CellListHost: the debugger's panes (debugpanes.cpp). */
     void list_activate(CellList* l, int row);
@@ -212,6 +227,16 @@ private:
     void debug_status(const char* msg);
     void show_debug_settings();
     void toggle_breakpoint();
+    /* Debug > Open Core File. */
+    void debug_open_core();
+    /* The Breakpoints dialog (breakpoints.cpp). */
+    void show_breakpoints();
+    void fill_breakpoints();
+    bool add_location_breakpoint(const char* spec);
+    bool add_data_breakpoint(const char* expr);
+    void set_data_breakpoints();
+    void remove_breakpoint_at(int item);
+    ttr::Str breakpoint_spec(const SourceBreakpoint& b) const;
     void goto_source(const char* path, long line);
     Widget build_debug_pane(Pane* p, Widget parent);
     void drop_debug_pane(Pane* p);
@@ -376,6 +401,7 @@ private:
     /* The debugger. */
     td::Session* dbg_;
     ttr::Vector<SourceBreakpoint> bps_;
+    ttr::Vector<DataBreakpoint> data_bps_;
     ttr::Str dbg_program_, dbg_args_, dbg_dir_;
     ttr::Str stop_path_;        /* where the program stopped, "": nowhere */
     long stop_line_;
@@ -415,6 +441,7 @@ private:
     CellList* quick_list_;
     ttr::Str quick_text_;
     Widget dbg_dlg_, dbg_prog_, dbg_args_w_, dbg_dir_w_;
+    Widget bp_dlg_, bp_at_w_, bp_expr_w_, bp_list_w_, bp_note_w_;
     ttr::Str dbg_msg_;          /* the status bar's first words */
     /* Find Results (0 while its pane is closed). */
     Widget results_;

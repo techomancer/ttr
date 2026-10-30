@@ -25,7 +25,10 @@ namespace {
 
 class LinuxTarget : public Target {
 public:
-    LinuxTarget() : pid_(-1), mem_(-1), alive_(false), attached_(false) {}
+    LinuxTarget() : pid_(-1), mem_(-1), alive_(false), attached_(false), next_watch_(1)
+    {
+        memset(slots_, 0, sizeof(slots_));
+    }
     ~LinuxTarget();
 
     bool launch(char* const* argv, const LaunchOptions& o, ttr::Str* err);
@@ -46,9 +49,13 @@ public:
     bool set_pc(Addr pc);
     bool read(Addr a, void* buf, size_t n);
     bool write(Addr a, const void* buf, size_t n);
+    int add_watch(Addr a, size_t n, ttr::Str* err);
+    void remove_watch(int handle);
 
 private:
     bool open_mem();
+    bool set_debugreg(int i, unsigned long v);
+    bool write_dr7();
     void gone();
     bool decode(int st, Event* ev);
 
@@ -56,6 +63,15 @@ private:
     int mem_;           /* /proc/<pid>/mem */
     bool alive_;
     bool attached_;     /* attached rather than started: detach on close */
+    /* The debug registers DR0 to DR3: each watches 1, 2, 4 or 8 bytes,
+     * aligned to their size. An area takes one or more of them. */
+    struct Slot {
+        Addr addr;
+        int len;
+        int handle;     /* 0: free */
+    };
+    Slot slots_[4];
+    int next_watch_;
 };
 
 void set_err(ttr::Str* err, const char* what)
@@ -174,34 +190,9 @@ Addr LinuxTarget::exe_bias(Addr elf_entry)
     return bias;
 }
 
-/* glibc's list: DT_DEBUG points to struct r_debug once ld.so has started;
- * its r_map is the link_map list. x86-64 offsets: r_debug.r_map 8;
- * link_map l_addr 0, l_name 8, l_next 24. */
 bool LinuxTarget::shared_objects(Addr dynamic, ttr::Vector<SharedObject>* out)
 {
-    uint64_t rdebug = 0, map = 0;
-    if (!dynamic || !dynamic_entry(dynamic, 21 /* DT_DEBUG */, &rdebug) || !rdebug)
-        return true;        /* not started yet, or linked statically */
-    if (!read_uint(rdebug + 8, 8, &map))
-        return false;
-    int n;
-    for (n = 0; map && n < 4096; n++) {
-        uint64_t addr = 0, name = 0, next = 0;
-        if (!read_uint(map, 8, &addr) || !read_uint(map + 8, 8, &name) ||
-            !read_uint(map + 24, 8, &next))
-            return false;
-        char path[4096];
-        /* The executable has an empty name; the vDSO has no file. */
-        if (name && read_string(name, path, sizeof(path)) && path[0] == '/' &&
-            access(path, R_OK) == 0) {
-            SharedObject so;
-            so.path = path;
-            so.bias = addr;
-            out->push_back(so);
-        }
-        map = next;
-    }
-    return true;
+    return glibc_objects(dynamic, out);
 }
 
 /* r_debug.r_brk (offset 16): ld.so calls it before and after each change
@@ -297,6 +288,27 @@ bool LinuxTarget::decode(int st, Event* ev)
         ev->sig = sig;
         return true;
     }
+    /* DR6 says which debug registers fired (bits 0 to 3), the step too
+     * if it was one (the write was its instruction). */
+    int i;
+    unsigned long dr6 = 0;
+    for (i = 0; i < 4 && !slots_[i].handle; i++)
+        ;
+    if (i < 4) {
+        errno = 0;
+        dr6 = (unsigned long)ptrace(PTRACE_PEEKUSER, pid_,
+                                    (void*)(offsetof(struct user, u_debugreg) + 6 * sizeof(long)),
+                                    0);
+        if (errno)
+            dr6 = 0;
+        set_debugreg(6, 0);
+    }
+    for (i = 0; i < 4; i++)
+        if ((dr6 & (1ul << i)) && slots_[i].handle) {
+            ev->kind = EV_WATCH;
+            ev->watch = slots_[i].handle;
+            return true;
+        }
     siginfo_t si;
     memset(&si, 0, sizeof(si));
     ptrace(PTRACE_GETSIGINFO, pid_, 0, &si);
@@ -382,6 +394,90 @@ bool LinuxTarget::write(Addr a, const void* buf, size_t n)
         return false;
     /* /proc/<pid>/mem writes into read-only text too. */
     return pwrite(mem_, buf, n, (off_t)a) == (ssize_t)n;
+}
+
+bool LinuxTarget::set_debugreg(int i, unsigned long v)
+{
+    return ptrace(PTRACE_POKEUSER, pid_,
+                  (void*)(offsetof(struct user, u_debugreg) + (size_t)i * sizeof(long)),
+                  (void*)v) == 0;
+}
+
+/* DR7: for each register in use its local enable bit (2i), and at
+ * 16 + 4i the condition (01: writes) and the length (00: 1 byte, 01: 2,
+ * 11: 4, 10: 8). */
+bool LinuxTarget::write_dr7()
+{
+    unsigned long dr7 = 0;
+    int i;
+    for (i = 0; i < 4; i++) {
+        if (!slots_[i].handle)
+            continue;
+        unsigned long len = slots_[i].len == 1 ? 0 : slots_[i].len == 2 ? 1 :
+                            slots_[i].len == 4 ? 3 : 2;
+        dr7 |= 1ul << (2 * i);
+        dr7 |= (1ul | (len << 2)) << (16 + 4 * i);
+    }
+    return set_debugreg(7, dr7);
+}
+
+int LinuxTarget::add_watch(Addr a, size_t n, ttr::Str* err)
+{
+    /* Into aligned pieces of 8, 4, 2 and 1 bytes. */
+    Slot want[4];
+    int pieces = 0;
+    Addr p = a, end = a + n;
+    while (p < end) {
+        int len = 8;
+        while (len > 1 && ((p % (Addr)len) != 0 || p + (Addr)len > end))
+            len /= 2;
+        if (pieces == 4) {
+            if (err)
+                *err = "too big: the processor watches 32 bytes at most, in 4 aligned pieces";
+            return -1;
+        }
+        want[pieces].addr = p;
+        want[pieces].len = len;
+        pieces++;
+        p += (Addr)len;
+    }
+    int i, k, free = 0;
+    for (i = 0; i < 4; i++)
+        if (!slots_[i].handle)
+            free++;
+    if (pieces > free) {
+        if (err)
+            *err = "the processor has no more debug registers (4, of up to 8 bytes each)";
+        return -1;
+    }
+    int handle = next_watch_++;
+    for (i = 0, k = 0; k < pieces; i++) {
+        if (slots_[i].handle)
+            continue;
+        slots_[i] = want[k++];
+        slots_[i].handle = handle;
+        if (!set_debugreg(i, (unsigned long)slots_[i].addr)) {
+            set_err(err, "setting a debug register");
+            remove_watch(handle);
+            return -1;
+        }
+    }
+    if (!write_dr7()) {
+        set_err(err, "setting the debug registers");
+        remove_watch(handle);
+        return -1;
+    }
+    return handle;
+}
+
+void LinuxTarget::remove_watch(int handle)
+{
+    int i;
+    for (i = 0; i < 4; i++)
+        if (slots_[i].handle == handle)
+            slots_[i].handle = 0;
+    if (alive_)
+        write_dr7();
 }
 
 } /* namespace */

@@ -687,12 +687,22 @@ void App::save_watches(ttr::SettingsFile* f)
     for (i = 0; i < bps_.size(); i++) {
         if (i)
             t.add(";");
-        t.addf("%s:%ld", bps_[i].path.c_str(), bps_[i].line + 1);
+        t.add(breakpoint_spec(bps_[i]).c_str());
     }
     if (t.length())
         f->set("debugBreakpoints", t.c_str());
     else
         f->remove("debugBreakpoints");
+    t.clear();
+    for (i = 0; i < data_bps_.size(); i++) {
+        if (i)
+            t.add(";");
+        t.add(data_bps_[i].expr.c_str());
+    }
+    if (t.length())
+        f->set("debugDataBreakpoints", t.c_str());
+    else
+        f->remove("debugDataBreakpoints");
 }
 
 /* ---- Memory ---- */

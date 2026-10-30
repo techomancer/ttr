@@ -1,5 +1,7 @@
 #include "session.h"
 
+#include "core.h"
+
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +27,8 @@ const char* base_name(const char* p)
 
 Session::Session()
     : target_(0), alive_(false), started_(false), next_id_(1), pending_sig_(0), idle_(0),
-      idle_ctx_(0), busy_(false), interrupted_(false)
+      idle_ctx_(0), busy_(false), interrupted_(false), hit_watch_(0), used_local_(false),
+      core_(0)
 {
 }
 
@@ -120,6 +123,49 @@ bool Session::attach(int pid, ttr::Str* err)
     return true;
 }
 
+bool Session::open_core(const char* core, const char* exe, ttr::Str* err, Stop* why)
+{
+    core_ = CoreTarget::open(core, err);
+    if (!core_)
+        return false;
+    target_ = core_;
+    if (exe)
+        core_->set_exe(exe);
+    else if (core_->exe_path().empty()) {
+        if (err)
+            *err = "the core file does not say which program it is: name it";
+        return false;
+    }
+    /* The core names its program (its first 15 characters on Linux). */
+    const char* name = core_->program_name();
+    ttr::Str path = core_->exe_path();
+    const char* base = base_name(path.c_str());
+    size_t n = strlen(name);
+    if (n && strcmp(base, name) != 0 && !(n >= 15 && strncmp(base, name, n) == 0)) {
+        if (err) {
+            char m[600];
+            snprintf(m, sizeof(m), "the core file is %.80s's, not %.200s's", name, base);
+            *err = m;
+        }
+        return false;
+    }
+    alive_ = true;
+    if (!load_exe(err))
+        return false;
+    core_->add_image(&mods_[0]->elf(), mods_[0]->bias());
+    started_ = true;
+    refresh_modules();
+    if (why) {
+        Regs r;
+        memset(why, 0, sizeof(*why));
+        why->kind = EV_SIGNAL;
+        why->sig = core_->signal();
+        if (core_->get_regs(&r))
+            why->pc = r.pc;
+    }
+    return true;
+}
+
 /* ------------------------------------------------------------------ */
 /* Modules                                                             */
 
@@ -145,6 +191,8 @@ int Session::refresh_modules()
         }
         m->set_bias(list[i].bias);
         mods_.push_back(m);
+        if (core_)
+            core_->add_image(&m->elf(), m->bias());
         added++;
     }
     return added;
@@ -271,6 +319,11 @@ bool Session::remove_breakpoint(int id)
     int i;
     if (id <= 0)
         return false;
+    for (i = 0; i < watches_.size(); i++)
+        if (watches_[i].id == id) {
+            end_watch(i);
+            return true;
+        }
     for (i = bps_.size() - 1; i >= 0; i--)
         if (bps_[i].id == id) {
             bps_.remove_at(i);
@@ -339,9 +392,12 @@ Stop Session::to_stop(const Event& e)
     s.sig = e.sig;
     s.status = e.status;
     s.pc = e.pc;
+    s.watch = 0;
     if (e.kind == EV_EXITED || e.kind == EV_KILLED || e.kind == EV_ERROR) {
         alive_ = false;
         pending_sig_ = 0;
+    } else if (e.kind == EV_WATCH) {
+        s.watch = hit_watch_;
     } else if (e.kind == EV_SIGNAL && interrupted_ && (e.sig == 0 || e.sig == SIGSTOP)) {
         /* What interrupt() asked for: not the program's signal. */
         s.kind = EV_PAUSED;
@@ -357,6 +413,25 @@ Stop Session::to_stop(const Event& e)
         } else {
             s.bp = bps_[i].id;
         }
+    }
+    if (!alive_ || watches_.empty())
+        return s;
+    /* A watched local's frame has returned when the stack pointer is
+     * back up to its caller's: the watch ends (it would catch whatever
+     * uses that stack next). */
+    Regs r;
+    if (!target_->get_regs(&r))
+        return s;
+    int sp = target_->arch()->sp_reg, i;
+    for (i = watches_.size() - 1; i >= 0; i--) {
+        const Watchpoint& w = watches_[i];
+        if (!w.scope_sp || r.r[sp] < w.scope_sp)
+            continue;
+        if (s.kind != EV_WATCH) {
+            s.kind = EV_WATCH_ENDED;
+            s.watch = w.id;
+        }
+        end_watch(i);
     }
     return s;
 }
@@ -374,8 +449,7 @@ Stop Session::step_over_bp(bool* done)
     int sig = pending_sig_;
     pending_sig_ = 0;
     Event e;
-    if (!target_->resume(true, sig) || !wait_event(&e)) {
-        e.kind = EV_ERROR;
+    if (!run_target(true, sig, &e)) {
         *done = true;
         return to_stop(e);
     }
@@ -403,8 +477,7 @@ Stop Session::run_until_stop(bool step)
     }
     int sig = pending_sig_;
     pending_sig_ = 0;
-    if (!target_->resume(step, sig) || !wait_event(&e))
-        e.kind = EV_ERROR;
+    run_target(step, sig, &e);
     remove_all();       /* after an exit only the flags are cleared */
     return to_stop(e);
 }
@@ -449,11 +522,22 @@ void Session::set_loader_hook()
         add_location(-2, "", a);
 }
 
+/* What a core file says to running it. */
+Stop Session::not_running()
+{
+    Stop s;
+    memset(&s, 0, sizeof(s));
+    s.kind = EV_ERROR;
+    return s;
+}
+
 /* Continue. The program's own stops at the entry point (reading the
  * shared objects) and at the dynamic linker's hook (reading them again)
  * are passed through unless a user breakpoint is there too. */
 Stop Session::cont()
 {
+    if (core_)
+        return not_running();
     for (;;) {
         Stop s = cont_once();
         if (s.kind == EV_BREAK && s.bp == -1) {
@@ -472,6 +556,8 @@ Stop Session::cont()
                 resolve_pending();
             continue;
         }
+        if (s.kind == EV_BREAK && s.bp == -3)
+            continue;       /* a watched local's frame returned from a deeper call */
         if (alive_ && started_ && refresh_modules())
             resolve_pending();          /* dlopen since the last stop */
         return s;
@@ -480,6 +566,8 @@ Stop Session::cont()
 
 Stop Session::step_instruction()
 {
+    if (core_)
+        return not_running();
     return run_until_stop(true);
 }
 
@@ -516,6 +604,8 @@ Stop Session::step_line(bool over)
     Regs r;
     Stop s;
     memset(&s, 0, sizeof(s));
+    if (core_)
+        return not_running();
     if (!alive_ || !target_->get_regs(&r)) {
         s.kind = EV_ERROR;
         return s;
@@ -623,6 +713,8 @@ Stop Session::finish()
     ttr::Vector<Frame> frames;
     Stop s;
     memset(&s, 0, sizeof(s));
+    if (core_)
+        return not_running();
     if (backtrace(&frames, 2) < 2) {
         s.kind = EV_ERROR;
         return s;

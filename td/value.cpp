@@ -581,7 +581,17 @@ bool Session::lookup(const Frame& f, const char* name, Value* out)
             int i;
             for (i = 0; i < idx.size(); i++)
                 if (!strcmp(fn->vars[idx[i]].name, name)) {
-                    *out = variable_value(f, m, fn, fn->vars[idx[i]]);
+                    const Variable& var = fn->vars[idx[i]];
+                    *out = variable_value(f, m, fn, var);
+                    /* A function's static (at a DW_OP_addr) is not the
+                     * frame's. */
+                    bool fixed = false;
+                    if (var.loc.count == 1) {
+                        const LocRange& r = info->range(var.loc.first);
+                        fixed = r.count == 1 && info->op(r.first).atom == DW_OP_addr;
+                    }
+                    if (!fixed && !var.has_const)
+                        used_local_ = true;
                     return true;
                 }
         }
@@ -733,7 +743,11 @@ bool Session::scalar(const Value& v, uint64_t* bits)
         int shift = (int)(v.bit_offset % 8);
         int n = (shift + v.bit_size + 7) / 8;
         unsigned char b[9];
-        if (n > 8 || v.where != VW_MEMORY || !target_->read(v.addr + first, b, (size_t)n))
+        if (n > 8)
+            return false;
+        if (v.where == VW_CONSTANT && first + (uint64_t)n <= sizeof(v.bytes))
+            memcpy(b, v.bytes + first, (size_t)n);
+        else if (v.where != VW_MEMORY || !target_->read(v.addr + first, b, (size_t)n))
             return false;
         uint64_t x = get_uint(arch, b, n);
         if (arch->big_endian)
@@ -801,6 +815,15 @@ Value Session::member_value(const Value& v, const Member& m, uint64_t base)
         return c;
     }
     uint64_t size = type_size(m.type);
+    if ((v.where == VW_CONSTANT || v.where == VW_REGISTER) && m.bit_size &&
+        (base * 8 + m.bit_offset + (uint64_t)m.bit_size + 7) / 8 <= sizeof(v.bytes)) {
+        /* The bits from the bytes (a watchpoint's old value). */
+        c.where = VW_CONSTANT;
+        memcpy(c.bytes, v.bytes, sizeof(c.bytes));
+        c.bit_size = m.bit_size;
+        c.bit_offset = base * 8 + m.bit_offset;
+        return c;
+    }
     if ((v.where == VW_CONSTANT || v.where == VW_REGISTER) && !m.bit_size &&
         base + m.offset + size <= sizeof(v.bytes)) {
         c.where = VW_CONSTANT;

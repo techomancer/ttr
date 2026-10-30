@@ -7,8 +7,12 @@
  * program stopped as a yellow arrow; the panes fill from td
  * (debugpanes.cpp). While the program runs, td calls debug_idle, which
  * goes on handling the window's events (Debug > Break interrupts it).
+ * Debug > Open Core File shows a crashed program's core file in the same
+ * windows; it does not run.
  */
 #include "app.h"
+
+#include "../../td/core.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -48,6 +52,18 @@ void settings_cb(Widget, XtPointer data, XtPointer)
 {
     SettingsHook* h = (SettingsHook*)data;
     h->app->debug_settings_button(h->which);
+}
+
+/* The program as Debug > Settings names it: relative ones in the
+ * workspace. */
+ttr::Str program_path(const ttr::Str& prog, const ttr::Str& root)
+{
+    if (prog.c_str()[0] != '/' && strchr(prog.c_str(), '/')) {
+        char p[4096];
+        snprintf(p, sizeof(p), "%s/%s", root.c_str(), prog.c_str());
+        return ttr::Str(p);
+    }
+    return prog;
 }
 
 /* A path as the file system has it, so the editor's and the line
@@ -129,10 +145,8 @@ bool App::debug_start()
         return false;
     /* A relative program is in the workspace. */
     char prog[4096];
-    if (argv[0][0] != '/' && strchr(argv[0], '/')) {
-        snprintf(prog, sizeof(prog), "%s/%s", root_.c_str(), argv[0]);
-        argv[0] = prog;
-    }
+    snprintf(prog, sizeof(prog), "%s", program_path(ttr::Str(argv[0]), root_).c_str());
+    argv[0] = prog;
     /* The debugging layout, with the Program pane in front: the program's
      * terminal, made with the pane. */
     edit_layout_ = docks_->layout();
@@ -154,16 +168,56 @@ bool App::debug_start()
         return false;
     }
     int i;
-    for (i = 0; i < bps_.size(); i++) {
-        char spec[4200];
-        snprintf(spec, sizeof(spec), "%s:%ld", bps_[i].path.c_str(), bps_[i].line + 1);
-        dbg_->add_breakpoint(spec, 0);
-    }
+    for (i = 0; i < bps_.size(); i++)
+        dbg_->add_breakpoint(breakpoint_spec(bps_[i]).c_str(), 0);
+    set_data_breakpoints();
     dbg_kill_req_ = false;
     have_last_regs_ = false;
     regs_stop_ = -1;
     debug_status("Running");
     return true;
+}
+
+/* A core file, of the program it names (Linux), else of Debug >
+ * Settings' program. */
+void App::debug_open_core()
+{
+    ttr::Str path;
+    if (!ask_file("Open Core File", root_.c_str(), &path))
+        return;
+    debug_end();
+    ttr::Str prog;
+    if (!dbg_program_.empty()) {
+        /* The program is the first word of Settings' Program. */
+        char first[4096];
+        snprintf(first, sizeof(first), "%s", dbg_program_.c_str());
+        char* sp = strchr(first, ' ');
+        if (sp)
+            *sp = 0;
+        prog = program_path(ttr::Str(first), root_);
+    }
+    dbg_ = new td::Session;
+    ttr::Str err;
+    td::Stop why;
+    bool ok = dbg_->open_core(path.c_str(), 0, &err, &why);
+    if (!ok && !prog.empty()) {
+        delete dbg_;
+        dbg_ = new td::Session;
+        err = "";
+        ok = dbg_->open_core(path.c_str(), prog.c_str(), &err, &why);
+    }
+    if (!ok) {
+        delete dbg_;
+        dbg_ = 0;
+        error("Cannot read the core file: %s", err.c_str(), 0);
+        return;
+    }
+    edit_layout_ = docks_->layout();
+    docks_->apply(debug_layout_.empty() ? k_debug_layout : debug_layout_.c_str());
+    dbg_kill_req_ = false;
+    have_last_regs_ = false;
+    regs_stop_ = -1;
+    debug_stopped(why);
 }
 
 void App::debug_end()
@@ -174,6 +228,12 @@ void App::debug_end()
         dbg_->kill();
     delete dbg_;
     dbg_ = 0;
+    int i;
+    for (i = 0; i < data_bps_.size(); i++) {
+        data_bps_[i].id = 0;
+        data_bps_[i].why = "";
+    }
+    fill_breakpoints();
     stop_path_ = "";
     frame_path_ = "";
     frames_.clear();
@@ -226,9 +286,38 @@ void App::debug_stopped(const td::Stop& s)
     }
     debug_show_frame(0, true);
     ttr::Str where = frames_.size() ? td::format_place(frames_[0]) : ttr::Str("??");
-    if (s.kind == td::EV_SIGNAL)
+    int i;
+    if (s.kind == td::EV_SIGNAL && dbg_->is_core()) {
+        snprintf(msg, sizeof(msg), "Core file of %s: %s in %s", dbg_->core()->program_name(),
+                 signal_name(s.sig), where.c_str());
+    } else if (s.kind == td::EV_SIGNAL) {
         snprintf(msg, sizeof(msg), "%s in %s", signal_name(s.sig), where.c_str());
-    else if (s.kind == td::EV_BREAK && s.bp > 0)
+    } else if (s.kind == td::EV_WATCH) {
+        /* 'x' changed from 1 to 2. */
+        const char* expr = "?";
+        for (i = 0; i < data_bps_.size(); i++)
+            if (data_bps_[i].id == s.watch)
+                expr = data_bps_[i].expr.c_str();
+        td::Value before, now;
+        if (dbg_->watch_values(s.watch, &before, &now) && before.ok())
+            snprintf(msg, sizeof(msg), "'%s' changed from %.120s to %.120s in %s", expr,
+                     dbg_->format(before).c_str(), dbg_->format(now).c_str(), where.c_str());
+        else
+            snprintf(msg, sizeof(msg), "'%s' changed in %s", expr, where.c_str());
+    } else if (s.kind == td::EV_WATCH_ENDED) {
+        /* Its frame is gone, and with it the data breakpoint. */
+        ttr::Str expr("?");
+        for (i = 0; i < data_bps_.size(); i++)
+            if (data_bps_[i].id == s.watch) {
+                expr = data_bps_[i].expr;
+                data_bps_.remove_at(i);
+                break;
+            }
+        save_settings();
+        fill_breakpoints();
+        snprintf(msg, sizeof(msg), "The data breakpoint on '%s' ended with its frame: %s",
+                 expr.c_str(), where.c_str());
+    } else if (s.kind == td::EV_BREAK && s.bp > 0)
         snprintf(msg, sizeof(msg), "Breakpoint: %s", where.c_str());
     else
         snprintf(msg, sizeof(msg), "Stopped: %s", where.c_str());
@@ -247,6 +336,10 @@ void App::debug_command(int cmd)
     }
     if (cmd == CMD_DEBUG_QUICKWATCH) {
         show_quickwatch();
+        return;
+    }
+    if (cmd == CMD_DEBUG_BREAKPOINTS) {
+        show_breakpoints();
         return;
     }
     if (dbg_ && dbg_->busy()) {
@@ -268,6 +361,15 @@ void App::debug_command(int cmd)
     }
     if (cmd == CMD_DEBUG_BREAK)
         return;
+    if (cmd == CMD_DEBUG_CORE) {
+        debug_open_core();
+        return;
+    }
+    if (dbg_ && dbg_->is_core() && cmd != CMD_DEBUG_RESTART) {
+        debug_status("A core file does not run: Shift+F5 closes it, Ctrl+Shift+F5 runs the "
+                     "program.");
+        return;
+    }
     if (cmd == CMD_DEBUG_RESTART) {
         debug_end();
         cmd = CMD_DEBUG_GO;

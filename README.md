@@ -906,10 +906,29 @@ the window switches to its debugging layout, with Visual C++ 6's windows:
 - **QuickWatch** (Shift+F9): one expression in a dialog, as a tree; Add
   Watch moves it to Watch.
 
-Breakpoints and Watch's expressions are kept in the settings
-(`debugBreakpoints`, `debugWatch`), and the debugging layout separately
-from the other (`debugLayout`). The debugger is td, shared with ttrdb
-(`td/DESIGN.md`).
+Debug > Breakpoints lists every breakpoint. "Break at" adds one on a
+line (`watch.c:24`) or a function (`main`), and "Break when this
+expression changes" adds a data breakpoint: the program stops when the
+value of a variable, a member or an element (`g_count`, `p->len`,
+`arr[3]`) changes, and the status bar says from what to what. Writing
+the same value again does not stop it. A data breakpoint on a local
+variable lasts until its function returns. Remove, Remove All, and Go
+To Code (or a double click) work on the selected one. Linux watches up
+to 32 bytes at once, in at most four aligned pieces (the processor's
+debug registers); IRIX has no such limit, but the program runs slower
+while a variable is watched.
+
+Debug > Open Core File shows a program that crashed, from its core
+file: where it stopped, its call stack, variables, memory and registers.
+It does not run: F5 and the steps say so, and Shift+F5 closes it. On
+Linux the core file names its program; for an IRIX core file, Debug >
+Settings names it. (Linux writes core files when `ulimit -c` allows
+them, and where `/proc/sys/kernel/core_pattern` says.)
+
+Breakpoints, data breakpoints and Watch's expressions are kept in the
+settings (`debugBreakpoints`, `debugDataBreakpoints`, `debugWatch`),
+and the debugging layout separately from the other (`debugLayout`). The
+debugger is td, shared with ttrdb (`td/DESIGN.md`).
 
 **Find and replace in files.** Search > Find in Files (Ctrl+Shift+F)
 searches every text file of the workspace, or of another folder, for a
@@ -962,6 +981,7 @@ the file wins over them:
 | `layout` | where the tool panes are: `left:220=workspace;bottom:220=terminal,results;right:240=` (each area's size, its groups split by `\|`, a group's panes by `,`, a group's size after `@`); older `treeWidth` and `bottomHeight` set the first one | |
 | `debugLayout` | the same while debugging | |
 | `debugProgram`, `debugArgs`, `debugDir` | Debug > Settings: the program, its arguments, its directory | |
+| `debugBreakpoints`, `debugDataBreakpoints`, `debugWatch` | the breakpoints (`file:line` or a function), the data breakpoints' and Watch's expressions, each list separated by `;` | |
 | `renderer` | `auto`, `core`, `soft`, `gl`, as for ttrt (`-renderer`) | `auto` |
 | `terminalBackground` | an animated background for the terminal pane, as ttrt's (`-dynbg`) | none |
 
@@ -1126,7 +1146,12 @@ The notification area uses common tools when they are installed:
   `p EXPR` prints a value (a C expression, as ttrcode's Watch takes it),
   `locals` the frame's variables, `e EXPR` a value's members or
   elements, `pt EXPR` its type, and `fr N` chooses the frame they look
-  in.
+  in. `w EXPR` stops when a value changes (a watchpoint; `d N` removes
+  it, as a breakpoint).
+
+  `ttrdb -c core [program]` reads a core file instead: the stack and
+  values of a crashed program. Linux core files name their program;
+  ttrdb reads IRIX core files on Linux too, given the program.
 
   It reads the shared objects a program loads (`mods` lists them), so
   breakpoints, lines and backtraces work in libraries too; a breakpoint

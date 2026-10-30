@@ -1082,6 +1082,7 @@ Value Session::evaluate(const Frame& f, const char* text)
         v.expr = text;
         return v;
     }
+    used_local_ = false;
     Evaluator e(this, f, body.c_str());
     v = e.run();
     if (v.ok() && count > 0) {

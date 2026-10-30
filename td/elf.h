@@ -40,6 +40,8 @@ public:
     Addr dynamic() const { return dyn_; }
     /* Bytes the file holds for link addresses a..a+n (code, data). */
     bool read_at(Addr a, void* buf, size_t n) const;
+    /* As much of them as one segment holds: how many bytes, 0 if none. */
+    size_t read_some(Addr a, void* buf, size_t n) const;
     /* The CPU description for this file, or 0 if td does not know it. */
     const Arch* arch() const;
 

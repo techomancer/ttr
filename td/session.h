@@ -9,6 +9,9 @@
  * user interface can go on handling its events and call interrupt(). Shared objects are read when the program reaches its entry point
  * (the dynamic linker has loaded those it starts with) and again at every
  * stop after that.
+ *
+ * A core file is a session too (open_core): the same stack and values,
+ * of a program that does not run.
  */
 #ifndef TD_SESSION_H
 #define TD_SESSION_H
@@ -23,13 +26,35 @@
 
 namespace td {
 
+class CoreTarget;
+
 struct Breakpoint {
     int id;             /* > 0: the user's; 0: a temporary one; -1: the
-                         * entry point; -2: the dynamic linker's hook */
+                         * entry point; -2: the dynamic linker's hook;
+                         * -3: where a watched local's frame returns */
     Addr addr;          /* 0: pending, waiting for its module to load */
     unsigned char saved[4];
     bool inserted;
     ttr::Str where;     /* as the user gave it */
+};
+
+/* A watched value (data breakpoint): the program stops when it changes.
+ * Its ids are the breakpoints'. */
+enum { WATCH_MAX = 256 };
+
+struct Watchpoint {
+    int id;
+    ttr::Str expr;          /* as the user gave it */
+    Value value;            /* where it is and its type */
+    Addr addr;              /* the bytes watched */
+    size_t size;
+    unsigned char last[WATCH_MAX];     /* at the last change, or when set */
+    unsigned char before[WATCH_MAX];   /* before the last change */
+    int handle;             /* the Target's */
+    int hits;
+    /* A local's: its frame ends when the stack pointer is back up to its
+     * caller's (scope_sp), at scope_pc. 0: a global, for good. */
+    Addr scope_sp, scope_pc;
 };
 
 struct Frame {
@@ -47,6 +72,7 @@ struct Frame {
 struct Stop {
     EventKind kind;
     int bp;             /* the user breakpoint's id, or 0 */
+    int watch;          /* EV_WATCH, EV_WATCH_ENDED: the watchpoint's id */
     int sig;
     int status;
     Addr pc;
@@ -62,7 +88,13 @@ public:
     bool start(char* const* argv, ttr::Str* err,
                const LaunchOptions& o = LaunchOptions());
     bool attach(int pid, ttr::Str* err);
+    /* A core file, of the program at exe (0: the one the core names,
+     * Linux only). *why: the signal it died of, and where. */
+    bool open_core(const char* core, const char* exe, ttr::Str* err, Stop* why);
+    /* A program, or a core file: there is a stack to look at. */
     bool running() const { return alive_; }
+    bool is_core() const { return core_ != 0; }
+    CoreTarget* core() { return core_; }
     /* Called over and over while the program runs (it should wait a
      * little, say for its own events). */
     typedef void (*IdleFn)(void* ctx);
@@ -85,8 +117,16 @@ public:
      * or 0 with the reason in err. One that matches nothing before the
      * shared objects are loaded waits for them (*pending set). */
     int add_breakpoint(const char* spec, ttr::Str* err, bool* pending = 0);
-    bool remove_breakpoint(int id);
+    bool remove_breakpoint(int id);     /* or a watchpoint */
     const ttr::Vector<Breakpoint>& breakpoints() const { return bps_; }
+
+    /* Stop when an expression's value (in memory) changes: VC6's data
+     * breakpoints. One that uses a frame's locals ends with that frame
+     * (EV_WATCH_ENDED). Returns its id, or 0 with the reason in err. */
+    int add_watch(const Frame& f, const char* expr, ttr::Str* err);
+    const ttr::Vector<Watchpoint>& watchpoints() const { return watches_; }
+    /* A watchpoint's value before its last change, and now. */
+    bool watch_values(int id, Value* before, Value* now);
 
     /* Each runs until the program stops again (or ends). */
     Stop cont();
@@ -124,6 +164,11 @@ private:
     int bp_at(Addr a) const;
     void add_location(int id, const char* spec, Addr a);
     Stop run_until_stop(bool step);
+    bool run_target(bool step, int sig, Event* e);
+    int changed_watch();
+    bool same_bits(const Watchpoint& w, const unsigned char* a, const unsigned char* b);
+    void end_watch(int i);
+    Stop not_running();
     Stop step_over_bp(bool* done);
     Stop to_stop(const Event& e);
     bool resolve(const char* spec, ttr::Str* err, ttr::Vector<Addr>* out);
@@ -166,6 +211,10 @@ private:
     bool interrupted_;      /* interrupt() asked: its stop is a pause */
     ttr::Vector<Breakpoint> bps_;
     ttr::Vector<Type*> synth_;     /* types expressions make: int, pointers to */
+    ttr::Vector<Watchpoint> watches_;
+    int hit_watch_;         /* the watchpoint whose value changed: its id */
+    bool used_local_;       /* the last evaluate() used a frame's variable */
+    CoreTarget* core_;      /* target_, when it is a core file */
 };
 
 /* "main (demo.c:12)" style, for messages. */

@@ -1,0 +1,23 @@
+# program: td_crash
+# core: td_crash
+# The core file td_crash leaves (run.sh makes it): the signal, the stack
+# and the values in it, and that it does not run.
+expect Core file of td_crash: SIGSEGV (11)
+expect poke (crash.c:9)
+bt
+expect #0
+expect poke (crash.c:9)
+expect poke (crash.c:11)
+expect main (crash.c:17)
+fr 2
+expect poke (crash.c:11)
+p depth
+expect depth = 2
+p g_null
+expect g_null = 0x0
+c
+expect A core file cannot run.
+w depth
+expect A core file cannot run.
+mods
+expect td_crash

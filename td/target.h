@@ -4,7 +4,8 @@
  * differs between systems: target_linux.cpp (ptrace) and target_irix.cpp
  * (/proc ioctls), one of which the Makefile links (TD_SYS).
  *
- * The prototype follows one thread, the first.
+ * The prototype follows one thread, the first. core.h has a third
+ * Target, a core file, read-only.
  */
 #ifndef TD_TARGET_H
 #define TD_TARGET_H
@@ -23,7 +24,9 @@ enum EventKind {
     EV_EXITED,      /* exited (status) */
     EV_KILLED,      /* killed by a signal (sig) */
     EV_PAUSED,      /* stopped because the debugger asked (Session::interrupt) */
-    EV_ERROR        /* the target is gone or cannot be waited for */
+    EV_ERROR,       /* the target is gone or cannot be waited for */
+    EV_WATCH,       /* wrote to a watched area (after the write) */
+    EV_WATCH_ENDED  /* Session: a watched local's frame returned */
 };
 
 struct Event {
@@ -31,10 +34,9 @@ struct Event {
     int sig;
     int status;
     Addr pc;        /* for stops: where (breakpoints: already moved back) */
+    int watch;      /* EV_WATCH: the handle of the area, 0 if not known */
 };
 
-/* A shared object the dynamic linker loaded: its file, and how far it
- * was moved from its link addresses. */
 /* How to start a program. */
 struct LaunchOptions {
     const char* cwd;    /* 0: the debugger's */
@@ -42,6 +44,8 @@ struct LaunchOptions {
     LaunchOptions() : cwd(0), tty(0) {}
 };
 
+/* A shared object the dynamic linker loaded: its file, and how far it
+ * was moved from its link addresses. */
 struct SharedObject {
     ttr::Str path;
     Addr bias;
@@ -93,6 +97,12 @@ public:
     /* Also into read-only text (breakpoints). */
     virtual bool write(Addr a, const void* buf, size_t n) = 0;
 
+    /* Stop when the program writes to n bytes at a (td/DESIGN.md
+     * sections 3.1 and 3.2): EV_WATCH once memory has changed. Returns a
+     * handle, or -1 with the reason in err (too many, too big). */
+    virtual int add_watch(Addr a, size_t n, ttr::Str* err) = 0;
+    virtual void remove_watch(int handle) = 0;
+
     /* An unsigned value of n bytes (1, 2, 4, 8) in the target's order. */
     bool read_uint(Addr a, int n, uint64_t* v);
     /* In the child, before exec: LaunchOptions' directory and terminal. */
@@ -102,6 +112,10 @@ public:
     /* A dynamic section entry's value by tag (one of a pointer size's
      * pairs), from the section in memory. */
     bool dynamic_entry(Addr dynamic, uint64_t tag, uint64_t* value);
+    /* The dynamic linkers' lists in memory, for shared_objects(): glibc's
+     * link_map through DT_DEBUG, IRIX rld's through DT_MIPS_RLD_MAP. */
+    bool glibc_objects(Addr dynamic, ttr::Vector<SharedObject>* out);
+    bool rld_objects(Addr dynamic, ttr::Vector<SharedObject>* out);
 };
 
 } /* namespace td */

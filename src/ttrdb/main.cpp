@@ -4,6 +4,7 @@
  *
  *   ttrdb program [args...]      start it, stopped at its first instruction
  *   ttrdb -p PID                 attach to a running process
+ *   ttrdb -c CORE [program]      a core file (Linux's name their program)
  *   ttrdb -x SCRIPT program ...  run the commands in SCRIPT (a test)
  *   -d DIR                       look for sources under DIR too (as "dir")
  *
@@ -11,6 +12,7 @@
  * TEXT, "absent TEXT" that it did not; "#" starts a comment. ttrdb then
  * exits with the number of failed checks.
  */
+#include "../../td/core.h"
 #include "../../td/session.h"
 #include "../../td/source.h"
 
@@ -84,7 +86,7 @@ void show_line(const td::Frame& f)
         out("%d\t%s\n", f.place.line, text);
 }
 
-void report(const td::Stop& s)
+void report(const td::Stop& s, bool core = false)
 {
     td::Frame f;
     g_frame = 0;
@@ -96,8 +98,11 @@ void report(const td::Stop& s)
         out("Program killed by %s (%d).\n", signal_name(s.sig), s.sig);
         return;
     case td::EV_ERROR:
-        out("The program is not running.\n");
+        out(g_s->is_core() ? "A core file cannot run.\n" : "The program is not running.\n");
         return;
+    case td::EV_WATCH_ENDED:
+        out("Watchpoint %d ended: its frame returned.\n", s.watch);
+        break;
     default:
         break;
     }
@@ -109,9 +114,24 @@ void report(const td::Stop& s)
         snprintf(b, sizeof(b), "%s in %s", td::hex(s.pc, h), where.c_str());
         where = b;
     }
-    if (s.kind == td::EV_BREAK && s.bp)
+    if (s.kind == td::EV_BREAK && s.bp) {
         out("Breakpoint %d, %s\n", s.bp, where.c_str());
-    else if (s.kind == td::EV_SIGNAL)
+    } else if (s.kind == td::EV_WATCH) {
+        td::Value before, now;
+        int i;
+        const ttr::Vector<td::Watchpoint>& w = g_s->watchpoints();
+        for (i = 0; i < w.size() && w[i].id != s.watch; i++)
+            ;
+        out("Watchpoint %d: %s\n", s.watch, i < w.size() ? w[i].expr.c_str() : "");
+        if (g_s->watch_values(s.watch, &before, &now)) {
+            out("Old value = %s\n", g_s->format(before).c_str());
+            out("New value = %s\n", g_s->format(now).c_str());
+        }
+        out("%s\n", where.c_str());
+    } else if (s.kind == td::EV_SIGNAL && core) {
+        out("Core file of %s: %s (%d) in %s\n", g_s->core()->program_name(),
+            signal_name(s.sig), s.sig, where.c_str());
+    } else if (s.kind == td::EV_SIGNAL)
         out("Program received %s (%d) in %s\n", signal_name(s.sig), s.sig, where.c_str());
     else
         out("%s\n", where.c_str());
@@ -157,6 +177,28 @@ void cmd_frame(const char* args)
     ttr::Str w = td::format_place(f);
     out("#%d  %s\n", g_frame, w.c_str());
     show_line(f);
+}
+
+/* "w EXPR": stop when it changes. */
+void cmd_watch(const char* args)
+{
+    td::Frame f;
+    if (!*args) {
+        out("w EXPR\n");
+        return;
+    }
+    if (!current_frame(&f))
+        return;
+    ttr::Str err;
+    int id = g_s->add_watch(f, args, &err);
+    if (!id) {
+        out("Cannot watch %s: %s\n", args, err.c_str());
+        return;
+    }
+    const td::Watchpoint& w = g_s->watchpoints()[g_s->watchpoints().size() - 1];
+    char h[24];
+    out("Watchpoint %d: %s (%d bytes at %s%s)\n", id, args, (int)w.size, td::hex(w.addr, h),
+        w.scope_sp ? ", until its frame returns" : "");
 }
 
 void print_value(const td::Value& v, const char* prefix)
@@ -343,7 +385,13 @@ void cmd_breakpoints()
         out("%d  %s at %s: %s\n", b[i].id, b[i].where.c_str(), td::hex(b[i].addr, h),
             w.c_str());
     }
-    if (!last)
+    const ttr::Vector<td::Watchpoint>& w = g_s->watchpoints();
+    for (i = 0; i < w.size(); i++) {
+        char h[24];
+        out("%d  watch %s (%d bytes at %s), %d hits\n", w[i].id, w[i].expr.c_str(),
+            (int)w[i].size, td::hex(w[i].addr, h), w[i].hits);
+    }
+    if (!last && w.empty())
         out("No breakpoints.\n");
 }
 
@@ -380,6 +428,12 @@ bool command(char* line)
     const char* c = line;
     if (!strcmp(c, "q") || !strcmp(c, "quit"))
         return false;
+    if (g_s->is_core() && (!strcmp(c, "r") || !strcmp(c, "run") || !strcmp(c, "c") ||
+                           !strcmp(c, "s") || !strcmp(c, "n") || !strcmp(c, "si") ||
+                           !strcmp(c, "f") || !strcmp(c, "w"))) {
+        out("A core file cannot run.\n");
+        return true;
+    }
     if (!strcmp(c, "r") || !strcmp(c, "run")) {
         if (!g_s->running()) {
             /* Again from the start, keeping the breakpoints. */
@@ -429,6 +483,8 @@ bool command(char* line)
                     w.c_str());
             }
         }
+    } else if (!strcmp(c, "w") || !strcmp(c, "watch")) {
+        cmd_watch(args);
     } else if (!strcmp(c, "d") || !strcmp(c, "delete")) {
         if (!g_s->remove_breakpoint(atoi(args)))
             out("No breakpoint %s.\n", args);
@@ -480,7 +536,7 @@ bool command(char* line)
         }
     } else if (!strcmp(c, "help") || !strcmp(c, "h")) {
         out("r run, c continue, s step, n next, si step instruction, f finish,\n"
-            "b SPEC (file:line, function, *addr), b list, d N delete,\n"
+            "b SPEC (file:line, function, *addr), b list, w EXPR watch, d N delete,\n"
             "bt backtrace, fr N frame, where, l list, regs, x ADDR [N] memory,\n"
             "p EXPR print (EXPR,x hex; p,N N elements), locals, e EXPR expand,\n"
             "pt EXPR type, mods modules,\n"
@@ -494,7 +550,8 @@ bool command(char* line)
 void usage()
 {
     fprintf(stderr, "usage: ttrdb [-d srcdir] [-x script] program [args...]\n"
-                    "       ttrdb [-d srcdir] -p pid\n");
+                    "       ttrdb [-d srcdir] [-x script] -p pid\n"
+                    "       ttrdb [-d srcdir] [-x script] -c core [program]\n");
     exit(2);
 }
 
@@ -503,6 +560,7 @@ void usage()
 int main(int argc, char** argv)
 {
     const char* script = 0;
+    const char* core = 0;
     int pid = 0;
     int i = 1;
     while (i < argc && argv[i][0] == '-') {
@@ -511,6 +569,9 @@ int main(int argc, char** argv)
             i += 2;
         } else if (!strcmp(argv[i], "-d") && i + 1 < argc) {
             g_src.add_dir(argv[i + 1]);
+            i += 2;
+        } else if (!strcmp(argv[i], "-c") && i + 1 < argc) {
+            core = argv[i + 1];
             i += 2;
         } else if (!strcmp(argv[i], "-p") && i + 1 < argc) {
             pid = atoi(argv[i + 1]);
@@ -523,13 +584,21 @@ int main(int argc, char** argv)
             usage();
         }
     }
-    if (!pid && i >= argc)
+    if (!pid && !core && i >= argc)
         usage();
     setvbuf(stdout, 0, _IOLBF, 0);
 
     g_s = new td::Session;
     ttr::Str err;
-    if (pid) {
+    td::Stop why;
+    bool show_core = false;
+    if (core) {
+        if (!g_s->open_core(core, i < argc ? argv[i] : 0, &err, &why)) {
+            fprintf(stderr, "ttrdb: cannot read %s: %s\n", core, err.c_str());
+            return 1;
+        }
+        show_core = true;
+    } else if (pid) {
         if (!g_s->attach(pid, &err)) {
             fprintf(stderr, "ttrdb: cannot attach to %d: %s\n", pid, err.c_str());
             return 1;
@@ -553,6 +622,8 @@ int main(int argc, char** argv)
     }
     bool prompt = !script && isatty(0);
     int failed = 0;
+    if (show_core)
+        report(why, true);
     char line[2048];
     for (;;) {
         if (prompt) {

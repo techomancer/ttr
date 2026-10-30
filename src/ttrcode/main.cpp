@@ -40,7 +40,7 @@ struct Resources {
     String cursor_shape, cursor_color;
     String terminal_font, text_rendering, terminal_text_rendering;
     String layout, debug_layout, debug_program, debug_args, debug_dir, debug_watch,
-        debug_breakpoints;
+        debug_breakpoints, debug_data_breakpoints;
 };
 
 #define ROFF(f) XtOffsetOf(Resources, f)
@@ -86,7 +86,8 @@ XtResource k_resources[] = {
     RSTR("debugArgs", "DebugArgs", debug_args, ""),
     RSTR("debugDir", "DebugDir", debug_dir, ""),
     RSTR("debugWatch", "DebugWatch", debug_watch, ""),
-    RSTR("debugBreakpoints", "DebugBreakpoints", debug_breakpoints, "")
+    RSTR("debugBreakpoints", "DebugBreakpoints", debug_breakpoints, ""),
+    RSTR("debugDataBreakpoints", "DebugDataBreakpoints", debug_data_breakpoints, "")
 };
 #undef RSTR
 #undef ROFF
@@ -200,6 +201,7 @@ int main(int argc, char** argv)
     o.debug_dir = res.debug_dir ? res.debug_dir : "";
     o.debug_watch = res.debug_watch ? res.debug_watch : "";
     o.debug_breakpoints = res.debug_breakpoints ? res.debug_breakpoints : "";
+    o.debug_data_breakpoints = res.debug_data_breakpoints ? res.debug_data_breakpoints : "";
 
     /* The UI theme, for every widget made from here on. */
     th::Theme theme;

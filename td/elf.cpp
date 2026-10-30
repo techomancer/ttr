@@ -201,18 +201,27 @@ void ElfFile::read_symbols(int symtab_type)
 
 bool ElfFile::read_at(Addr a, void* buf, size_t n) const
 {
+    return read_some(a, buf, n) == n;
+}
+
+size_t ElfFile::read_some(Addr a, void* buf, size_t n) const
+{
     int i;
     for (i = 0; i < segs_.size(); i++) {
         const Segment& s = segs_[i];
-        if (a < s.vaddr || a + n > s.vaddr + s.filesz)
+        if (a < s.vaddr || a >= s.vaddr + s.filesz)
             continue;
         uint64_t off = s.offset + (a - s.vaddr);
+        if (a + n > s.vaddr + s.filesz)
+            n = (size_t)(s.vaddr + s.filesz - a);
+        if (off >= size_)
+            return 0;
         if (off + n > size_)
-            return false;
+            n = (size_t)(size_ - off);
         memcpy(buf, data_ + off, n);
-        return true;
+        return n;
     }
-    return false;
+    return 0;
 }
 
 const Arch* ElfFile::arch() const

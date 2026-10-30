@@ -238,4 +238,74 @@ bool Target::read_uint(Addr a, int n, uint64_t* v)
     return true;
 }
 
+/* glibc's list: DT_DEBUG points to struct r_debug once ld.so has started;
+ * its r_map is the link_map list. x86-64 offsets: r_debug.r_map 8;
+ * link_map l_addr 0, l_name 8, l_next 24. */
+bool Target::glibc_objects(Addr dynamic, ttr::Vector<SharedObject>* out)
+{
+    uint64_t rdebug = 0, map = 0;
+    if (!dynamic || !dynamic_entry(dynamic, 21 /* DT_DEBUG */, &rdebug) || !rdebug)
+        return true;        /* not started yet, or linked statically */
+    if (!read_uint(rdebug + 8, 8, &map))
+        return false;
+    int n;
+    for (n = 0; map && n < 4096; n++) {
+        uint64_t addr = 0, name = 0, next = 0;
+        if (!read_uint(map, 8, &addr) || !read_uint(map + 8, 8, &name) ||
+            !read_uint(map + 24, 8, &next))
+            return false;
+        char path[4096];
+        /* The executable has an empty name; the vDSO has no file. */
+        if (name && read_string(name, path, sizeof(path)) && path[0] == '/' &&
+            access(path, R_OK) == 0) {
+            SharedObject so;
+            so.path = path;
+            so.bias = addr;
+            out->push_back(so);
+        }
+        map = next;
+    }
+    return true;
+}
+
+/* rld's list (<objlist.h>): DT_MIPS_RLD_MAP holds the address of
+ * __rld_obj_head, which points to the first Elf32_Obj_Info (64-bit
+ * programs: Elf64_Obj_Info, every address 8 bytes):
+ *               32-bit  64-bit
+ *   oi_magic         0       0   0xffffffff
+ *   oi_next          8       8
+ *   oi_ehdr         16      24   where the ELF header is
+ *   oi_orig_ehdr    20      32   where it was linked to be: the bias
+ *   oi_pathname     24      40
+ * The first entry is the executable. */
+bool Target::rld_objects(Addr dynamic, ttr::Vector<SharedObject>* out)
+{
+    int w = arch()->ptr_size;
+    uint64_t map = 0, head = 0;
+    if (!dynamic || !dynamic_entry(dynamic, 0x70000016 /* DT_MIPS_RLD_MAP */, &map) || !map ||
+        !read_uint(map, w, &head))
+        return true;
+    const int o_next = 8, o_ehdr = w == 8 ? 24 : 16, o_orig = w == 8 ? 32 : 20,
+              o_path = w == 8 ? 40 : 24;
+    Addr p = (Addr)head;
+    int n;
+    for (n = 0; p && n < 4096; n++) {
+        uint64_t magic = 0, next = 0, ehdr = 0, orig = 0, name = 0;
+        if (!read_uint(p, 4, &magic) || magic != 0xffffffffu)
+            return false;       /* the old, pre-ELF list: not read */
+        if (!read_uint(p + o_next, w, &next) || !read_uint(p + o_ehdr, w, &ehdr) ||
+            !read_uint(p + o_orig, w, &orig) || !read_uint(p + o_path, w, &name))
+            return false;
+        char path[2048];
+        if (n > 0 && name && read_string(name, path, sizeof(path)) && path[0]) {
+            SharedObject so;
+            so.path = path;
+            so.bias = w == 4 ? (Addr)(uint32_t)(ehdr - orig) : (Addr)(ehdr - orig);
+            out->push_back(so);
+        }
+        p = (Addr)next;
+    }
+    return true;
+}
+
 } /* namespace td */

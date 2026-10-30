@@ -38,10 +38,10 @@ and on IRIX (the emulated guest, MIPSpro n32 programs):
   64-bit IRIX program needs no 64-bit debugger: /proc gives an n32
   caller 64-bit registers and 64-bit file offsets into the address space
   (its stack is at 0xfffffbfe70), and rld's list has an Elf64_Obj_Info
-  layout. (The ioctls with pointer-sized fields, such as `PIOCMAP` and
-  `PIOCSWATCH`, need `PIOC_IRIX5_64` and the 64-bit structures; not used
-  yet.) The guest, an IP22 with a 32-bit kernel, cannot run 64-bit
-  programs.
+  layout. The ioctls with pointer-sized fields, such as `PIOCMAP` and
+  `PIOCSWATCH`, need `PIOC_IRIX5_64` and the 64-bit structures
+  (`PIOCSWATCH` does so, checked on the Octane). The guest, an IP22 with
+  a 32-bit kernel, cannot run 64-bit programs.
 - ttrdb -d DIR adds a source directory; the test runner passes the test
   sources, so programs compiled on one machine are tested on another.
 - ttrcode (section 8.2), 2026-10-26: the Debug menu with VC6's keys
@@ -70,9 +70,21 @@ and on IRIX (the emulated guest, MIPSpro n32 programs):
 - ttrcode's Watch, Variables (Auto and Locals, and the frame), Memory,
   Registers, Call Stack and QuickWatch (Shift+F9) show them, as trees
   with what changed since the last stop in red (section 8.2).
-- Not yet: threads, Disassembly (needs a disassembler), watchpoints,
-  core files, changing values, C++ (`this`, classes' members by
-  inheritance, demangled names), thread-local variables.
+- Watchpoints and core files, 2026-10-28 (the rest of milestone 3):
+  - Watchpoints on Linux use the debug registers (section 3.1), on IRIX
+    /proc's watched areas (section 3.2). The Session stops only when the
+    value changed, and one on a local ends when its frame returns
+    (section 7). ttrdb's `w`; `td/test/watch.ttrdb`.
+  - Core files are a third Target (`td/core.h`, section 3.4), for
+    Linux's ELF cores and IRIX's own format, either read on any system.
+    ttrdb's `-c`; `td/test/core.ttrdb`.
+  - ttrcode: Debug > Breakpoints with data breakpoints, and Debug > Open
+    Core File (section 8.2).
+  - Both scripts pass on Linux and on the Octane, with n32 and `-64`
+    programs. Under lightning (the guest): not run yet.
+- Not yet: threads, Disassembly (needs a disassembler), changing
+  values, C++ (`this`, classes' members by inheritance, demangled
+  names), thread-local variables.
 
 gdb is hard to use, debugging through VS Code is worse, and dbx and
 ProDev WorkShop are not much better. ttr gets its own debugger, in three
@@ -168,7 +180,7 @@ Every operation the Session needs, and how each system provides it.
 | Registers | `PTRACE_GETREGS`/`SETREGS`; `PTRACE_GETREGSET` with `NT_PRFPREG` and `NT_X86_XSTATE` for floating point and vector registers. |
 | Memory | `pread`/`pwrite` on `/proc/<pid>/mem`, any size; `PTRACE_POKEDATA` also writes to read-only text. |
 | Breakpoints | `int3` (0xCC) written over the first byte of the instruction. |
-| Watchpoints | Debug registers DR0 to DR3 and DR7, written with `PTRACE_POKEUSER` at `offsetof(struct user, u_debugreg)`. Four, each up to 8 bytes. |
+| Watchpoints | Debug registers DR0 to DR3 and DR7, written with `PTRACE_POKEUSER` at `offsetof(struct user, u_debugreg)`. Four, each 1, 2, 4 or 8 bytes aligned to its size: an area takes as many as its aligned pieces need (32 bytes at most). The trap comes after the write, as a SIGTRAP; DR6 bits 0 to 3 say which register fired (also when it was a single step that wrote), and td clears DR6. |
 | Threads | Every thread is traced on its own. New ones arrive through `PTRACE_O_TRACECLONE`. When attaching, `/proc/<pid>/task` lists the existing ones. `tgkill` stops one. |
 | Memory map | `/proc/<pid>/maps`. |
 | Load address | `/proc/<pid>/auxv`: `AT_PHDR` and `AT_ENTRY` give the offset of a position-independent executable. |
@@ -218,15 +230,23 @@ Notes:
   writes to it, so other processes running the same program are not
   affected.
 - **Watchpoints are emulated by the kernel**, by page protection. From
-  the guest's proc(4) man page:
-  - Any number of areas (up to `PIOCNWATCH`), each any size in bytes.
+  proc(4), and checked on the Octane:
+  - Any number of areas (up to `PIOCNWATCH`), each any size in bytes, but
+    they must not overlap (EINVAL). A `prwatch_t` with size 0 removes
+    the area at its address.
   - `MA_READ`, `MA_WRITE` and `MA_EXEC`: execution too, which the watch
-    registers cannot do.
-  - A write is caught before memory changes; the pc is the instruction.
+    registers cannot do. td watches writes only.
+  - A write is caught before memory changes, as `FLTWATCH`; the pc is the
+    instruction, and `pr_info.si_addr` the address written (32 bits wide
+    for an n32 debugger, also with a 64-bit program).
+  - **Resuming does not get past it** while the area is watched: a step
+    or a run with the fault cleared faults again on the same instruction,
+    and memory does not change (checked on the Octane). td does what it
+    does for breakpoints: it removes the areas, steps the instruction,
+    sets them again, and reports the stop after the write, as on Linux.
   - Deleting a watchpoint on a running process can fail with EBUSY "when
-    the kernel is stepping over a watchpoint": the page is protected,
-    every access to it faults, and the kernel steps the instruction with
-    the page open again.
+    the kernel is stepping over a watchpoint" (when the process is not
+    traced for `FLTWATCH`); td retries.
   - Accesses through /proc do not trigger them; accesses by system calls
     are reported after the call (`FLTKWATCH`).
 
@@ -250,10 +270,49 @@ the Octane in any case.
 
 ### 3.4 Core files
 
-Both systems write ELF core files: program headers for the memory, and
-notes for the registers (`NT_PRSTATUS` on Linux). A core-file Target
-answers the same questions as a live one, read-only. *To verify:* the
-layout of IRIX's notes.
+A core file is a Target too (`td/core.h`): registers and memory,
+read-only, and `resume` fails. Neither system's core files hold the
+program's code (at most its first page), so memory the core does not
+have is read from the executable's and the shared objects' files, at
+their load addresses. The shared objects are found as in a live process
+(section 4): the dynamic linker's list is in the core's data. Both
+formats are plain file reading, so either is read on either system
+(IRIX core files on Linux, for one).
+
+**Linux** writes an ELF file of type `ET_CORE`. Its `PT_LOAD` segments
+are memory (`p_filesz` 0 for what was left out, such as code), and a
+`PT_NOTE` segment has:
+
+- `NT_PRSTATUS`, one per thread, the crashing one first: the signal
+  (`pr_cursig` at 12), the pid (32) and the registers
+  (`user_regs_struct` at 112, x86-64);
+- `NT_PRPSINFO`: the program's name (`pr_fname`, 16 bytes at 40);
+- `NT_AUXV`: `AT_ENTRY` gives a position-independent executable's bias;
+- `NT_FILE`: the mapped files with their address ranges, so the core
+  names its program (the file where `AT_ENTRY` is).
+
+Whether a core is written at all depends on `ulimit -c` and
+`/proc/sys/kernel/core_pattern` (a pipe to systemd-coredump on many
+systems: then `coredumpctl dump` gives the file).
+
+**IRIX** writes a format of its own (`<core.out.h>`), not ELF:
+
+- `struct coreout`: a magic number (`0xbabec0bb` n32, `0xdeadad40`
+  64-bit, `0xdeadadb0` o32, not read), the offset and number of the
+  vmaps, the program's name (`c_name`, 80 bytes, no path), the signal
+  (`c_sigcause`) and 32 descriptors (offset, length, flags; flag 1 is
+  valid).
+- The vmaps: `struct vmap` (16 bytes, 32-bit fields) for n32, `struct
+  vmap64` (32 bytes) for 64-bit programs: address, length, file offset,
+  flags and type. `VDUMPED` ones are in the file; text is `VPARTIAL`,
+  its first page only.
+- Descriptor 0 (`I_GPREGS`) is the 32 general registers, 8 bytes each
+  for both ABIs; descriptor 2 (`I_SPECREGS`) starts with EPC, then
+  CAUSE, BADVADDR, MDHI, MDLO, the FP status. Descriptor 5 holds the
+  other threads' (not read yet).
+
+The program has to be named for an IRIX core; td checks that its name is
+the one the core gives (Linux's is cut to 15 characters).
 
 ## 4. Shared libraries
 
@@ -530,6 +589,19 @@ instruction placed elsewhere. *To decide:* which, for each system.
   computed), its type, a one-line text and its children. Locations come
   from the DWARF of the frame's function at its pc (a caller's at the
   call); a register a caller's frame did not save is "not available".
+- **Watchpoints** (`td/watch.cpp`): an expression evaluated once to the
+  bytes it is in (a bit field: the bytes holding its bits; 256 bytes at
+  most), handed to the Target. A watched write that leaves the value as
+  it was (the same bytes, or a neighbouring bit field) is no stop: the
+  run goes on, and a single step ends as a step. One whose expression
+  used a frame's variable (not a function's `static`) belongs to that
+  frame: an internal breakpoint where the frame returns, and at every
+  stop the stack pointer compared with the caller's, end it with a stop
+  of its own (`EV_WATCH_ENDED`), before the stack is used for something
+  else. The stop says which watchpoint, and its old and new values.
+- **Core files** (`Session::open_core`): the same calls on a core Target
+  (section 3.4); those that would run the program return
+  `EV_ERROR`.
 - **Events reach the user interface through a callback interface**, not
   by blocking. ttrcode runs one Xt event loop, so the Session must never
   block (section 8.2).
@@ -542,7 +614,7 @@ A line-oriented program for trying td and for tests, scriptable like the
 ttrc tests (`tl` reads its screen, or plain text on a pipe):
 
 ```
-ttrdb ./prog args          ttrdb -p PID          ttrdb ./prog core
+ttrdb ./prog args          ttrdb -p PID          ttrdb -c core [./prog]
 ```
 
 | Command | Does |
@@ -562,7 +634,7 @@ ttrdb ./prog args          ttrdb -p PID          ttrdb ./prog core
 | `regs` | the registers |
 | `t`, `t N` | list threads, switch to one |
 | `mods` | the loaded objects and whether they have debug information |
-| `w expr` | watch a variable |
+| `w expr` | stop when its value changes (a watchpoint; `d N` deletes it) |
 | `k`, `detach`, `q` | kill, detach, quit |
 
 ### 8.2 ttrcode: Visual C++ 6
@@ -607,6 +679,19 @@ The windows:
   for now.)
 - **QuickWatch** (Shift+F9): an expression and its tree in a dialog,
   with Add Watch.
+- **Breakpoints** (Debug > Breakpoints; VC6's Edit > Breakpoints,
+  Alt+F9, a key the window manager has): every breakpoint in a list, one
+  page instead of VC6's tabs. "Break at" takes `file:line` or a function,
+  "Break when this expression changes" a data breakpoint (td's
+  watchpoints). Data breakpoints are kept in the settings with the
+  breakpoints and set when debugging starts; one that cannot be set then
+  (a local) says why in the list. One on a local is set while its frame
+  is there and leaves the list when the frame returns. A data
+  breakpoint's stop says in the status bar what changed, from what to
+  what (VC6 showed a message box).
+- **Open Core File** (Debug menu): a core file in the same windows, with
+  F5 and the steps refused. The program is the one the core names
+  (Linux), else Debug > Settings' program.
 
 How this fits ttrcode:
 
@@ -661,9 +746,9 @@ serialising it. Nothing is built for it now.
    Pending: libdwarf's upstreaming policy. And **zstd** for compressed
    debug sections on Linux: a submodule too, or leave such files unread
    for now (our own builds don't compress them).
-5. **Alt+F9.** VC6's Breakpoints dialog key is the window manager's
-   minimize key in ttr. The dialog would be reached from the Debug menu
-   only.
+5. **Alt+F9.** Decided 2026-10-28: VC6's Breakpoints dialog key is the
+   window manager's minimize key in ttr, so the dialog is reached from
+   the Debug menu only (Debug > Breakpoints).
 6. **libunwind on IRIX:** pending a question to its maintainers. Until
    then IRIX uses td's own unwinder (section 5.6).
 
@@ -683,7 +768,8 @@ serialising it. Nothing is built for it now.
    - DWARF types and locations, locals and arguments. *Done.*
    - The expression evaluator. *Done.*
    - Watchpoints (debug registers on Linux, /proc watchpoints on IRIX).
-   - Core files.
+     *Done.*
+   - Core files. *Done* (IRIX's other threads in them: with threads).
 4. **ttrcode.**
    - The keys and windows of section 8.2.
    - The Session in the Xt loop.

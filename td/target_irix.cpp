@@ -25,7 +25,11 @@ namespace {
 
 class IrixTarget : public Target {
 public:
-    IrixTarget() : pid_(-1), fd_(-1), exe_fd_(-1), alive_(false), child_(false), arch_(0) {}
+    IrixTarget()
+        : pid_(-1), fd_(-1), exe_fd_(-1), alive_(false), child_(false), arch_(0),
+          next_watch_(1)
+    {
+    }
     ~IrixTarget();
 
     bool launch(char* const* argv, const LaunchOptions& o, ttr::Str* err);
@@ -46,6 +50,8 @@ public:
     bool set_pc(Addr pc);
     bool read(Addr a, void* buf, size_t n);
     bool write(Addr a, const void* buf, size_t n);
+    int add_watch(Addr a, size_t n, ttr::Str* err);
+    void remove_watch(int handle);
 
 private:
     bool open_proc(ttr::Str* err);
@@ -53,7 +59,9 @@ private:
     void gone();
     void arch_from(const char* path);
     bool ended(Event* ev);
-    void decode(const prstatus_t& st, Event* ev);
+    bool decode(const prstatus_t& st, Event* ev);
+    bool set_watch(Addr a, size_t n, int flags);
+    int watch_at(Addr a) const;
 
     pid_t pid_;
     int fd_;            /* /proc/<pid> */
@@ -62,6 +70,14 @@ private:
     bool child_;        /* started by us: waitpid gives its status */
     const Arch* arch_;
     ttr::Str path_;
+    /* Watched areas (PIOCSWATCH): any number and size, the kernel's. */
+    struct Area {
+        Addr addr;
+        size_t size;
+        int handle;
+    };
+    ttr::Vector<Area> areas_;
+    int next_watch_;
 };
 
 void set_err(ttr::Str* err, const char* what)
@@ -144,6 +160,9 @@ bool IrixTarget::trace(bool on)
     if (on) {
         praddset(&f, FLTBPT);
         praddset(&f, FLTTRACE);
+        praddset(&f, FLTWATCH);
+        praddset(&f, FLTKWATCH);
+        praddset(&f, FLTSCWATCH);
         prfillset(&s);
         prdelset(&s, SIGCHLD);
     }
@@ -231,44 +250,9 @@ bool IrixTarget::attach(int pid, ttr::Str* err)
     return true;
 }
 
-/* rld's list (<objlist.h>): DT_MIPS_RLD_MAP holds the address of
- * __rld_obj_head, which points to the first Elf32_Obj_Info (64-bit
- * programs: Elf64_Obj_Info, every address 8 bytes):
- *               32-bit  64-bit
- *   oi_magic         0       0   0xffffffff
- *   oi_next          8       8
- *   oi_ehdr         16      24   where the ELF header is
- *   oi_orig_ehdr    20      32   where it was linked to be: the bias
- *   oi_pathname     24      40
- * The first entry is the executable. */
 bool IrixTarget::shared_objects(Addr dynamic, ttr::Vector<SharedObject>* out)
 {
-    int w = arch()->ptr_size;
-    uint64_t map = 0, head = 0;
-    if (!dynamic || !dynamic_entry(dynamic, 0x70000016 /* DT_MIPS_RLD_MAP */, &map) || !map ||
-        !read_uint(map, w, &head))
-        return true;
-    const int o_next = 8, o_ehdr = w == 8 ? 24 : 16, o_orig = w == 8 ? 32 : 20,
-              o_path = w == 8 ? 40 : 24;
-    Addr p = (Addr)head;
-    int n;
-    for (n = 0; p && n < 4096; n++) {
-        uint64_t magic = 0, next = 0, ehdr = 0, orig = 0, name = 0;
-        if (!read_uint(p, 4, &magic) || magic != 0xffffffffu)
-            return false;       /* the old, pre-ELF list: not read */
-        if (!read_uint(p + o_next, w, &next) || !read_uint(p + o_ehdr, w, &ehdr) ||
-            !read_uint(p + o_orig, w, &orig) || !read_uint(p + o_path, w, &name))
-            return false;
-        char path[2048];
-        if (n > 0 && name && read_string(name, path, sizeof(path)) && path[0]) {
-            SharedObject so;
-            so.path = path;
-            so.bias = w == 4 ? (Addr)(uint32_t)(ehdr - orig) : (Addr)(ehdr - orig);
-            out->push_back(so);
-        }
-        p = (Addr)next;
-    }
-    return true;
+    return rld_objects(dynamic, out);
 }
 
 /* rld calls __dbx_link, an empty function there for debuggers, after it
@@ -316,9 +300,8 @@ bool IrixTarget::wait(Event* ev)
     do
         r = ioctl(fd_, PIOCWSTOP, &st);
     while (r != 0 && errno == EINTR);
-    if (r != 0)
+    if (r != 0 || !decode(st, ev))
         return ended(ev);
-    decode(st, ev);
     return true;
 }
 
@@ -338,7 +321,8 @@ bool IrixTarget::poll(Event* ev, bool* got)
         *got = false;
         return true;
     }
-    decode(st, ev);
+    if (!decode(st, ev))
+        return ended(ev);
     return true;
 }
 
@@ -369,7 +353,8 @@ bool IrixTarget::ended(Event* ev)
     return true;
 }
 
-void IrixTarget::decode(const prstatus_t& st, Event* ev)
+/* False if it ended (while stepping a watched write). */
+bool IrixTarget::decode(const prstatus_t& st, Event* ev)
 {
     Addr pc = (Addr)st.pr_reg[CTX_EPC];
     if (arch()->ptr_size == 4)
@@ -379,6 +364,41 @@ void IrixTarget::decode(const prstatus_t& st, Event* ev)
         ev->kind = EV_BREAK;        /* EPC is the break instruction */
     } else if (st.pr_why == PR_FAULTED && st.pr_what == FLTTRACE) {
         ev->kind = EV_STEP;
+    } else if (st.pr_why == PR_FAULTED && (st.pr_what == FLTWATCH || st.pr_what == FLTSCWATCH)) {
+        /* Stopped before the write, which faults again for as long as
+         * the area is watched (checked on the Octane): out with the
+         * areas, one instruction, in with them again, and the stop
+         * reported after the write, as Linux does. Something else
+         * stopping the step is reported instead. */
+        int watch = watch_at((Addr)(unsigned long)st.pr_info.si_addr);
+        int i;
+        for (i = 0; i < areas_.size(); i++)
+            set_watch(areas_[i].addr, 0, MA_WRITE);
+        prrun_t run;
+        memset(&run, 0, sizeof(run));
+        run.pr_flags = PRCFAULT | PRSTEP;
+        prstatus_t after;
+        int r = ioctl(fd_, PIOCRUN, &run);
+        if (r == 0) {
+            do
+                r = ioctl(fd_, PIOCWSTOP, &after);
+            while (r != 0 && errno == EINTR);
+        }
+        if (r != 0)
+            return false;
+        for (i = 0; i < areas_.size(); i++)
+            set_watch(areas_[i].addr, areas_[i].size, MA_WRITE);
+        if (after.pr_why != PR_FAULTED || after.pr_what != FLTTRACE)
+            return decode(after, ev);
+        ev->kind = EV_WATCH;
+        ev->watch = watch;
+        ev->pc = (Addr)after.pr_reg[CTX_EPC];
+        if (arch()->ptr_size == 4)
+            ev->pc = (uint32_t)ev->pc;
+    } else if (st.pr_why == PR_FAULTED && st.pr_what == FLTKWATCH) {
+        /* A system call wrote to it: reported after the call. */
+        ev->kind = EV_WATCH;
+        ev->watch = watch_at((Addr)(unsigned long)st.pr_info.si_addr);
     } else if (st.pr_why == PR_SIGNALLED) {
         ev->kind = EV_SIGNAL;
         ev->sig = st.pr_what;
@@ -386,6 +406,7 @@ void IrixTarget::decode(const prstatus_t& st, Event* ev)
         ev->kind = EV_SIGNAL;
         ev->sig = st.pr_cursig;
     }
+    return true;
 }
 
 void IrixTarget::kill()
@@ -452,6 +473,81 @@ bool IrixTarget::write(Addr a, const void* buf, size_t n)
     if (fd_ < 0 || lseek(fd_, (off_t)a, SEEK_SET) == (off_t)-1)
         return false;
     return ::write(fd_, buf, n) == (ssize_t)n;
+}
+
+/* prwatch_t holds a pointer: a 64-bit program's takes the 64-bit layout
+ * (PIOC_IRIX5_64), whatever the debugger's own ABI. Size 0 removes an
+ * area. */
+bool IrixTarget::set_watch(Addr a, size_t n, int flags)
+{
+    int r;
+    int tries = 0;
+    do {
+        if (arch()->ptr_size == 8) {
+            struct {
+                uint64_t vaddr, size, wflags, filler;
+            } w;
+            w.vaddr = a;
+            w.size = n;
+            w.wflags = (uint64_t)flags;
+            w.filler = 0;
+            r = ioctl(fd_, PIOCSWATCH | PIOC_IRIX5_64, &w);
+        } else {
+            prwatch_t w;
+            memset(&w, 0, sizeof(w));
+            w.pr_vaddr = (caddr_t)(unsigned long)a;
+            w.pr_size = (ulong_t)n;
+            w.pr_wflags = (ulong_t)flags;
+            r = ioctl(fd_, PIOCSWATCH, &w);
+        }
+        /* EBUSY: the kernel is stepping over a watched page; again. */
+    } while (r != 0 && errno == EBUSY && ++tries < 100);
+    return r == 0;
+}
+
+/* Which area holds a (the fault's address, 32 bits wide for a 64-bit
+ * program: compared on those). */
+int IrixTarget::watch_at(Addr a) const
+{
+    int i;
+    for (i = 0; i < areas_.size(); i++) {
+        Addr lo = areas_[i].addr, hi = lo + areas_[i].size;
+        if (arch()->ptr_size == 8 && a <= 0xffffffffu) {
+            if ((uint32_t)a >= (uint32_t)lo && (uint32_t)a < (uint32_t)hi)
+                return areas_[i].handle;
+        } else if (a >= lo && a < hi) {
+            return areas_[i].handle;
+        }
+    }
+    return 0;
+}
+
+int IrixTarget::add_watch(Addr a, size_t n, ttr::Str* err)
+{
+    if (!set_watch(a, n, MA_WRITE)) {
+        if (err)
+            *err = errno == E2BIG    ? "the system watches no more areas"
+                   : errno == EINVAL ? "it overlaps another watched area, or is not all memory"
+                                     : strerror(errno);
+        return -1;
+    }
+    Area w;
+    w.addr = a;
+    w.size = n;
+    w.handle = next_watch_++;
+    areas_.push_back(w);
+    return w.handle;
+}
+
+void IrixTarget::remove_watch(int handle)
+{
+    int i;
+    for (i = areas_.size() - 1; i >= 0; i--)
+        if (areas_[i].handle == handle) {
+            if (alive_)
+                set_watch(areas_[i].addr, 0, MA_WRITE);
+            areas_.remove_at(i);
+        }
 }
 
 } /* namespace */

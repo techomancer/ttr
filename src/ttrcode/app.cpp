@@ -321,8 +321,8 @@ App::App(Widget top, const Options& o)
       vars_auto_w_(0), vars_locals_w_(0), mem_box_(0), mem_addr_w_(0), mem_format_w_(0),
       vars_auto_(true), vars_menu_stop_(-1), mem_format_(0), mem_addr_(0), mem_per_row_(16), mem_prev_addr_(0),
       mem_cur_addr_(0), mem_prev_stop_(-1), stop_serial_(0), quick_dlg_(0), quick_expr_(0),
-      quick_list_(0), dbg_dlg_(0), dbg_prog_(0),
-      dbg_args_w_(0), dbg_dir_w_(0), results_(0), searched_(false), cur_result_(-1),
+      quick_list_(0), dbg_dlg_(0), dbg_prog_(0), dbg_args_w_(0), dbg_dir_w_(0), bp_dlg_(0),
+      bp_at_w_(0), bp_expr_w_(0), bp_list_w_(0), bp_note_w_(0), results_(0), searched_(false), cur_result_(-1),
       scanned_(0), result_files_(0), fif_case_on_(false), fif_word_on_(false)
 {
     opt_renderer_ = 0;
@@ -383,6 +383,33 @@ App::App(Widget top, const Options& o)
                 b.line = atol(colon + 1) - 1;
                 if (b.line >= 0)
                     bps_.push_back(b);
+            } else if (*w) {
+                SourceBreakpoint b;     /* a function */
+                b.func = w;
+                b.line = 0;
+                bps_.push_back(b);
+            }
+            p += n;
+            if (*p == ';')
+                p++;
+        }
+    }
+    if (o.debug_data_breakpoints && *o.debug_data_breakpoints) {
+        const char* p = o.debug_data_breakpoints;
+        while (*p) {
+            const char* e = strchr(p, ';');
+            size_t n = e ? (size_t)(e - p) : strlen(p);
+            char w[1024];
+            if (n >= sizeof(w))
+                n = sizeof(w) - 1;
+            memcpy(w, p, n);
+            w[n] = 0;
+            if (*w) {
+                DataBreakpoint d;
+                d.expr = w;
+                d.id = 0;
+                d.local = false;
+                data_bps_.push_back(d);
             }
             p += n;
             if (*p == ';')
@@ -544,8 +571,10 @@ void App::build_menus()
     menu_item(m, "Run to Cursor", 'C', "Ctrl+F10", CMD_DEBUG_RUN_TO_CURSOR);
     separator(m);
     menu_item(m, "Toggle Breakpoint", 'B', "F9", CMD_DEBUG_TOGGLE_BP);
+    menu_item(m, "Breakpoints...", 'p', 0, CMD_DEBUG_BREAKPOINTS);
     menu_item(m, "QuickWatch...", 'Q', "Shift+F9", CMD_DEBUG_QUICKWATCH);
     separator(m);
+    menu_item(m, "Open Core File...", 'F', 0, CMD_DEBUG_CORE);
     menu_item(m, "Settings...", 't', 0, CMD_DEBUG_SETTINGS);
 
     m = menus[6];
@@ -1751,6 +1780,8 @@ void App::command(int cmd)
     case CMD_DEBUG_TOGGLE_BP:
     case CMD_DEBUG_SETTINGS:
     case CMD_DEBUG_QUICKWATCH:
+    case CMD_DEBUG_BREAKPOINTS:
+    case CMD_DEBUG_CORE:
         debug_command(cmd);
         break;
     default:
