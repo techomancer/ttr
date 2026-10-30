@@ -63,6 +63,9 @@ void walk(Widget w, const Theme& t, WidgetClass skip)
         for (Cardinal i = 0; i < n; i++)
             walk(kids[i], t, skip);
     }
+    /* Only widgets have popups: a gadget's record ends before them. */
+    if (!XtIsWidget(w))
+        return;
     for (Cardinal i = 0; i < w->core.num_popups; i++)
         walk(w->core.popup_list[i], t, skip);
 }
