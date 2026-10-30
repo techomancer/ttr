@@ -156,12 +156,28 @@ Notes:
   branch takes effect. A breakpoint in a delay slot reports the branch's
   address, and stepping off a breakpoint on a branch has to account for
   both possible next addresses. Arch handles this (section 6).
-- **Watchpoints are probably page protection.** The fault list has
-  `FLTSCWATCH`, "hit a store conditional on a watched page", so the
-  kernel seems to protect whole pages and check each access, not use the
-  R10000's watch registers. If so, there is no limit on their number,
-  and they work on any machine that handles ordinary page faults.
-  *To verify* on the Octane, and under lightning.
+- **Breakpoints are always patched `break` instructions.** IRIX's /proc
+  has no hardware breakpoint call, and the R4000 to R10000 have no
+  instruction breakpoint registers (their one WatchLo/WatchHi pair
+  watches data loads and stores). The text page is copied when /proc
+  writes to it, so other processes running the same program are not
+  affected.
+- **Watchpoints are emulated by the kernel**, by page protection. From
+  the guest's proc(4) man page:
+  - Any number of areas (up to `PIOCNWATCH`), each any size in bytes.
+  - `MA_READ`, `MA_WRITE` and `MA_EXEC`: execution too, which the watch
+    registers cannot do.
+  - A write is caught before memory changes; the pc is the instruction.
+  - Deleting a watchpoint on a running process can fail with EBUSY "when
+    the kernel is stepping over a watchpoint": the page is protected,
+    every access to it faults, and the kernel steps the instruction with
+    the page open again.
+  - Accesses through /proc do not trigger them; accesses by system calls
+    are reported after the call (`FLTKWATCH`).
+
+  So they work on any machine that handles ordinary page faults,
+  lightning included (*to verify*). The cost: every access to a watched
+  page traps, so a watched local variable slows the program a lot.
 - **The ABIs.** Our builds are n32. A debugger built n32 has to debug o32
   and 64-bit programs as well. `procfs.h` has `PIOC_IRIX5_N32` and
   `PIOC_IRIX5_64` variants. *To verify:* how they change the register
