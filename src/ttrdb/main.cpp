@@ -11,6 +11,7 @@
  * exits with the number of failed checks.
  */
 #include "../../td/session.h"
+#include "../../td/source.h"
 
 #include <ctype.h>
 #include <signal.h>
@@ -23,6 +24,7 @@
 namespace {
 
 td::Session* g_s;
+td::Sources g_src;      /* "dir" adds to where sources are looked for */
 char** g_argv;          /* the program's, for "r" after it ended */
 bool g_script;
 /* What the last command printed, for "expect". */
@@ -68,27 +70,9 @@ const char* signal_name(int sig)
     }
 }
 
-/* The text of a source line, if the file is readable. */
 bool source_line(const char* file, int line, char* buf, size_t n)
 {
-    FILE* f = file ? fopen(file, "r") : 0;
-    if (!f)
-        return false;
-    int at = 1;
-    bool ok = false;
-    while (fgets(buf, (int)n, f)) {
-        if (at == line) {
-            size_t l = strlen(buf);
-            while (l && (buf[l - 1] == '\n' || buf[l - 1] == '\r'))
-                buf[--l] = 0;
-            ok = true;
-            break;
-        }
-        if (strchr(buf, '\n'))
-            at++;
-    }
-    fclose(f);
-    return ok;
+    return g_src.line(file, line, buf, n);
 }
 
 void show_line(const td::Frame& f)
@@ -196,6 +180,12 @@ void cmd_list()
         out("No source here.\n");
         return;
     }
+    ttr::Str path;
+    if (!g_src.find(f.place.file, &path)) {
+        out("%s:%d: the source file is not here (dir DIR says where to look).\n",
+            f.place.file, f.place.line);
+        return;
+    }
     int from = f.place.line - 4 < 1 ? 1 : f.place.line - 4;
     int line;
     for (line = from; line < from + 9; line++) {
@@ -206,14 +196,30 @@ void cmd_list()
     }
 }
 
+void cmd_modules()
+{
+    int i;
+    for (i = 0; i < g_s->module_count(); i++) {
+        const td::Module* m = g_s->module(i);
+        char h[24], l[24];
+        out("%s-%s  %s%s\n", td::hex(m->elf().load_low() + m->bias(), l),
+            td::hex(m->elf().load_high() + m->bias(), h), m->path(),
+            m->has_lines() ? "  (lines)" : "");
+    }
+}
+
 void cmd_breakpoints()
 {
     const ttr::Vector<td::Breakpoint>& b = g_s->breakpoints();
     int i, last = 0;
     for (i = 0; i < b.size(); i++) {
-        if (b[i].id == last || !b[i].id)
+        if (b[i].id == last || b[i].id <= 0)
             continue;
         last = b[i].id;
+        if (!b[i].addr) {
+            out("%d  %s (pending)\n", b[i].id, b[i].where.c_str());
+            continue;
+        }
         td::Frame f;
         g_s->describe(b[i].addr, false, &f);
         ttr::Str w = td::format_place(f);
@@ -265,7 +271,7 @@ bool command(char* line)
             const ttr::Vector<td::Breakpoint>& b = g_s->breakpoints();
             int i, last = 0;
             for (i = 0; i < b.size(); i++)
-                if (b[i].id && b[i].id != last) {
+                if (b[i].id > 0 && b[i].id != last) {
                     specs.push_back(b[i].where);
                     last = b[i].id;
                 }
@@ -291,9 +297,12 @@ bool command(char* line)
             cmd_breakpoints();
         } else {
             ttr::Str err;
-            int id = g_s->add_breakpoint(args, &err);
+            bool pending = false;
+            int id = g_s->add_breakpoint(args, &err, &pending);
             if (!id) {
                 out("Cannot set a breakpoint at %s: %s\n", args, err.c_str());
+            } else if (pending) {
+                out("Breakpoint %d (pending): %s, when the shared objects load\n", id, args);
             } else {
                 const ttr::Vector<td::Breakpoint>& b = g_s->breakpoints();
                 td::Frame f;
@@ -309,6 +318,18 @@ bool command(char* line)
             out("No breakpoint %s.\n", args);
     } else if (!strcmp(c, "bt") || !strcmp(c, "backtrace")) {
         cmd_bt();
+    } else if (!strcmp(c, "dir")) {
+        if (*args) {
+            g_src.add_dir(args);
+        } else {
+            int i;
+            for (i = 0; i < g_src.dir_count(); i++)
+                out("%s\n", g_src.dir(i));
+            if (!g_src.dir_count())
+                out("Sources are read where the compiler recorded them.\n");
+        }
+    } else if (!strcmp(c, "mods")) {
+        cmd_modules();
     } else if (!strcmp(c, "regs")) {
         cmd_regs();
     } else if (!strcmp(c, "x")) {
@@ -334,8 +355,8 @@ bool command(char* line)
     } else if (!strcmp(c, "help") || !strcmp(c, "h")) {
         out("r run, c continue, s step, n next, si step instruction, f finish,\n"
             "b SPEC (file:line, function, *addr), b list, d N delete,\n"
-            "bt backtrace, where, l list, regs, x ADDR [N] memory,\n"
-            "k kill, detach, q quit\n");
+            "bt backtrace, where, l list, regs, x ADDR [N] memory, mods modules,\n"
+            "dir DIR source directory, k kill, detach, q quit\n");
     } else {
         out("Unknown command \"%s\" (help lists them).\n", c);
     }

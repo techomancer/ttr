@@ -166,6 +166,42 @@ bool Arch::entry_return_address(const Regs& r, Target* t, Addr* ra) const
     return true;
 }
 
+bool Target::read_string(Addr a, char* buf, size_t n)
+{
+    size_t i;
+    if (!n)
+        return false;
+    for (i = 0; i + 1 < n; i++) {
+        if (!read(a + i, buf + i, 1)) {
+            buf[i] = 0;
+            return i > 0;
+        }
+        if (!buf[i])
+            return true;
+    }
+    buf[i] = 0;
+    return true;
+}
+
+bool Target::dynamic_entry(Addr dynamic, uint64_t tag, uint64_t* value)
+{
+    int w = arch()->ptr_size;
+    int i;
+    for (i = 0; i < 4096; i++) {
+        uint64_t t = 0, v = 0;
+        if (!read_uint(dynamic + (Addr)(2 * w * i), w, &t) ||
+            !read_uint(dynamic + (Addr)(2 * w * i + w), w, &v))
+            return false;
+        if (t == 0)
+            return false;   /* DT_NULL */
+        if (t == tag) {
+            *value = v;
+            return true;
+        }
+    }
+    return false;
+}
+
 bool Target::read_uint(Addr a, int n, uint64_t* v)
 {
     unsigned char b[8];

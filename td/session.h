@@ -1,11 +1,13 @@
 /*
  * td/session.h - a debugging session (td/DESIGN.md section 7): the
- * Target, the executable's Module, breakpoints, stepping by line and by
- * instruction, and the call stack. Both user interfaces (ttrdb, later
- * ttrcode) talk only to this.
+ * Target, the loaded modules (the executable and its shared objects),
+ * breakpoints, stepping by line and by instruction, and the call stack.
+ * Both user interfaces (ttrdb, later ttrcode) talk only to this.
  *
- * The prototype: one thread, the executable's own symbols (no shared
- * libraries yet), and calls that block until the program stops.
+ * The prototype: one thread, and calls that block until the program
+ * stops. Shared objects are read when the program reaches its entry point
+ * (the dynamic linker has loaded those it starts with) and again at every
+ * stop after that.
  */
 #ifndef TD_SESSION_H
 #define TD_SESSION_H
@@ -20,8 +22,8 @@
 namespace td {
 
 struct Breakpoint {
-    int id;             /* 0: internal (temporary) */
-    Addr addr;
+    int id;             /* > 0: the user's; 0: a temporary one; -1: startup */
+    Addr addr;          /* 0: pending, waiting for its module to load */
     unsigned char saved[4];
     bool inserted;
     ttr::Str where;     /* as the user gave it */
@@ -32,6 +34,7 @@ struct Frame {
     Addr pc;
     const char* func;   /* 0 if unknown */
     Addr func_start;
+    const Module* module;
     Place place;        /* place.file 0 if unknown */
     bool has_place;
 };
@@ -55,12 +58,19 @@ public:
     bool start(char* const* argv, ttr::Str* err);
     bool attach(int pid, ttr::Str* err);
     bool running() const { return alive_; }
-    const Module* module() const { return exe_; }
     Target* target() { return target_; }
 
+    /* The executable first, then the shared objects in load order. */
+    int module_count() const { return mods_.size(); }
+    const Module* module(int i) const { return mods_[i]; }
+    const Module* module_at(Addr pc) const;
+    /* Read the dynamic linker's list again; returns how many are new. */
+    int refresh_modules();
+
     /* Breakpoints: "file.c:12", "function", "*0x401000". Returns its id,
-     * or 0 with the reason in err. */
-    int add_breakpoint(const char* spec, ttr::Str* err);
+     * or 0 with the reason in err. One that matches nothing before the
+     * shared objects are loaded waits for them (*pending set). */
+    int add_breakpoint(const char* spec, ttr::Str* err, bool* pending = 0);
     bool remove_breakpoint(int id);
     const ttr::Vector<Breakpoint>& breakpoints() const { return bps_; }
 
@@ -83,21 +93,28 @@ private:
     void insert_all();
     void remove_all();
     int bp_at(Addr a) const;
+    void add_location(int id, const char* spec, Addr a);
     Stop run_until_stop(bool step);
     Stop step_over_bp(bool* done);
     Stop to_stop(const Event& e);
-    Addr resolve(const char* spec, ttr::Str* err, ttr::Vector<Addr>* more);
+    bool resolve(const char* spec, ttr::Str* err, ttr::Vector<Addr>* out);
+    void resolve_pending();
     Stop run_to(Addr a, Addr min_sp);
+    Stop cont_once();
+
+    const char* func_at(Addr pc, Addr* start, Addr* end) const;
+    bool place_at(Addr pc, Place* p) const;
 
     Target* target_;
-    Module* exe_;
+    ttr::Vector<Module*> mods_;
     bool alive_;
+    bool started_;          /* past the entry point: shared objects read */
     int next_id_;
     int pending_sig_;       /* a signal it stopped with, for the next run */
     ttr::Vector<Breakpoint> bps_;
 };
 
-/* "file.c:12 in main" style, for messages. */
+/* "main (demo.c:12)" style, for messages. */
 ttr::Str format_place(const Frame& f);
 
 } /* namespace td */

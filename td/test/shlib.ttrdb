@@ -1,0 +1,35 @@
+# program: td_shmain
+# A shared library: breakpoints in it set before it loads, its lines,
+# the stack across it, stepping into it, and listing its source.
+b lib_add
+expect Breakpoint 1 (pending)
+b shlib.c:10
+expect Breakpoint 2 (pending)
+r
+expect Breakpoint 1, lib_add (shlib.c:4)
+expect int r = a + b;
+mods
+expect libtdshlib.so  (lines)
+bt
+expect lib_add (shlib.c:4)
+expect main (shmain.c:10)
+f
+expect in main (shmain.c:10)
+n
+expect main (shmain.c:11)
+c
+expect Breakpoint 2, lib_twice (shlib.c:10)
+s
+expect lib_add (shlib.c:4)
+bt
+expect #0
+expect lib_add (shlib.c:4)
+expect lib_twice (shlib.c:10)
+expect main (shmain.c:11)
+l
+expect =>4
+expect return r;
+d 1
+d 2
+c
+expect Program exited with code 7.

@@ -603,8 +603,9 @@ $(B)/libdwarf.a: $(B)/.dir td/third/libdwarf/config.h
 	$(AR) rc $@ $(B)/libdwarf/*.o
 
 TD_SYS = $(B)/td_target_linux.o
-TD_OBJS = $(B)/td_arch.o $(B)/td_elf.o $(B)/td_module.o $(B)/td_session.o $(TD_SYS)
-TD_H = td/td.h td/target.h td/elf.h td/module.h td/session.h src/core/str.h \
+TD_OBJS = $(B)/td_arch.o $(B)/td_elf.o $(B)/td_module.o $(B)/td_session.o \
+	$(B)/td_source.o $(TD_SYS)
+TD_H = td/td.h td/target.h td/elf.h td/module.h td/session.h td/source.h src/core/str.h \
 	src/core/vector.h src/core/port.h
 
 $(B)/libtd.a: $(TD_OBJS)
@@ -619,6 +620,8 @@ $(B)/td_module.o: $(B)/.dir td/module.cpp $(TD_H) $(B)/libdwarf.a
 	$(COMPILE) $(TD_DWARF_FLAGS) -I$(LIBDWARF_DIR) -c td/module.cpp -o $@
 $(B)/td_session.o: $(B)/.dir td/session.cpp $(TD_H)
 	$(COMPILE) -c td/session.cpp -o $@
+$(B)/td_source.o: $(B)/.dir td/source.cpp $(TD_H)
+	$(COMPILE) -c td/source.cpp -o $@
 $(B)/td_target_linux.o: $(B)/.dir td/target_linux.cpp $(TD_H)
 	$(COMPILE) -c td/target_linux.cpp -o $@
 $(B)/td_target_irix.o: $(B)/.dir td/target_irix.cpp $(TD_H)
@@ -634,6 +637,10 @@ $(B)/ttrdb_main.o: $(B)/.dir src/ttrdb/main.cpp $(TD_H)
 # The programs the tests debug, built with debug information and no
 # optimisation (TD_TEST_CFLAGS), and the scripts in td/test.
 TD_TEST_CFLAGS = -g -O0
+# The test shared library: position-independent code (MIPSpro's is
+# already) and its soname (IRIX: TD_TEST_SONAME="-soname libtdshlib.so").
+TD_TEST_PIC = -fPIC
+TD_TEST_SONAME = -Wl,-soname,libtdshlib.so
 $(B)/td_demo: $(B)/td_demo.o $(B)/td_demo_util.o
 	$(CC) $(TD_TEST_CFLAGS) -o $@ $(B)/td_demo.o $(B)/td_demo_util.o
 $(B)/td_demo.o: $(B)/.dir td/test/progs/demo.c
@@ -645,7 +652,16 @@ $(B)/td_crash: $(B)/td_crash.o
 $(B)/td_crash.o: $(B)/.dir td/test/progs/crash.c
 	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/crash.c -o $@
 
-td-test: $(B)/ttrdb $(B)/td_demo $(B)/td_crash
+$(B)/libtdshlib.so: $(B)/td_shlib.o
+	$(CC) $(TD_TEST_CFLAGS) -shared $(TD_TEST_SONAME) -o $@ $(B)/td_shlib.o
+$(B)/td_shlib.o: $(B)/.dir td/test/progs/shlib.c
+	$(CC) $(TD_TEST_CFLAGS) $(TD_TEST_PIC) -c td/test/progs/shlib.c -o $@
+$(B)/td_shmain: $(B)/td_shmain.o $(B)/libtdshlib.so
+	$(CC) $(TD_TEST_CFLAGS) -o $@ $(B)/td_shmain.o -L$(B) -ltdshlib
+$(B)/td_shmain.o: $(B)/.dir td/test/progs/shmain.c
+	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/shmain.c -o $@
+
+td-test: $(B)/ttrdb $(B)/td_demo $(B)/td_crash $(B)/td_shmain
 	sh td/test/run.sh $(B)
 
 # ttrc, To The Roots Commander (ttrc/DESIGN.md): tu + tf (+ tl) on a

@@ -16,8 +16,19 @@ and on IRIX (the emulated guest, MIPSpro n32 programs):
   and `detach`; `-x SCRIPT` runs a test script. `make td-test` runs the
   scripts in `td/test/` (breakpoints, stepping, a crash): all pass on
   both systems.
-- Not yet: shared libraries (only the executable's symbols), threads,
-  values and types, watchpoints, core files, and the Octane.
+- Shared objects: the dynamic linker's list (Linux `r_debug`, IRIX rld's
+  `Elf32_Obj_Info` list through `__rld_obj_head`), read at the entry
+  point and after every stop; symbols, lines and unwinding in each;
+  breakpoints that wait for their library ("pending"); stepping into a
+  library function through its PLT entry or stub. IRIX's own libc.so.1
+  has line tables (`puts.c:22`) and unwinds back into the program.
+- On MIPS a function breakpoint goes after the prologue as dbx finds it
+  (scanning the stack and gp setup), and on the second line row only
+  when straight-line code reaches it: SGI's libraries are optimized.
+- Sources: read where the line table says, else under directories the
+  user adds (`dir`), trying the path's trailing parts (`td/source.h`).
+- Not yet: threads, values and types, watchpoints, core files, dlopen
+  breakpoints before the next stop, 64-bit IRIX programs, the Octane.
 
 gdb is hard to use, debugging through VS Code is worse, and dbx and
 ProDev WorkShop are not much better. ttr gets its own debugger, in three

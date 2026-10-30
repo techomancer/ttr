@@ -1071,6 +1071,11 @@ The notification area uses common tools when they are installed:
   build/ttrdb build/td_demo        # b main, r, n, s, f, bt, regs, help
   ```
 
+  It reads the shared objects a program loads (`mods` lists them), so
+  breakpoints, lines and backtraces work in libraries too; a breakpoint
+  in a library not yet loaded waits for it. `dir DIR` says where to look
+  for sources that are no longer where they were compiled.
+
 When you add or change a feature that people use, update this README too.
 
 ## License

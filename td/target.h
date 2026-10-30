@@ -12,6 +12,7 @@
 #include "td.h"
 
 #include "core/str.h"
+#include "core/vector.h"
 
 namespace td {
 
@@ -31,6 +32,13 @@ struct Event {
     Addr pc;        /* for stops: where (breakpoints: already moved back) */
 };
 
+/* A shared object the dynamic linker loaded: its file, and how far it
+ * was moved from its link addresses. */
+struct SharedObject {
+    ttr::Str path;
+    Addr bias;
+};
+
 class Target {
 public:
     /* The implementation for this system. */
@@ -48,6 +56,10 @@ public:
      * address (position-independent executables). */
     virtual ttr::Str exe_path() = 0;
     virtual Addr exe_bias(Addr elf_entry) = 0;
+    /* The shared objects loaded now (not the executable), from the
+     * dynamic linker's list (td/DESIGN.md section 4). dynamic: where the
+     * executable's dynamic section is in memory. */
+    virtual bool shared_objects(Addr dynamic, ttr::Vector<SharedObject>* out) = 0;
 
     /* Let it run, or run one instruction, passing sig (0: none). */
     virtual bool resume(bool step, int sig) = 0;
@@ -64,6 +76,11 @@ public:
 
     /* An unsigned value of n bytes (1, 2, 4, 8) in the target's order. */
     bool read_uint(Addr a, int n, uint64_t* v);
+    /* A NUL-terminated string, at most n - 1 bytes. */
+    bool read_string(Addr a, char* buf, size_t n);
+    /* A dynamic section entry's value by tag (one of a pointer size's
+     * pairs), from the section in memory. */
+    bool dynamic_entry(Addr dynamic, uint64_t tag, uint64_t* value);
 };
 
 } /* namespace td */

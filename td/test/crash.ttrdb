@@ -1,6 +1,15 @@
 # program: td_crash
-# A crash: the signal, where, and the stack through recursion.
+# A breakpoint in the system's C library (no lines of ours), then a
+# crash: the signal, where, and the stack through recursion.
+b puts
+expect Breakpoint 1 (pending)
 r
+expect Breakpoint 1,
+expect puts
+bt
+expect main (crash.c:16)
+d 1
+c
 expect Program received SIGSEGV (11) in
 expect poke (crash.c:9)
 bt

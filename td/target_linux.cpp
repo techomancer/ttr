@@ -34,6 +34,7 @@ public:
     int pid() const { return pid_; }
     ttr::Str exe_path();
     Addr exe_bias(Addr elf_entry);
+    bool shared_objects(Addr dynamic, ttr::Vector<SharedObject>* out);
     bool resume(bool step, int sig);
     bool wait(Event* ev);
     void kill();
@@ -166,6 +167,36 @@ Addr LinuxTarget::exe_bias(Addr elf_entry)
             bias = (Addr)av.a_un.a_val - elf_entry;
     close(fd);
     return bias;
+}
+
+/* glibc's list: DT_DEBUG points to struct r_debug once ld.so has started;
+ * its r_map is the link_map list. x86-64 offsets: r_debug.r_map 8;
+ * link_map l_addr 0, l_name 8, l_next 24. */
+bool LinuxTarget::shared_objects(Addr dynamic, ttr::Vector<SharedObject>* out)
+{
+    uint64_t rdebug = 0, map = 0;
+    if (!dynamic || !dynamic_entry(dynamic, 21 /* DT_DEBUG */, &rdebug) || !rdebug)
+        return true;        /* not started yet, or linked statically */
+    if (!read_uint(rdebug + 8, 8, &map))
+        return false;
+    int n;
+    for (n = 0; map && n < 4096; n++) {
+        uint64_t addr = 0, name = 0, next = 0;
+        if (!read_uint(map, 8, &addr) || !read_uint(map + 8, 8, &name) ||
+            !read_uint(map + 24, 8, &next))
+            return false;
+        char path[4096];
+        /* The executable has an empty name; the vDSO has no file. */
+        if (name && read_string(name, path, sizeof(path)) && path[0] == '/' &&
+            access(path, R_OK) == 0) {
+            SharedObject so;
+            so.path = path;
+            so.bias = addr;
+            out->push_back(so);
+        }
+        map = next;
+    }
+    return true;
 }
 
 bool LinuxTarget::resume(bool step, int sig)

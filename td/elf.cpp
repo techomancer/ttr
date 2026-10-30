@@ -29,13 +29,22 @@ int compare_symbols(const void* pa, const void* pb)
         return a->func ? -1 : 1;
     if (a->size != b->size)
         return a->size > b->size ? -1 : 1;
-    return 0;
+    /* Aliases: puts before _IO_puts. */
+    int ua = 0, ub = 0;
+    while (a->name[ua] == '_')
+        ua++;
+    while (b->name[ub] == '_')
+        ub++;
+    if (ua != ub)
+        return ua - ub;
+    return strcmp(a->name, b->name);
 }
 
 } /* namespace */
 
 ElfFile::ElfFile()
-    : data_(0), size_(0), is64_(false), big_(false), type_(0), machine_(0), entry_(0)
+    : data_(0), size_(0), is64_(false), big_(false), type_(0), machine_(0), entry_(0),
+      load_lo_(0), load_hi_(0), dyn_(0)
 {
 }
 
@@ -93,12 +102,44 @@ bool ElfFile::load(const char* path, ttr::Str* err)
     type_ = (int)u16(data_ + 16);
     machine_ = (int)u16(data_ + 18);
     entry_ = word(data_ + 24);
+    read_segments();
     read_symbols(SHT_SYMTAB_);
     if (syms_.empty())
         read_symbols(SHT_DYNSYM_);
     if (!syms_.empty())
         qsort(&syms_[0], (size_t)syms_.size(), sizeof(Symbol), compare_symbols);
     return true;
+}
+
+void ElfFile::read_segments()
+{
+    uint64_t phoff = is64_ ? u64(data_ + 32) : u32(data_ + 28);
+    int phentsize = (int)u16(data_ + (is64_ ? 54 : 42));
+    int phnum = (int)u16(data_ + (is64_ ? 56 : 44));
+    if (!phoff || phoff + (uint64_t)phnum * phentsize > size_)
+        return;
+    bool first = true;
+    int i;
+    for (i = 0; i < phnum; i++) {
+        const unsigned char* ph = data_ + phoff + (uint64_t)i * phentsize;
+        int type = (int)u32(ph);
+        uint64_t vaddr = is64_ ? u64(ph + 16) : u32(ph + 8);
+        uint64_t memsz = is64_ ? u64(ph + 40) : u32(ph + 20);
+        if (type == 1) {                /* PT_LOAD */
+            Segment sg;
+            sg.vaddr = vaddr;
+            sg.offset = is64_ ? u64(ph + 8) : u32(ph + 4);
+            sg.filesz = is64_ ? u64(ph + 32) : u32(ph + 16);
+            segs_.push_back(sg);
+            if (first || vaddr < load_lo_)
+                load_lo_ = vaddr;
+            if (first || vaddr + memsz > load_hi_)
+                load_hi_ = vaddr + memsz;
+            first = false;
+        } else if (type == 2) {         /* PT_DYNAMIC */
+            dyn_ = vaddr;
+        }
+    }
 }
 
 void ElfFile::read_symbols(int symtab_type)
@@ -156,6 +197,22 @@ void ElfFile::read_symbols(int symtab_type)
             syms_.push_back(sym);
         }
     }
+}
+
+bool ElfFile::read_at(Addr a, void* buf, size_t n) const
+{
+    int i;
+    for (i = 0; i < segs_.size(); i++) {
+        const Segment& s = segs_[i];
+        if (a < s.vaddr || a + n > s.vaddr + s.filesz)
+            continue;
+        uint64_t off = s.offset + (a - s.vaddr);
+        if (off + n > size_)
+            return false;
+        memcpy(buf, data_ + off, n);
+        return true;
+    }
+    return false;
 }
 
 const Arch* ElfFile::arch() const

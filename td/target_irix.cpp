@@ -34,6 +34,7 @@ public:
     int pid() const { return pid_; }
     ttr::Str exe_path() { return path_; }
     Addr exe_bias(Addr) { return 0; }       /* IRIX executables are not moved */
+    bool shared_objects(Addr dynamic, ttr::Vector<SharedObject>* out);
     bool resume(bool step, int sig);
     bool wait(Event* ev);
     void kill();
@@ -220,6 +221,42 @@ bool IrixTarget::attach(int pid, ttr::Str* err)
         sprintf(b, "/dev/fd/%d", exe_fd_);
         path_ = b;
         arch_from(b);
+    }
+    return true;
+}
+
+/* rld's list (<objlist.h>): DT_MIPS_RLD_MAP holds the address of
+ * __rld_obj_head, which points to the first Elf32_Obj_Info:
+ *   oi_magic 0 (0xffffffff), oi_size 4, oi_next 8, oi_prev 12,
+ *   oi_ehdr 16 (where the ELF header is), oi_orig_ehdr 20 (where it was
+ *   linked to be: the difference is the bias), oi_pathname 24,
+ *   oi_pathname_len 28.
+ * The first entry is the executable. 64-bit programs (Elf64_Obj_Info):
+ * later. */
+bool IrixTarget::shared_objects(Addr dynamic, ttr::Vector<SharedObject>* out)
+{
+    uint64_t map = 0, head = 0;
+    if (arch()->ptr_size != 4 || !dynamic ||
+        !dynamic_entry(dynamic, 0x70000016 /* DT_MIPS_RLD_MAP */, &map) || !map ||
+        !read_uint(map, 4, &head))
+        return true;
+    Addr p = (Addr)head;
+    int n;
+    for (n = 0; p && n < 4096; n++) {
+        uint64_t magic = 0, next = 0, ehdr = 0, orig = 0, name = 0;
+        if (!read_uint(p, 4, &magic) || magic != 0xffffffffu)
+            return false;       /* the old, pre-ELF list: not read */
+        if (!read_uint(p + 8, 4, &next) || !read_uint(p + 16, 4, &ehdr) ||
+            !read_uint(p + 20, 4, &orig) || !read_uint(p + 24, 4, &name))
+            return false;
+        char path[2048];
+        if (n > 0 && name && read_string(name, path, sizeof(path)) && path[0]) {
+            SharedObject so;
+            so.path = path;
+            so.bias = (Addr)(uint32_t)(ehdr - orig);
+            out->push_back(so);
+        }
+        p = (Addr)next;
     }
     return true;
 }

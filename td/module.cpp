@@ -209,6 +209,8 @@ void Module::read_frames()
 
 bool Module::contains(Addr pc) const
 {
+    if (elf_.load_high() > elf_.load_low())
+        return pc >= elf_.load_low() + bias_ && pc < elf_.load_high() + bias_;
     Addr start, end;
     return function_at(pc, &start, &end) != 0 || place_of(pc, 0);
 }
@@ -288,13 +290,14 @@ int Module::line_addresses(const char* file, int line, ttr::Vector<Addr>* out) c
     return best;
 }
 
-Addr Module::after_prologue(Addr start, Addr end) const
+/* The second line row in the function: past the prologue in code that is
+ * not optimized. 0 if there is none. */
+static Addr second_row(const ttr::Vector<LineRow>& rows, Addr s, Addr e)
 {
-    Addr s = start - bias_, e = end - bias_;
     int i;
     int first_line = -1;
-    for (i = 0; i < rows_.size(); i++) {
-        const LineRow& r = rows_[i];
+    for (i = 0; i < rows.size(); i++) {
+        const LineRow& r = rows[i];
         if (r.end || r.addr < s)
             continue;
         if (r.addr >= e)
@@ -304,9 +307,81 @@ Addr Module::after_prologue(Addr start, Addr end) const
             continue;
         }
         if (r.addr > s && r.line != first_line)
-            return r.addr + bias_;
+            return r.addr;
     }
-    return start;
+    return 0;
+}
+
+namespace {
+
+uint32_t be32(const unsigned char* b)
+{
+    return ((uint32_t)b[0] << 24) | ((uint32_t)b[1] << 16) | ((uint32_t)b[2] << 8) | b[3];
+}
+
+/* MIPS instructions that set up a frame: stack and frame pointer
+ * adjustments, register saves into it, the gp setup of PIC code. */
+bool mips_prologue_insn(uint32_t w)
+{
+    unsigned op = w >> 26, rs = (w >> 21) & 31, rt = (w >> 16) & 31;
+    unsigned rd = (w >> 11) & 31, funct = w & 63;
+    if ((op == 9 || op == 25) && rs == 29 && rt == 29)          /* (d)addiu sp,sp,n */
+        return true;
+    if ((op == 43 || op == 63 || op == 57 || op == 61) && (rs == 29 || rs == 30))
+        return true;                                            /* sw sd swc1 sdc1 x,n(sp) */
+    if (op == 15 && rt == 28)                                   /* lui gp */
+        return true;
+    if ((op == 9 || op == 25) && rt == 28)                      /* (d)addiu gp,..,n */
+        return true;
+    if (op == 0 && rd == 28 && (funct == 0x21 || funct == 0x2d))  /* (d)addu gp,gp,t9 */
+        return true;
+    if (op == 0 && rd == 30 && rs == 29 && (funct == 0x21 || funct == 0x2d || funct == 0x25))
+        return true;                                            /* move s8,sp */
+    return false;
+}
+
+bool mips_branch(uint32_t w)
+{
+    unsigned op = w >> 26, rs = (w >> 21) & 31, funct = w & 63;
+    if (op == 0)
+        return funct == 8 || funct == 9;                        /* jr jalr */
+    if (op == 1 || op == 2 || op == 3)                          /* regimm, j, jal */
+        return true;
+    if ((op >= 4 && op <= 7) || (op >= 20 && op <= 23))         /* beq.. beql.. */
+        return true;
+    if (op == 17 && rs == 8)                                    /* bc1t/f */
+        return true;
+    return false;
+}
+
+} /* namespace */
+
+Addr Module::after_prologue(Addr start, Addr end) const
+{
+    Addr s = start - bias_, e = end - bias_;
+    Addr line2 = second_row(rows_, s, e);
+    const Arch* arch = elf_.arch();
+    if (!arch || (arch->id != ARCH_MIPS32 && arch->id != ARCH_MIPS64))
+        return line2 ? line2 + bias_ : start;
+    /* MIPS: scan the prologue, as dbx does. Optimized code (IRIX's own
+     * libraries) can reach the second line row only through a branch, so
+     * use it only when straight-line code from the prologue's end gets
+     * there. */
+    Addr p = s;
+    unsigned char b[4];
+    int i;
+    for (i = 0; i < 64 && p + 4 <= e && elf_.read_at(p, b, 4); i++, p += 4)
+        if (!mips_prologue_insn(be32(b)))
+            break;
+    if (line2 && line2 >= p) {
+        Addr q;
+        for (q = p; q < line2; q += 4)
+            if (!elf_.read_at(q, b, 4) || mips_branch(be32(b)))
+                break;
+        if (q >= line2)
+            return line2 + bias_;
+    }
+    return p + bias_;
 }
 
 bool Module::unwind(Target* t, const Regs& in, bool caller, Regs* out) const

@@ -33,6 +33,13 @@ public:
     int machine() const { return machine_; }
     bool position_independent() const { return type_ == 3; }  /* ET_DYN */
     Addr entry() const { return entry_; }
+    /* What the loadable segments cover (link addresses), and where the
+     * dynamic section is (0: none). */
+    Addr load_low() const { return load_lo_; }
+    Addr load_high() const { return load_hi_; }
+    Addr dynamic() const { return dyn_; }
+    /* Bytes the file holds for link addresses a..a+n (code, data). */
+    bool read_at(Addr a, void* buf, size_t n) const;
     /* The CPU description for this file, or 0 if td does not know it. */
     const Arch* arch() const;
 
@@ -50,6 +57,7 @@ private:
     uint64_t u64(const unsigned char* p) const;
     uint64_t word(const unsigned char* p) const { return is64_ ? u64(p) : u32(p); }
     void read_symbols(int symtab_type);
+    void read_segments();
 
     ttr::Str path_;
     unsigned char* data_;
@@ -57,6 +65,12 @@ private:
     bool is64_, big_;
     int type_, machine_;
     Addr entry_;
+    Addr load_lo_, load_hi_, dyn_;
+    struct Segment {
+        Addr vaddr;
+        uint64_t offset, filesz;
+    };
+    ttr::Vector<Segment> segs_;
     ttr::Vector<Symbol> syms_;
 
     ElfFile(const ElfFile&);

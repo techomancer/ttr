@@ -8,8 +8,13 @@ T=`dirname "$0"`
 W=/tmp/td-test.$$
 rm -rf $W
 mkdir -p $W || exit 1
-cp $B/ttrdb $B/td_demo $B/td_crash $W/ || exit 1
-chmod +x $W/ttrdb $W/td_demo $W/td_crash
+cp $B/ttrdb $B/td_demo $B/td_crash $B/td_shmain $B/libtdshlib.so $W/ || exit 1
+chmod +x $W/ttrdb $W/td_demo $W/td_crash $W/td_shmain
+# The test shared library is found next to the programs (IRIX n32 reads
+# LD_LIBRARYN32_PATH).
+LD_LIBRARY_PATH=$W
+LD_LIBRARYN32_PATH=$W
+export LD_LIBRARY_PATH LD_LIBRARYN32_PATH
 fail=0
 ran=0
 for s in $T/*.ttrdb; do
