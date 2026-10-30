@@ -71,7 +71,8 @@ here from ttr's `x11/config.cpp`:
   nothing, so X resources keep their say.
 
 ttrt and ttrcode have a `uiScale` setting of their own. Empty, the
-default, follows ttr's (`ttr_ui_scale()` reads ttr's settings file), so
+default, follows ttr's (`tx/ttr.h` reads ttr's settings file, for its
+scale and its UI theme, which they follow the same way), so
 one setting does for all three; `scale_drop_down()` is the choice in
 their Settings dialogs. Their own pixel sizes go through `ttr::scaled()`.
 The font they pick when none is set (`tt::pick_font()`) is scaled too; a

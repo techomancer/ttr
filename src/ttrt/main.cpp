@@ -7,10 +7,13 @@
 #include "settings.h"
 #include "settingsdlg.h"
 
+#include "../../th/motif.h"
 #include "../../th/scheme.h"
+#include "../../tw/grid_widget.h"
 #include "../../tt/pane.h"
 #include "core/settings.h"
 #include "../../tx/scale.h"
+#include "../../tx/ttr.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -49,6 +52,7 @@ struct Resources {
     String dynamic_background;
     String text_rendering;
     String ui_scale;
+    String ui_theme;
 };
 
 /* Names and defaults come from settings.h, the list the Settings dialog
@@ -86,7 +90,9 @@ XtResource k_resources[] = {
     { TS(S_TEXT_RENDERING), (String)"TextRendering", (String)XtRString, sizeof(String),
       ROFF(text_rendering), (String)XtRString, TSD(S_TEXT_RENDERING) },
     { TS(S_UI_SCALE), (String)"UiScale", (String)XtRString, sizeof(String),
-      ROFF(ui_scale), (String)XtRString, TSD(S_UI_SCALE) }
+      ROFF(ui_scale), (String)XtRString, TSD(S_UI_SCALE) },
+    { TS(S_UI_THEME), (String)"UiTheme", (String)XtRString, sizeof(String),
+      ROFF(ui_theme), (String)XtRString, TSD(S_UI_THEME) }
 };
 #undef TSD
 #undef TS
@@ -150,6 +156,12 @@ public:
     void post_popup(XEvent* ev);
     Time now() const { return XtLastTimestampProcessed(XtDisplay(top)); }
 };
+
+/* The UI theme setting's theme: "" follows ttr's. */
+void ui_theme(const char* setting, th::Theme* out)
+{
+    th::find_theme(setting && *setting ? setting : tx::ttr_theme(), out);
+}
 
 uint32_t parse_color(Display* dpy, const char* name, uint32_t dflt)
 {
@@ -412,6 +424,15 @@ void App::apply(const ttr::Str* v, const bool* changed)
         pane->set_bell(bell_mode(v[S_BELL].c_str()));
     if (changed[S_MENU_BAR])
         show_menu_bar(strcmp(v[S_MENU_BAR].c_str(), "true") == 0);
+    /* The menus, the scroll bar and the dialogs, in place; the terminal's
+     * text has the colour scheme's colours. */
+    if (changed[S_UI_THEME]) {
+        th::Theme t;
+        ui_theme(v[S_UI_THEME].c_str(), &t);
+        XrmDatabase db = XtDatabase(dpy);
+        th::apply_theme(&db, t);
+        th::recolor(top, t, twGridWidgetClass);
+    }
     /* A background shows at once with the GL renderer; the renderer
      * itself applies to new windows. */
     if (changed[S_DYNAMIC_BACKGROUND])
@@ -546,6 +567,7 @@ int main(int argc, char** argv)
         a->cur[S_DYNAMIC_BACKGROUND] = a->res.dynamic_background ? a->res.dynamic_background : "";
         a->cur[S_TEXT_RENDERING] = a->res.text_rendering ? a->res.text_rendering : "auto";
         a->cur[S_UI_SCALE] = a->res.ui_scale ? a->res.ui_scale : "";
+        a->cur[S_UI_THEME] = a->res.ui_theme ? a->res.ui_theme : "";
     }
 
     /* The UI scale: Motif's fonts and sizes, before the widgets are made,
@@ -562,6 +584,13 @@ int main(int argc, char** argv)
         tx::apply_ui_scale(a->top, scale, fonts, (int)(sizeof(fonts) / sizeof(fonts[0])));
         const char* pick = tt::pick_font(dpy);
         a->auto_font = scale == 100 ? ttr::Str(pick) : tx::scale_font(dpy, pick, scale);
+    }
+    /* The UI theme, for every widget made from here on. */
+    {
+        th::Theme t;
+        ui_theme(a->cur[ttrt::S_UI_THEME].c_str(), &t);
+        XrmDatabase db = XtDatabase(dpy);
+        th::apply_theme(&db, t);
     }
 
     a->main_w = XtVaCreateManagedWidget("main", xmFormWidgetClass, a->top, (char*)0);

@@ -28,11 +28,8 @@ void scale_motif_resources(XrmDatabase* db);
 extern const char* const k_ui_scales[];
 extern const int k_ui_scale_count;
 
-/* ttr's own UI scale (uiScale in its settings file); 100 if not set. */
-int ttr_ui_scale();
-
 /* A program's uiScale setting as a percent: empty (or not a number)
- * follows ttr's; numbers are kept within 100..300. */
+ * follows ttr's (tx/ttr.h); numbers are kept within 100..300. */
 int ui_scale_of(const char* setting);
 
 /* The UI scale setting in a Settings dialog: "Same as ttr", then the

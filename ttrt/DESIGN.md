@@ -273,8 +273,10 @@ Settings dialog. That made the window manager the owner of the terminal's
 settings, which is the kind of coupling ttr exists to avoid.
 
 The dialog has pages as ttr's (`tx/pages.h`): Terminal, Appearance (UI
-scale, font, drawing) and Colors. The UI scale (`uiScale`, `tx/scale.h`)
-follows ttr's unless set.
+scale, font, drawing) and Colors (UI theme, text colours). The UI scale
+(`uiScale`, `tx/scale.h`) and the UI theme (`uiTheme`, `th/motif.h`)
+follow ttr's unless set (`tx/ttr.h`); a new theme recolours the window
+at once.
 
 Implemented 2026-10-20:
 

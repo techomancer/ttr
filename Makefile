@@ -362,8 +362,9 @@ $(B)/te_test_te.o: $(B)/.dir te/test/test_te.cpp $(TE_H)
 # chooser.
 TX_OBJS = $(B)/tx_fontchooser.o \
 	$(B)/tx_pages.o \
-	$(B)/tx_scale.o
-TX_H = tx/fontchooser.h tx/dialog.h tx/pages.h tx/scale.h src/core/str.h src/core/vector.h
+	$(B)/tx_scale.o \
+	$(B)/tx_ttr.o
+TX_H = tx/fontchooser.h tx/dialog.h tx/pages.h tx/scale.h tx/ttr.h src/core/str.h src/core/vector.h
 
 $(B)/libtx.a: $(TX_OBJS)
 	rm -f $@
@@ -373,8 +374,10 @@ $(B)/tx_fontchooser.o: $(B)/.dir tx/fontchooser.cpp $(TX_H)
 	$(COMPILE) -c tx/fontchooser.cpp -o $@
 $(B)/tx_pages.o: $(B)/.dir tx/pages.cpp $(TX_H) src/core/scale.h
 	$(COMPILE) -c tx/pages.cpp -o $@
-$(B)/tx_scale.o: $(B)/.dir tx/scale.cpp $(TX_H) src/core/scale.h src/core/settings.h
+$(B)/tx_scale.o: $(B)/.dir tx/scale.cpp $(TX_H) src/core/scale.h
 	$(COMPILE) -c tx/scale.cpp -o $@
+$(B)/tx_ttr.o: $(B)/.dir tx/ttr.cpp $(TX_H) src/core/scale.h src/core/settings.h
+	$(COMPILE) -c tx/ttr.cpp -o $@
 
 # tx_demo shows the font chooser (needs a display).
 $(B)/tx_demo: $(B)/tx_demo.o $(B)/libtx.a $(B)/core_str.o

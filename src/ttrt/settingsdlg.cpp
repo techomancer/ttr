@@ -2,6 +2,7 @@
 
 #include "../../tx/fontchooser.h"
 #include "../../tx/scale.h"
+#include "../../th/theme.h"
 
 #include "../../tt/pane.h"
 #include "../../tw/backgrounds.h"
@@ -193,7 +194,8 @@ SettingsDialog::SettingsDialog(Widget parent, SettingsHost* host)
       font_(0), preview_fg_(0),
       preview_bg_(0), have_preview_fg_(false), have_preview_bg_(false),
       picker_(new ttr::ColorPicker(picked, this)), picking_(-1), scheme_w_(0),
-      renderer_w_(0), dynbg_w_(0), text_w_(0), scale_w_(0)
+      renderer_w_(0), dynbg_w_(0), text_w_(0), scale_w_(0),
+      theme_w_(0)
 {
     int i;
     for (i = 0; i < C_COUNT; i++) {
@@ -353,9 +355,27 @@ void SettingsDialog::build()
         label(r, "animated, with OpenGL");
     }
 
-    /* Colors */
+    /* Colors: the menus' and dialogs' (th's UI themes), then the text's. */
     pg = pages_.page(PAGE_COLORS);
-    f = frame(pg, "Colors");
+    f = frame(pg, "Menus and dialogs");
+    themes_.clear();
+    th::list_themes(&themes_);
+    {
+        const char** names = new const char*[themes_.count() + 1];
+        names[0] = "Same as ttr";
+        for (i = 0; i < themes_.count(); i++)
+            names[i + 1] = themes_[i].name;
+        r = row(f, "UI theme:");
+        theme_w_ = drop_down(r, "theme", names, themes_.count() + 1, 12, 18);
+        delete [] names;
+        label(r, "menus, scroll bar and dialogs");
+        tx::choose(theme_w_, 0);
+        const char* cur_theme = orig_[S_UI_THEME].c_str();
+        for (i = 0; *cur_theme && i < themes_.count(); i++)
+            if (th::compare_names(themes_[i].name, cur_theme) == 0)
+                tx::choose(theme_w_, i + 1);
+    }
+    f = frame(pg, "Text");
     schemes_.clear();
     th::list_schemes(&schemes_);
     {
@@ -556,6 +576,8 @@ void SettingsDialog::collect(Str* v) const
             digits = false;
     v[S_SAVE_LINES] = digits ? lines : orig_[S_SAVE_LINES];
     v[S_UI_SCALE] = tx::scale_drop_down_value(scale_w_);
+    int tp2 = tx::chosen(theme_w_);
+    v[S_UI_THEME] = tp2 >= 1 && tp2 <= themes_.count() ? themes_[tp2 - 1].name : "";
 }
 
 /* Save what changed and apply it to the window. Settings left alone are
@@ -604,6 +626,9 @@ bool SettingsDialog::commit()
         return false;
     }
     host_->apply(v, changed);
+    /* A new UI theme recoloured the swatches too. */
+    if (changed[S_UI_THEME])
+        update_swatches();
     for (i = 0; i < S_COUNT; i++)
         orig_[i] = v[i];
     font_->set(v[S_FONT].c_str());

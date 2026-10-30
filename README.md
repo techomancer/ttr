@@ -469,7 +469,8 @@ manager, and use any terminal under ttr. Terminal > Settings... (or
 Ctrl+right click in the window, which works with the menu bar hidden)
 has three pages, as ttr's Settings: Terminal (scrollback, login shell,
 menu bar, Backspace key and bell), Appearance (UI scale, font and
-drawing) and Colors. OK and Apply change the window you opened it from
+drawing) and Colors (the UI theme of the menus, scroll bar and dialogs,
+and the text's colors). OK and Apply change the window you opened it from
 right away, except scrollback, the login shell, the renderer and the UI
 scale, which apply to new windows. They
 are saved in `~/.config/ttrt/settings` (or `$XDG_CONFIG_HOME/ttrt/`),
@@ -495,6 +496,7 @@ bell: visual
 | `dynamicBackground` | `night`, `sunset`, `ocean`, `aurora`, `embers`, `static`, or empty | none |
 | `textRendering` | `sharp`, `smooth`, `auto` (see below) | `auto` |
 | `uiScale` | 100 to 300 (percent): menus, dialogs, scroll bars and the automatic font (see "High-resolution screens") | ttr's |
+| `uiTheme` | a UI theme's name, as in ttr and ttrcode: the menus, scroll bar and dialogs | ttr's |
 
 **Smooth text.** With the OpenGL renderer, ttrt can draw text smoothed:
 each character's outline comes from the same font drawn four times

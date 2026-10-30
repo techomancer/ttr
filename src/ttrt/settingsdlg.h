@@ -1,7 +1,8 @@
 /*
  * ttrt's Settings dialog (Terminal > Settings...), in pages as ttr's
  * (tx/pages.h): the terminal (scrollback, shell, menu bar, Backspace,
- * bell), appearance (UI scale, font, drawing) and colours. OK and Apply
+ * bell), appearance (UI scale, font, drawing) and colours (the UI
+ * theme, the text colour scheme and colours). OK and Apply
  * change the window it was opened from and save what changed in ttrt's
  * settings file (settings.h), for new windows.
  */
@@ -109,6 +110,8 @@ private:
     Widget dynbg_w_;
     Widget text_w_;
     Widget scale_w_;            /* "Same as ttr", then percents */
+    Widget theme_w_;            /* "Same as ttr", then th's themes */
+    th::List themes_;
 };
 
 }

@@ -4,9 +4,9 @@
  */
 #include "scale.h"
 #include "pages.h"
+#include "ttr.h"
 
 #include "core/scale.h"
-#include "core/settings.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -244,16 +244,6 @@ void scale_motif_resources(XrmDatabase* db)
 }
 const char* const k_ui_scales[] = { "100", "125", "150", "175", "200", "250", "300" };
 const int k_ui_scale_count = (int)(sizeof(k_ui_scales) / sizeof(k_ui_scales[0]));
-
-int ttr_ui_scale()
-{
-    ttr::SettingsFile f;
-    const char* v = 0;
-    if (f.load(ttr::SettingsFile::default_path().c_str()))
-        v = f.get("uiScale");
-    int s = v ? atoi(v) : 100;
-    return s < ttr::k_min_scale ? 100 : s > ttr::k_max_scale ? ttr::k_max_scale : s;
-}
 
 int ui_scale_of(const char* setting)
 {

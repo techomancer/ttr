@@ -234,7 +234,9 @@ void App::show_settings()
     /* Colors */
     pg = settings_.page(PAGE_COLORS);
     f = frame(pg, "Colors");
+    schemes_.clear();
     th::list_schemes(&schemes_);
+    themes_.clear();
     th::list_themes(&themes_);
     {
         const char** names = new const char*[schemes_.count() + themes_.count() + 2];

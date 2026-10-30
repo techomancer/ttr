@@ -425,7 +425,7 @@ App::App(Widget top, const Options& o)
     a_text_ = XInternAtom(dpy, "TEXT", False);
     src_.set_line_numbers(o.line_numbers);
     theme_name_ = o.ui_theme ? o.ui_theme : "";
-    th::find_theme(theme_name_.empty() ? ttr_theme() : theme_name_.c_str(), &theme_);
+    th::find_theme(theme_name_.empty() ? tx::ttr_theme() : theme_name_.c_str(), &theme_);
     set_scheme(o.scheme);
 
     form_ = XtVaCreateManagedWidget("main", xmFormWidgetClass, top, (char*)0);
@@ -2321,17 +2321,6 @@ ttr::Str settings_path()
     return ttr::Str(path);
 }
 
-/* The theme ttr itself uses, from its settings file. */
-const char* ttr_theme()
-{
-    static char name[128];
-    ttr::SettingsFile f;
-    name[0] = 0;
-    if (f.load(ttr::SettingsFile::default_path().c_str()) && f.get("theme"))
-        snprintf(name, sizeof(name), "%s", f.get("theme"));
-    return name;
-}
-
 void App::save_settings()
 {
     ttr::SettingsFile f;
@@ -2447,7 +2436,7 @@ void App::set_theme(const char* name)
 {
     theme_name_ = name ? name : "";
     th::Theme& t = theme_;
-    const char* effective = theme_name_.empty() ? ttr_theme() : theme_name_.c_str();
+    const char* effective = theme_name_.empty() ? tx::ttr_theme() : theme_name_.c_str();
     th::find_theme(effective, &t);
     XrmDatabase db = XtDatabase(XtDisplay(top_));
     th::apply_theme(&db, t);

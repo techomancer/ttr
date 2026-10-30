@@ -46,8 +46,8 @@ There are two ways to apply a theme:
   `skip` (TwGrid, which has its own colours) are left alone.
 
 Each program chooses its own theme, as everything in ttr does:
-- ttrcode's `uiTheme` setting defaults to "Same as ttr", which reads the
-  `theme` line of ttr's settings file.
+- ttrcode's and ttrt's `uiTheme` settings default to "Same as ttr",
+  which reads the `theme` line of ttr's settings file (`tx/ttr.h`).
 - Programs never change each other's settings.
 
 ## Text schemes

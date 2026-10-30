@@ -19,6 +19,7 @@
 #include "../../th/theme.h"
 #include "../../tt/pane.h"
 #include "../../tx/pages.h"
+#include "../../tx/ttr.h"
 #include "core/scale.h"
 #include "core/str.h"
 #include "core/vector.h"
@@ -109,8 +110,6 @@ struct TreeRow {
 
 /* ~/.config/ttrcode/settings */
 ttr::Str settings_path();
-/* The UI theme ttr uses (its settings file), or "". */
-const char* ttr_theme();
 
 /* A breakpoint set in the editor: a file and a line (from 0); or one on
  * a function, from the Breakpoints dialog. */

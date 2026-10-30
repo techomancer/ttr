@@ -226,7 +226,7 @@ int main(int argc, char** argv)
 
     /* The UI theme, for every widget made from here on. */
     th::Theme theme;
-    th::find_theme(o.ui_theme[0] ? o.ui_theme : ttrcode::ttr_theme(), &theme);
+    th::find_theme(o.ui_theme[0] ? o.ui_theme : tx::ttr_theme(), &theme);
     XrmDatabase db = XtDatabase(dpy);
     th::apply_theme(&db, theme);
 

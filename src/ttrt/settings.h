@@ -41,6 +41,7 @@ enum {
     S_DYNAMIC_BACKGROUND, /* an animated background (gl), or "" */
     S_TEXT_RENDERING,   /* sharp, smooth, auto (tw's text) */
     S_UI_SCALE,         /* percent; "": ttr's (tx/scale.h) */
+    S_UI_THEME,         /* menus and dialogs (th/theme.h); "": ttr's */
     S_COUNT
 };
 
@@ -59,7 +60,8 @@ static const Setting k_settings[S_COUNT] = {
     { "renderer", "auto" },
     { "dynamicBackground", "" },
     { "textRendering", "auto" },
-    { "uiScale", "" }
+    { "uiScale", "" },
+    { "uiTheme", "" }
 };
 
 /* $XDG_CONFIG_HOME/ttrt/settings, or ~/.config/ttrt/settings. */
