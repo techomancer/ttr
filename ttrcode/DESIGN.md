@@ -59,11 +59,8 @@ output does.
 - Each pane can be hidden and shown again from the View menu or its key:
   - Alt+0: the workspace.
   - Alt+2: the bottom pane.
-- **Docking** in the first version means these fixed slots, each of
-  which can be shown, hidden and resized. Undocking panes into their own
-  windows, and more slots, come later (section 7). The slots are
-  ttrcode's own XmForm containers, so moving a pane from one slot to
-  another is a reparent, not a redesign.
+- **Docking:** tool panes live in three dock areas around the editor
+  (section 4.1).
 - **Tabs** are toggle buttons kept as radio buttons by ttrcode, each
   with a close button (or a middle click) beside it.
 - **Distraction-free mode** (F11):
@@ -151,12 +148,67 @@ The mouse:
   directories (`build`, `build-irix`, `build-asan`, any `build-*`), are
   hidden.
 
-## 4. The bottom pane
+## 4. Tool panes
+
+### 4.1 Dock areas, groups and tabs
+
+Decided 2026-10-26, for the debugger's windows (td/DESIGN.md 8.2) as
+much as for the panes there are now, modelled on Visual C++ 6:
+
+```
++-----------+----------------------------------+-----------+
+| left area | [main.cpp] [view.cpp]   (center: | right     |
+|           |   documents; Disassembly opens   | area      |
+| group     |   here as a document tab)        | group     |
+| [Workspa] |                                  | [Call St] |
+|           +----------------------------------+ [Threads] |
+|           | bottom area: groups side by side +-----------+
+|           | [Terminal|Find Results] | [Variables] | [Watch]|
++-----------+----------------------------------+-----------+
+```
+
+- **Three areas**, left, bottom and right, around the documents. The
+  bottom one spans the documents' column only, as the terminal pane
+  always did. An area with nothing in it takes no room.
+- **An area holds groups**, tiled along it: one over another on the
+  left and right, side by side at the bottom, with draggable sashes
+  between them and along the area's inner edge.
+- **A group is a tab set**: a row of tabs and the chosen pane under it.
+  A group always shows its tabs, so a single pane has its title there
+  and the right-click menu works the same everywhere.
+- **Moving a pane**: the tab's right-click menu has *Move to* with each
+  area: into one of its groups, or a new group of its own; and *Close*.
+  A closed pane keeps where it was, and coming back (its View menu item
+  or key) puts it there again. Dragging tabs onto areas may come later;
+  the menu does the same.
+- **Panes are rebuilt, not reparented.** Xt cannot give a widget a new
+  parent, so a pane is an object that makes its widgets on whatever
+  parent it is given, and moving it destroys them and makes them again
+  in the new group. The workspace tree and Find Results fill again from
+  ttrcode's own lists; the terminal keeps its terminal and its pty
+  (`tt::TermPane::rebuild`) and only its widgets are made again. The
+  same is what floating panes in their own windows will need.
+- **The layout is a line of text** in the settings:
+  `left:220=workspace;bottom:220=terminal,results;right:240=` — each
+  area's size, its groups separated by `|`, each group's panes by `,`,
+  and a group's size (all but an area's last) after `@`.
+- **Two layouts, editing and debugging**, as VC6 had: the debug panes
+  (Variables, Watch, Registers, Memory, Call Stack, Threads) appear when
+  debugging starts and go when it ends, each where it was last time.
+  The debugging layout's default:
+  - left: Workspace;
+  - bottom: [Terminal · Find Results] | [Variables] | [Watch];
+  - right: [Call Stack · Threads] over [Registers];
+  - Memory goes to the bottom area the first time it is opened.
+- **Keys** (VC6's): Alt+0 the workspace, Alt+2 the bottom area, Alt+3
+  Watch, Alt+4 Variables, Alt+5 Registers, Alt+6 Memory, Alt+7 Call
+  Stack; F11 hides every area (section 1).
+
+### 4.2 The terminal
 
 A `tt::TermPane` running the user's shell in the workspace directory.
-Later the same slot also holds the Output pane for builds (section 7).
-The terminal pane takes every key except ttrcode's global ones (Ctrl+`,
-Alt+0, Alt+2, F11), which it gives up through `PaneHost::pane_key`.
+It takes every key except ttrcode's global ones (Ctrl+`, Alt+0, Alt+2,
+F11), which it gives up through `PaneHost::pane_key`.
 
 ## 5. Files
 
@@ -229,7 +281,7 @@ Colours come from th (`th/DESIGN.md`), shared by every ttr program:
    - ctags: F12 goes to the definition and Ctrl+- goes back.
    - Split editors: two views of one document, or two documents side
      by side.
-   - Undocking panes into their own windows.
+   - Floating panes in their own windows; dragging tabs between areas.
 
 Not planned: extensions, language servers in the first versions, a web
 view, telemetry, and auto-update.
