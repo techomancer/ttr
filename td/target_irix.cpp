@@ -227,34 +227,38 @@ bool IrixTarget::attach(int pid, ttr::Str* err)
 }
 
 /* rld's list (<objlist.h>): DT_MIPS_RLD_MAP holds the address of
- * __rld_obj_head, which points to the first Elf32_Obj_Info:
- *   oi_magic 0 (0xffffffff), oi_size 4, oi_next 8, oi_prev 12,
- *   oi_ehdr 16 (where the ELF header is), oi_orig_ehdr 20 (where it was
- *   linked to be: the difference is the bias), oi_pathname 24,
- *   oi_pathname_len 28.
- * The first entry is the executable. 64-bit programs (Elf64_Obj_Info):
- * later. */
+ * __rld_obj_head, which points to the first Elf32_Obj_Info (64-bit
+ * programs: Elf64_Obj_Info, every address 8 bytes):
+ *               32-bit  64-bit
+ *   oi_magic         0       0   0xffffffff
+ *   oi_next          8       8
+ *   oi_ehdr         16      24   where the ELF header is
+ *   oi_orig_ehdr    20      32   where it was linked to be: the bias
+ *   oi_pathname     24      40
+ * The first entry is the executable. */
 bool IrixTarget::shared_objects(Addr dynamic, ttr::Vector<SharedObject>* out)
 {
+    int w = arch()->ptr_size;
     uint64_t map = 0, head = 0;
-    if (arch()->ptr_size != 4 || !dynamic ||
-        !dynamic_entry(dynamic, 0x70000016 /* DT_MIPS_RLD_MAP */, &map) || !map ||
-        !read_uint(map, 4, &head))
+    if (!dynamic || !dynamic_entry(dynamic, 0x70000016 /* DT_MIPS_RLD_MAP */, &map) || !map ||
+        !read_uint(map, w, &head))
         return true;
+    const int o_next = 8, o_ehdr = w == 8 ? 24 : 16, o_orig = w == 8 ? 32 : 20,
+              o_path = w == 8 ? 40 : 24;
     Addr p = (Addr)head;
     int n;
     for (n = 0; p && n < 4096; n++) {
         uint64_t magic = 0, next = 0, ehdr = 0, orig = 0, name = 0;
         if (!read_uint(p, 4, &magic) || magic != 0xffffffffu)
             return false;       /* the old, pre-ELF list: not read */
-        if (!read_uint(p + 8, 4, &next) || !read_uint(p + 16, 4, &ehdr) ||
-            !read_uint(p + 20, 4, &orig) || !read_uint(p + 24, 4, &name))
+        if (!read_uint(p + o_next, w, &next) || !read_uint(p + o_ehdr, w, &ehdr) ||
+            !read_uint(p + o_orig, w, &orig) || !read_uint(p + o_path, w, &name))
             return false;
         char path[2048];
         if (n > 0 && name && read_string(name, path, sizeof(path)) && path[0]) {
             SharedObject so;
             so.path = path;
-            so.bias = (Addr)(uint32_t)(ehdr - orig);
+            so.bias = w == 4 ? (Addr)(uint32_t)(ehdr - orig) : (Addr)(ehdr - orig);
             out->push_back(so);
         }
         p = (Addr)next;

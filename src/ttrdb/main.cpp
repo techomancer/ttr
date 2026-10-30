@@ -5,6 +5,7 @@
  *   ttrdb program [args...]      start it, stopped at its first instruction
  *   ttrdb -p PID                 attach to a running process
  *   ttrdb -x SCRIPT program ...  run the commands in SCRIPT (a test)
+ *   -d DIR                       look for sources under DIR too (as "dir")
  *
  * In a script, "expect TEXT" checks that the previous command printed
  * TEXT, "absent TEXT" that it did not; "#" starts a comment. ttrdb then
@@ -365,8 +366,8 @@ bool command(char* line)
 
 void usage()
 {
-    fprintf(stderr, "usage: ttrdb [-x script] program [args...]\n"
-                    "       ttrdb -p pid\n");
+    fprintf(stderr, "usage: ttrdb [-d srcdir] [-x script] program [args...]\n"
+                    "       ttrdb [-d srcdir] -p pid\n");
     exit(2);
 }
 
@@ -380,6 +381,9 @@ int main(int argc, char** argv)
     while (i < argc && argv[i][0] == '-') {
         if (!strcmp(argv[i], "-x") && i + 1 < argc) {
             script = argv[i + 1];
+            i += 2;
+        } else if (!strcmp(argv[i], "-d") && i + 1 < argc) {
+            g_src.add_dir(argv[i + 1]);
             i += 2;
         } else if (!strcmp(argv[i], "-p") && i + 1 < argc) {
             pid = atoi(argv[i + 1]);

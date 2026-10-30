@@ -32,8 +32,19 @@ and on IRIX (the emulated guest, MIPSpro n32 programs):
   function for debuggers; rld calls it once per dlopen with the new
   object already listed). rld is not on its own list and is loaded as a
   module from `/lib32/rld` (at its link address).
-- Not yet: threads, values and types, watchpoints, core files, 64-bit
-  IRIX programs, the Octane.
+- On the Octane (IP30, real R10000-class hardware, 64-bit kernel): the
+  same ttrdb, built n32 in the guest, passes every test with the n32
+  test programs and with the same programs compiled `-64` there. A
+  64-bit IRIX program needs no 64-bit debugger: /proc gives an n32
+  caller 64-bit registers and 64-bit file offsets into the address space
+  (its stack is at 0xfffffbfe70), and rld's list has an Elf64_Obj_Info
+  layout. (The ioctls with pointer-sized fields, such as `PIOCMAP` and
+  `PIOCSWATCH`, need `PIOC_IRIX5_64` and the 64-bit structures; not used
+  yet.) The guest, an IP22 with a 32-bit kernel, cannot run 64-bit
+  programs.
+- ttrdb -d DIR adds a source directory; the test runner passes the test
+  sources, so programs compiled on one machine are tested on another.
+- Not yet: threads, values and types, watchpoints, core files.
 
 gdb is hard to use, debugging through VS Code is worse, and dbx and
 ProDev WorkShop are not much better. ttr gets its own debugger, in three
@@ -194,10 +205,11 @@ Notes:
   So they work on any machine that handles ordinary page faults,
   lightning included (*to verify*). The cost: every access to a watched
   page traps, so a watched local variable slows the program a lot.
-- **The ABIs.** Our builds are n32. A debugger built n32 has to debug o32
-  and 64-bit programs as well. `procfs.h` has `PIOC_IRIX5_N32` and
-  `PIOC_IRIX5_64` variants. *To verify:* how they change the register
-  and map structures.
+- **The ABIs.** Our builds are n32, and an n32 debugger debugs 64-bit
+  programs (checked on the Octane, as dbx, itself n32, does): registers
+  come 64 bits wide to n32 callers, memory is read at 64-bit offsets, and
+  ioctls whose structures hold pointers are or'ed with `PIOC_IRIX5_64`
+  and given the 64-bit layout (proc(4)). o32 programs: not tried.
 
 ### 3.3 Under lightning
 
