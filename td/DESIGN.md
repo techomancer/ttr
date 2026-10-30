@@ -317,11 +317,32 @@ About the current libdwarf:
 - **Its API is C.** td wraps it, and nothing above td sees it.
 
 Licensing: ttr is BSD-3, and the LGPL 2.1 allows linking libdwarf into
-it. A distributed binary that contains libdwarf must come with its source
-and be relinkable with a changed libdwarf. The simplest way is to build
-the vendored one as a shared library (`libdwarf.so`, which IRIX supports
-too), installed next to ttrcode and ttrdb. SGI's is static only, so with
-it the tardist would ship td's object files for relinking instead.
+it. What section 6 of the LGPL asks of a binary we distribute with
+libdwarf in it (not legal advice; this is the plan):
+
+- **The source of the exact libdwarf version** has to be available. Our
+  tardists and packages come from the GitHub repository's releases, and
+  section 6(d) is met by offering the source "from the same place". The
+  catch: GitHub's automatic "Source code" archives leave out submodules.
+  So each release also carries a source archive that includes
+  `third_party/` (`git archive` plus the submodules), and the release's
+  tag pins the exact libdwarf commit.
+- **The user must be able to relink with a changed libdwarf.** ttr's own
+  source is public, which allows it either way. A shared `libdwarf.so`
+  makes it easy as well.
+- **A prominent notice that libdwarf is used and is under the LGPL, and
+  a copy of the LGPL.** The tardist and `make install` put the LGPL text
+  next to ttr's licence (`/usr/share/ttr/licenses/`). README's License
+  section lists libdwarf and the other third-party code with their
+  licences.
+- **Programs that show copyright notices show libdwarf's too.**
+  ttrcode's About dialog lists it with its licence and the repository
+  address, and so does `ttrdb --version`.
+
+SGI's libdwarf (`TD_DWARF=system`) is for local IRIX builds only. We do
+not have the source of the exact 2001 version in `/usr/lib32/libdwarf.a`,
+so we cannot meet the first point for a binary linked with it. Released
+tardists use the vendored one.
 
 *Pending:* libdwarf's policy on taking the `__sgi` fix and, more
 generally, IRIX build fixes upstream.
