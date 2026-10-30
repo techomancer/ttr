@@ -374,8 +374,44 @@ Stop Session::cont_once()
     return run_until_stop(false);
 }
 
-/* Continue; the stop at the entry point (reading the shared objects) is
- * passed through unless a user breakpoint is there too. */
+/* After the entry point: a breakpoint where the dynamic linker calls
+ * when it loads or unloads something, so breakpoints in a library opened
+ * with dlopen are set before it runs. */
+void Session::set_loader_hook()
+{
+    SharedObject ld;
+    Addr a = 0;
+    ttr::Str sym;
+    if (!target_->loader_hook(mods_[0]->elf().dynamic() + mods_[0]->bias(), &ld, &a, &sym))
+        return;
+    const Module* lm = 0;
+    if (!ld.path.empty()) {
+        int i;
+        for (i = 0; i < mods_.size(); i++)
+            if (!strcmp(mods_[i]->path(), ld.path.c_str()))
+                lm = mods_[i];
+        if (!lm) {
+            Module* m = new Module;
+            ttr::Str err;
+            if (m->load(ld.path.c_str(), &err)) {
+                m->set_bias(ld.bias);
+                mods_.push_back(m);
+                lm = m;
+            } else {
+                delete m;
+            }
+        }
+    }
+    Addr end;
+    if (!a && lm && !sym.empty())
+        lm->function_named(sym.c_str(), &a, &end);
+    if (a)
+        add_location(-2, "", a);
+}
+
+/* Continue. The program's own stops at the entry point (reading the
+ * shared objects) and at the dynamic linker's hook (reading them again)
+ * are passed through unless a user breakpoint is there too. */
 Stop Session::cont()
 {
     for (;;) {
@@ -387,7 +423,13 @@ Stop Session::cont()
                     bps_.remove_at(i);
             started_ = true;
             refresh_modules();
+            set_loader_hook();
             resolve_pending();
+            continue;
+        }
+        if (s.kind == EV_BREAK && s.bp == -2) {
+            if (refresh_modules())
+                resolve_pending();
             continue;
         }
         if (alive_ && started_ && refresh_modules())

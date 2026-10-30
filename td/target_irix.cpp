@@ -35,6 +35,7 @@ public:
     ttr::Str exe_path() { return path_; }
     Addr exe_bias(Addr) { return 0; }       /* IRIX executables are not moved */
     bool shared_objects(Addr dynamic, ttr::Vector<SharedObject>* out);
+    bool loader_hook(Addr dynamic, SharedObject* loader, Addr* addr, ttr::Str* symbol);
     bool resume(bool step, int sig);
     bool wait(Event* ev);
     void kill();
@@ -258,6 +259,19 @@ bool IrixTarget::shared_objects(Addr dynamic, ttr::Vector<SharedObject>* out)
         }
         p = (Addr)next;
     }
+    return true;
+}
+
+/* rld calls __dbx_link, an empty function there for debuggers, after it
+ * changes its list (checked on 6.5.22: once per dlopen, with the new
+ * object already on the list). rld is not on its own list, and sits at
+ * its link address. */
+bool IrixTarget::loader_hook(Addr, SharedObject* loader, Addr* addr, ttr::Str* symbol)
+{
+    loader->path = arch()->ptr_size == 8 ? "/lib64/rld" : "/lib32/rld";
+    loader->bias = 0;
+    *addr = 0;
+    *symbol = "__dbx_link";
     return true;
 }
 

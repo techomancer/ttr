@@ -22,7 +22,8 @@
 namespace td {
 
 struct Breakpoint {
-    int id;             /* > 0: the user's; 0: a temporary one; -1: startup */
+    int id;             /* > 0: the user's; 0: a temporary one; -1: the
+                         * entry point; -2: the dynamic linker's hook */
     Addr addr;          /* 0: pending, waiting for its module to load */
     unsigned char saved[4];
     bool inserted;
@@ -99,6 +100,7 @@ private:
     Stop to_stop(const Event& e);
     bool resolve(const char* spec, ttr::Str* err, ttr::Vector<Addr>* out);
     void resolve_pending();
+    void set_loader_hook();
     Stop run_to(Addr a, Addr min_sp);
     Stop cont_once();
 

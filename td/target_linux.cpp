@@ -35,6 +35,7 @@ public:
     ttr::Str exe_path();
     Addr exe_bias(Addr elf_entry);
     bool shared_objects(Addr dynamic, ttr::Vector<SharedObject>* out);
+    bool loader_hook(Addr dynamic, SharedObject* loader, Addr* addr, ttr::Str* symbol);
     bool resume(bool step, int sig);
     bool wait(Event* ev);
     void kill();
@@ -196,6 +197,18 @@ bool LinuxTarget::shared_objects(Addr dynamic, ttr::Vector<SharedObject>* out)
         }
         map = next;
     }
+    return true;
+}
+
+/* r_debug.r_brk (offset 16): ld.so calls it before and after each change
+ * to the list. ld.so is on the list itself. */
+bool LinuxTarget::loader_hook(Addr dynamic, SharedObject*, Addr* addr, ttr::Str*)
+{
+    uint64_t rdebug = 0, brk = 0;
+    if (!dynamic || !dynamic_entry(dynamic, 21 /* DT_DEBUG */, &rdebug) || !rdebug ||
+        !read_uint(rdebug + 16, 8, &brk) || !brk)
+        return false;
+    *addr = brk;
     return true;
 }
 

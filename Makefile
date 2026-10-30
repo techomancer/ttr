@@ -641,6 +641,8 @@ TD_TEST_CFLAGS = -g -O0
 # already) and its soname (IRIX: TD_TEST_SONAME="-soname libtdshlib.so").
 TD_TEST_PIC = -fPIC
 TD_TEST_SONAME = -Wl,-soname,libtdshlib.so
+# dlopen's library (IRIX: in libc, TD_TEST_DLLIBS=).
+TD_TEST_DLLIBS = -ldl
 $(B)/td_demo: $(B)/td_demo.o $(B)/td_demo_util.o
 	$(CC) $(TD_TEST_CFLAGS) -o $@ $(B)/td_demo.o $(B)/td_demo_util.o
 $(B)/td_demo.o: $(B)/.dir td/test/progs/demo.c
@@ -661,7 +663,12 @@ $(B)/td_shmain: $(B)/td_shmain.o $(B)/libtdshlib.so
 $(B)/td_shmain.o: $(B)/.dir td/test/progs/shmain.c
 	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/shmain.c -o $@
 
-td-test: $(B)/ttrdb $(B)/td_demo $(B)/td_crash $(B)/td_shmain
+$(B)/td_dlmain: $(B)/td_dlmain.o $(B)/libtdshlib.so
+	$(CC) $(TD_TEST_CFLAGS) -o $@ $(B)/td_dlmain.o $(TD_TEST_DLLIBS)
+$(B)/td_dlmain.o: $(B)/.dir td/test/progs/dlmain.c
+	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/dlmain.c -o $@
+
+td-test: $(B)/ttrdb $(B)/td_demo $(B)/td_crash $(B)/td_shmain $(B)/td_dlmain
 	sh td/test/run.sh $(B)
 
 # ttrc, To The Roots Commander (ttrc/DESIGN.md): tu + tf (+ tl) on a

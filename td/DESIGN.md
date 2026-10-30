@@ -27,8 +27,13 @@ and on IRIX (the emulated guest, MIPSpro n32 programs):
   when straight-line code reaches it: SGI's libraries are optimized.
 - Sources: read where the line table says, else under directories the
   user adds (`dir`), trying the path's trailing parts (`td/source.h`).
-- Not yet: threads, values and types, watchpoints, core files, dlopen
-  breakpoints before the next stop, 64-bit IRIX programs, the Octane.
+- dlopen: an internal breakpoint where the dynamic linker reports
+  changes: glibc's `r_debug.r_brk`, IRIX rld's `__dbx_link` (an empty
+  function for debuggers; rld calls it once per dlopen with the new
+  object already listed). rld is not on its own list and is loaded as a
+  module from `/lib32/rld` (at its link address).
+- Not yet: threads, values and types, watchpoints, core files, 64-bit
+  IRIX programs, the Octane.
 
 gdb is hard to use, debugging through VS Code is worse, and dbx and
 ProDev WorkShop are not much better. ttr gets its own debugger, in three
@@ -229,9 +234,12 @@ before and after every change. A breakpoint there gives the event.
   (`struct obj_list`, `<obj_list.h>`) point to `struct obj` (`<obj.h>`),
   with `o_path`, `o_base_address`, `o_text_start` and `o_text_size`.
 
-*To verify:* which of these rld calls on each change, and whether
-programs also export `__rld_obj_head`. Failing all that, `PIOCMAP` and
-`PIOCOPENM` list every mapped object without rld's help.
+Checked on 6.5.22: programs export `__rld_obj_head` (the dynamic
+section's `DT_MIPS_RLD_MAP` points to it), whose list is of
+`Elf32_Obj_Info` records (`<objlist.h>`: path, where the ELF header is
+and where it was linked, so the bias), and rld calls `__dbx_link` once
+per dlopen. Failing that, `PIOCMAP` and `PIOCOPENM` list every mapped
+object without rld's help.
 
 ## 5. Symbols
 

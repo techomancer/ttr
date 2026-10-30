@@ -60,6 +60,12 @@ public:
      * dynamic linker's list (td/DESIGN.md section 4). dynamic: where the
      * executable's dynamic section is in memory. */
     virtual bool shared_objects(Addr dynamic, ttr::Vector<SharedObject>* out) = 0;
+    /* Where the dynamic linker calls each time its list changes (dlopen,
+     * dlclose): an address, or a symbol in the linker's own file, which
+     * *loader names when it is not on the list itself. False if not
+     * known (yet). */
+    virtual bool loader_hook(Addr dynamic, SharedObject* loader, Addr* addr,
+                             ttr::Str* symbol) = 0;
 
     /* Let it run, or run one instruction, passing sig (0: none). */
     virtual bool resume(bool step, int sig) = 0;

@@ -1,0 +1,14 @@
+# program: td_dlmain
+# A library loaded with dlopen: a breakpoint in it waits until it loads,
+# and stops there before the library's code runs.
+b lib_twice
+expect Breakpoint 1 (pending)
+r
+expect Breakpoint 1, lib_twice (shlib.c:10)
+mods
+expect libtdshlib.so  (lines)
+bt
+expect lib_twice (shlib.c:10)
+expect main (dlmain.c:15)
+c
+expect Program exited with code 7.
