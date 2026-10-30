@@ -8,6 +8,7 @@
 #define TD_MODULE_H
 
 #include "elf.h"
+#include "info.h"
 #include "td.h"
 
 #include "core/str.h"
@@ -63,15 +64,23 @@ public:
      * is a return address (looked up one byte earlier). False at the
      * outermost frame or without frame information. */
     bool unwind(Target* t, const Regs& in, bool caller, Regs* out) const;
+    /* The frame's canonical frame address (DW_OP_call_frame_cfa). */
+    bool cfa(const Regs& in, bool caller, Addr* out) const;
+
+    /* Types, functions and variables (td/info.h), read when first asked;
+     * 0 without DWARF. */
+    Info* info() const;
 
 private:
     void read_lines();
     void read_frames();
+    bool frame_rules(Addr look, void* table, int* ra_col) const;
     int intern_file(const char* name);
 
     ElfFile elf_;
     Addr bias_;
     void* dbg_;                     /* Dwarf_Debug */
+    mutable Info* info_;
     ttr::Vector<LineRow> rows_;     /* sorted by address */
     ttr::Vector<char*> files_;
     void* cie_[2];                  /* Dwarf_Cie*: .eh_frame, .debug_frame */

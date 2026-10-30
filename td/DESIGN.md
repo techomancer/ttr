@@ -52,8 +52,27 @@ and on IRIX (the emulated guest, MIPSpro n32 programs):
   output), and the debugging layout. td waits through an idle function,
   so the window goes on and Debug > Break interrupts the program.
   Motif's F10 for the menu bar is moved out of the way.
-- Not yet: threads, values and types (Variables, Watch, Memory),
-  Disassembly (needs a disassembler), watchpoints, core files.
+- Values, 2026-10-27 (milestone 3's first part): DWARF types (base
+  types, pointers, structs and unions with bit fields, enums, arrays of
+  any rank, typedefs and qualifiers), each function's arguments and local
+  variables by lexical block, globals, and their locations (DWARF
+  expressions and location lists: `DW_OP_fbreg` against
+  `DW_AT_frame_base`, `DW_OP_call_frame_cfa`, registers, stack values),
+  read when first asked for (`td/info.h`). Values are formatted as
+  Visual C++ shows them and open up into members, elements and what a
+  pointer points to (`td/value.h`); a C expression evaluator handles
+  watch expressions (`td/expr.cpp`, section 7). ttrdb has `p`, `locals`,
+  `e`, `pt` and `fr`; `td/test/values.ttrdb` passes on Linux and on the
+  Octane, with n32 and `-64` programs. MIPSpro writes DWARF 2:
+  `DW_AT_frame_base` is `DW_OP_bregx 29+N` (sp plus the frame size),
+  members are at `DW_OP_consts N`, bit fields count from the high bit,
+  and `char` is unsigned.
+- ttrcode's Watch, Variables (Auto and Locals, and the frame), Memory,
+  Registers, Call Stack and QuickWatch (Shift+F9) show them, as trees
+  with what changed since the last stop in red (section 8.2).
+- Not yet: threads, Disassembly (needs a disassembler), watchpoints,
+  core files, changing values, C++ (`this`, classes' members by
+  inheritance, demangled names), thread-local variables.
 
 gdb is hard to use, debugging through VS Code is worse, and dbx and
 ProDev WorkShop are not much better. ttr gets its own debugger, in three
@@ -500,10 +519,17 @@ instruction placed elsewhere. *To decide:* which, for each system.
   - Step out: a breakpoint at the return address, then check the stack
     pointer (recursion).
   - Run to cursor: a temporary breakpoint.
-- **Expressions:** a small C and C++ expression parser and evaluator.
-  Variables, members (`.` and `->`), indexing, `*` and `&`, casts to
-  known types, arithmetic and comparison, registers as `$pc` and
-  `$sp`. No function calls.
+- **Expressions:** a small C and C++ expression parser and evaluator
+  (`td/expr.cpp`). Variables (the frame's, then globals, this module's
+  first), enumerators, functions, members (`.` and `->`), indexing, `*`
+  and `&`, casts to C's base types and to known struct, union, enum and
+  typedef names, arithmetic with pointers, comparison, `&&`, `||`,
+  `?:`, `sizeof`, registers as `$pc`, `$sp` or `@rip`, and VC6's format
+  suffixes (`,x`, `,d`, `,N`). No function calls and no assignments.
+- **Values** (`td/value.h`): where a value is (memory, a register, or
+  computed), its type, a one-line text and its children. Locations come
+  from the DWARF of the frame's function at its pc (a caller's at the
+  call); a register a caller's frame did not save is "not available".
 - **Events reach the user interface through a callback interface**, not
   by blocking. ttrcode runs one Xt event loop, so the Session must never
   block (section 8.2).
@@ -526,8 +552,11 @@ ttrdb ./prog args          ttrdb -p PID          ttrdb ./prog core
 | `s`, `n`, `f` | step into, step over, step out (finish) |
 | `si`, `ni` | step one instruction, over calls |
 | `b file:line`, `b func`, `b *addr` | set a breakpoint; `b` lists them; `d N` deletes one |
-| `bt`, `up`, `down`, `frame N` | the call stack |
-| `p expr` | print a value |
+| `bt`, `up`, `down`, `frame N` | the call stack (`fr N` chooses the frame values come from) |
+| `p expr` | print a value (`expr,x` in hex, `p,10` ten elements) |
+| `locals` | the frame's arguments and variables in scope |
+| `e expr` | a value's members, elements or what it points to |
+| `pt expr` | its type, and a struct's members |
 | `l` | list the source around the current line |
 | `x addr [n]` | dump memory |
 | `regs` | the registers |
@@ -560,19 +589,29 @@ The windows:
 - **The source view** shows a yellow arrow at the current line and red
   dots for breakpoints. Hovering over a variable shows its value.
 - **Variables** shows locals and "auto" values (the variables of the
-  current line and the previous one), as VC6 did.
+  current line and the previous one), as VC6 did, for the frame chosen
+  in its Context menu.
 - **Watch** lists expressions, which can be edited in place. Structures
   and arrays open as a tree.
+- These windows are CellLists (`src/ttrcode/celllist.h`): rows in
+  columns on a TwGrid, the editor's character grid, rather than
+  XmLists, for columns that line up, a tree's + and -, single values in
+  red and editing in place. What is open and what each value was at the
+  last stop are kept by expression (`src/ttrcode/valuetree.h`), so a
+  step keeps the tree as it was and shows what changed.
 - **Call Stack**: double-clicking a frame shows its source and variables.
 - **Registers, Memory, Disassembly**: changed values are shown in red.
 - **Output**: the program's own output (it runs on a pty, like the
   terminal pane), and debugger messages.
-- **Threads** and **Modules** are dialogs, as in VC6.
+- **Threads** and **Modules** are dialogs, as in VC6. (Threads is a pane
+  for now.)
+- **QuickWatch** (Shift+F9): an expression and its tree in a dialog,
+  with Add Watch.
 
 How this fits ttrcode:
 
-- The debugger windows live in the bottom pane, with tabs next to the
-  terminal and Find Results.
+- The debugger windows are tool panes in ttrcode's dock areas
+  (ttrcode/DESIGN.md 4.1), in a debugging layout of their own.
 - The Session runs inside ttrcode's single Xt event loop:
   - Linux: a SIGCHLD handler writes to a pipe watched by
     `XtAppAddInput`, then `waitpid(WNOHANG)`.
@@ -641,8 +680,8 @@ serialising it. Nothing is built for it now.
    - Tested on the guest and on the Octane, with MIPSpro-built programs.
    - The *to verify* items of sections 3 to 6 get answered here.
 3. **Values.**
-   - DWARF types and locations, locals and arguments.
-   - The expression evaluator.
+   - DWARF types and locations, locals and arguments. *Done.*
+   - The expression evaluator. *Done.*
    - Watchpoints (debug registers on Linux, /proc watchpoints on IRIX).
    - Core files.
 4. **ttrcode.**

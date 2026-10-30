@@ -603,10 +603,10 @@ $(B)/libdwarf.a: $(B)/.dir td/third/libdwarf/config.h
 	$(AR) rc $@ $(B)/libdwarf/*.o
 
 TD_SYS = $(B)/td_target_linux.o
-TD_OBJS = $(B)/td_arch.o $(B)/td_elf.o $(B)/td_module.o $(B)/td_session.o \
-	$(B)/td_source.o $(TD_SYS)
-TD_H = td/td.h td/target.h td/elf.h td/module.h td/session.h td/source.h src/core/str.h \
-	src/core/vector.h src/core/port.h
+TD_OBJS = $(B)/td_arch.o $(B)/td_elf.o $(B)/td_expr.o $(B)/td_info.o $(B)/td_module.o \
+	$(B)/td_session.o $(B)/td_source.o $(B)/td_text.o $(B)/td_value.o $(TD_SYS)
+TD_H = td/td.h td/target.h td/elf.h td/info.h td/module.h td/session.h td/source.h \
+	td/value.h src/core/str.h src/core/vector.h src/core/port.h
 
 $(B)/libtd.a: $(TD_OBJS)
 	rm -f $@
@@ -618,6 +618,14 @@ $(B)/td_elf.o: $(B)/.dir td/elf.cpp $(TD_H)
 	$(COMPILE) -c td/elf.cpp -o $@
 $(B)/td_module.o: $(B)/.dir td/module.cpp $(TD_H) $(B)/libdwarf.a
 	$(COMPILE) $(TD_DWARF_FLAGS) -I$(LIBDWARF_DIR) -c td/module.cpp -o $@
+$(B)/td_info.o: $(B)/.dir td/info.cpp $(TD_H) $(B)/libdwarf.a
+	$(COMPILE) $(TD_DWARF_FLAGS) -I$(LIBDWARF_DIR) -c td/info.cpp -o $@
+$(B)/td_value.o: $(B)/.dir td/value.cpp $(TD_H) $(B)/libdwarf.a
+	$(COMPILE) $(TD_DWARF_FLAGS) -I$(LIBDWARF_DIR) -c td/value.cpp -o $@
+$(B)/td_expr.o: $(B)/.dir td/expr.cpp $(TD_H)
+	$(COMPILE) -c td/expr.cpp -o $@
+$(B)/td_text.o: $(B)/.dir td/text.cpp $(TD_H)
+	$(COMPILE) -c td/text.cpp -o $@
 $(B)/td_session.o: $(B)/.dir td/session.cpp $(TD_H)
 	$(COMPILE) -c td/session.cpp -o $@
 $(B)/td_source.o: $(B)/.dir td/source.cpp $(TD_H)
@@ -654,6 +662,11 @@ $(B)/td_crash: $(B)/td_crash.o
 $(B)/td_crash.o: $(B)/.dir td/test/progs/crash.c
 	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/crash.c -o $@
 
+$(B)/td_values: $(B)/td_values.o
+	$(CC) $(TD_TEST_CFLAGS) -o $@ $(B)/td_values.o
+$(B)/td_values.o: $(B)/.dir td/test/progs/values.c
+	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/values.c -o $@
+
 $(B)/libtdshlib.so: $(B)/td_shlib.o
 	$(CC) $(TD_TEST_CFLAGS) -shared $(TD_TEST_SONAME) -o $@ $(B)/td_shlib.o
 $(B)/td_shlib.o: $(B)/.dir td/test/progs/shlib.c
@@ -668,7 +681,7 @@ $(B)/td_dlmain: $(B)/td_dlmain.o $(B)/libtdshlib.so
 $(B)/td_dlmain.o: $(B)/.dir td/test/progs/dlmain.c
 	$(CC) $(TD_TEST_CFLAGS) -c td/test/progs/dlmain.c -o $@
 
-td-test: $(B)/ttrdb $(B)/td_demo $(B)/td_crash $(B)/td_shmain $(B)/td_dlmain
+td-test: $(B)/ttrdb $(B)/td_demo $(B)/td_crash $(B)/td_shmain $(B)/td_dlmain $(B)/td_values
 	sh td/test/run.sh $(B)
 
 # ttrc, To The Roots Commander (ttrc/DESIGN.md): tu + tf (+ tl) on a
@@ -785,14 +798,18 @@ $(B)/ttrt_settingsdlg.o: $(B)/.dir src/ttrt/settingsdlg.cpp $(TTRT_H) \
 # ttrcode, the code editor (ttrcode/DESIGN.md): te + tw + tt in Motif.
 TTRCODE_OBJS = $(B)/ttrcode_main.o \
 	$(B)/ttrcode_app.o \
+	$(B)/ttrcode_celllist.o \
 	$(B)/ttrcode_debug.o \
+	$(B)/ttrcode_debugpanes.o \
 	$(B)/ttrcode_dock.o \
 	$(B)/ttrcode_editsource.o \
 	$(B)/ttrcode_findfiles.o \
 	$(B)/ttrcode_options.o \
+	$(B)/ttrcode_valuetree.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
-TTRCODE_H = src/ttrcode/app.h src/ttrcode/dock.h src/ttrcode/editsource.h $(TE_H) $(TT_H) \
+TTRCODE_H = src/ttrcode/app.h src/ttrcode/celllist.h src/ttrcode/dock.h \
+	src/ttrcode/editsource.h src/ttrcode/valuetree.h $(TE_H) $(TT_H) $(TW_H) \
 	$(TH_H) $(TX_H) $(TD_H) \
 	src/core/settings.h src/core/str.h src/core/vector.h
 
@@ -812,6 +829,12 @@ $(B)/ttrcode_dock.o: $(B)/.dir src/ttrcode/dock.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/dock.cpp -o $@
 $(B)/ttrcode_debug.o: $(B)/.dir src/ttrcode/debug.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/debug.cpp -o $@
+$(B)/ttrcode_debugpanes.o: $(B)/.dir src/ttrcode/debugpanes.cpp $(TTRCODE_H)
+	$(COMPILE) -c src/ttrcode/debugpanes.cpp -o $@
+$(B)/ttrcode_celllist.o: $(B)/.dir src/ttrcode/celllist.cpp $(TTRCODE_H)
+	$(COMPILE) -c src/ttrcode/celllist.cpp -o $@
+$(B)/ttrcode_valuetree.o: $(B)/.dir src/ttrcode/valuetree.cpp $(TTRCODE_H)
+	$(COMPILE) -c src/ttrcode/valuetree.cpp -o $@
 $(B)/ttrcode_findfiles.o: $(B)/.dir src/ttrcode/findfiles.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/findfiles.cpp -o $@
 $(B)/ttrcode_options.o: $(B)/.dir src/ttrcode/options.cpp $(TTRCODE_H)

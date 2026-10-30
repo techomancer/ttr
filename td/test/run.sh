@@ -8,8 +8,9 @@ T=`cd \`dirname "$0"\` && pwd`
 W=/tmp/td-test.$$
 rm -rf $W
 mkdir -p $W || exit 1
-cp $B/ttrdb $B/td_demo $B/td_crash $B/td_shmain $B/td_dlmain $B/libtdshlib.so $W/ || exit 1
-chmod +x $W/ttrdb $W/td_demo $W/td_crash $W/td_shmain $W/td_dlmain
+cp $B/ttrdb $B/td_demo $B/td_crash $B/td_shmain $B/td_dlmain $B/td_values $B/libtdshlib.so \
+    $W/ || exit 1
+chmod +x $W/ttrdb $W/td_demo $W/td_crash $W/td_shmain $W/td_dlmain $W/td_values
 # The test shared library is found next to the programs (IRIX reads
 # LD_LIBRARYN32_PATH for n32 programs, LD_LIBRARY64_PATH for 64-bit ones).
 LD_LIBRARY_PATH=$W

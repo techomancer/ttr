@@ -315,7 +315,13 @@ App::App(Widget top, const Options& o)
       scheme_items_(0), theme_items_(0), font_(0), term_font_(0), opt_font_(0), opt_term_font_(0),
       opt_text_(0), opt_term_text_(0), opt_dlg_(0), fif_dlg_(0), fif_replace_(false),
       dbg_(0), stop_line_(-1), frame_line_(-1), cur_frame_(0), have_last_regs_(false),
-      dbg_kill_req_(false), callstack_(0), registers_(0), threads_(0), dbg_dlg_(0), dbg_prog_(0),
+      regs_stop_(-1),
+      dbg_kill_req_(false), stack_list_(0), regs_list_(0), threads_list_(0), watch_list_(0),
+      vars_list_(0), mem_list_(0), vars_box_(0), vars_context_(0), vars_menu_(0),
+      vars_auto_w_(0), vars_locals_w_(0), mem_box_(0), mem_addr_w_(0), mem_format_w_(0),
+      vars_auto_(true), vars_menu_stop_(-1), mem_format_(0), mem_addr_(0), mem_per_row_(16), mem_prev_addr_(0),
+      mem_cur_addr_(0), mem_prev_stop_(-1), stop_serial_(0), quick_dlg_(0), quick_expr_(0),
+      quick_list_(0), dbg_dlg_(0), dbg_prog_(0),
       dbg_args_w_(0), dbg_dir_w_(0), results_(0), searched_(false), cur_result_(-1),
       scanned_(0), result_files_(0), fif_case_on_(false), fif_word_on_(false)
 {
@@ -341,6 +347,48 @@ App::App(Widget top, const Options& o)
     dbg_args_ = o.debug_args ? o.debug_args : "";
     dbg_dir_ = o.debug_dir ? o.debug_dir : "";
     debug_layout_ = o.debug_layout ? o.debug_layout : "";
+    /* Watch's expressions and the breakpoints, as saved. */
+    if (o.debug_watch && *o.debug_watch) {
+        const char* p = o.debug_watch;
+        while (*p) {
+            const char* e = strchr(p, ';');
+            size_t n = e ? (size_t)(e - p) : strlen(p);
+            char w[1024];
+            if (n >= sizeof(w))
+                n = sizeof(w) - 1;
+            memcpy(w, p, n);
+            w[n] = 0;
+            if (*w)
+                watches_.push_back(ttr::Str(w));
+            p += n;
+            if (*p == ';')
+                p++;
+        }
+    }
+    if (o.debug_breakpoints && *o.debug_breakpoints) {
+        const char* p = o.debug_breakpoints;
+        while (*p) {
+            const char* e = strchr(p, ';');
+            size_t n = e ? (size_t)(e - p) : strlen(p);
+            char w[4200];
+            if (n >= sizeof(w))
+                n = sizeof(w) - 1;
+            memcpy(w, p, n);
+            w[n] = 0;
+            char* colon = strrchr(w, ':');
+            if (colon && colon[1]) {
+                *colon = 0;
+                SourceBreakpoint b;
+                b.path = w;
+                b.line = atol(colon + 1) - 1;
+                if (b.line >= 0)
+                    bps_.push_back(b);
+            }
+            p += n;
+            if (*p == ';')
+                p++;
+        }
+    }
     src_.set_marks(this);
     root_ = o.workspace;
     Display* dpy = XtDisplay(top);
@@ -381,6 +429,13 @@ App::~App()
     free(term_font_);
     delete opt_font_;
     delete opt_term_font_;
+    delete stack_list_;
+    delete regs_list_;
+    delete threads_list_;
+    delete watch_list_;
+    delete vars_list_;
+    delete mem_list_;
+    delete quick_list_;
 }
 
 void App::build_menus()
@@ -489,6 +544,8 @@ void App::build_menus()
     menu_item(m, "Run to Cursor", 'C', "Ctrl+F10", CMD_DEBUG_RUN_TO_CURSOR);
     separator(m);
     menu_item(m, "Toggle Breakpoint", 'B', "F9", CMD_DEBUG_TOGGLE_BP);
+    menu_item(m, "QuickWatch...", 'Q', "Shift+F9", CMD_DEBUG_QUICKWATCH);
+    separator(m);
     menu_item(m, "Settings...", 't', 0, CMD_DEBUG_SETTINGS);
 
     m = menus[6];
@@ -667,14 +724,8 @@ void App::drop_pane(Pane* p)
         if (results_)
             XtDestroyWidget(XtParent(results_));
         results_ = 0;
-    } else if (p->widget) {
-        if (!strcmp(p->id(), "callstack"))
-            callstack_ = 0;
-        else if (!strcmp(p->id(), "registers"))
-            registers_ = 0;
-        else if (!strcmp(p->id(), "threads"))
-            threads_ = 0;
-        XtDestroyWidget(p->widget);
+    } else {
+        drop_debug_pane(p);     /* debugpanes.cpp */
     }
 }
 
@@ -694,6 +745,14 @@ void App::show_pane(Pane* p)
         XmProcessTraversal(tree_, XmTRAVERSE_CURRENT);
     else if (p == pane_results_ && results_)
         XmProcessTraversal(results_, XmTRAVERSE_CURRENT);
+    else {
+        CellList* lists[6] = { stack_list_, regs_list_, threads_list_, watch_list_, vars_list_,
+                               mem_list_ };
+        int i;
+        for (i = 0; i < 6; i++)
+            if (lists[i] && lists[i]->tag() == debug_panes_.find(p))
+                lists[i]->focus();
+    }
 }
 
 /* Full screen: only the editor's grid; otherwise the bars and the docks. */
@@ -1691,6 +1750,7 @@ void App::command(int cmd)
     case CMD_DEBUG_RUN_TO_CURSOR:
     case CMD_DEBUG_TOGGLE_BP:
     case CMD_DEBUG_SETTINGS:
+    case CMD_DEBUG_QUICKWATCH:
         debug_command(cmd);
         break;
     default:
@@ -1765,22 +1825,8 @@ void App::editor_key(TwGridCallbackStruct* cb)
         command(shift ? CMD_PREV_RESULT : CMD_NEXT_RESULT);
         return;
     }
-    /* The debugger's keys (VC6). */
-    if (!alt) {
-        int dc = -1;
-        if (ks == XK_F5)
-            dc = ctrl && shift ? CMD_DEBUG_RESTART : shift ? CMD_DEBUG_STOP : ctrl ? -1 : CMD_DEBUG_GO;
-        else if (ks == XK_F9 && !ctrl && !shift)
-            dc = CMD_DEBUG_TOGGLE_BP;
-        else if (ks == XK_F10 && !shift)
-            dc = ctrl ? CMD_DEBUG_RUN_TO_CURSOR : CMD_DEBUG_STEP_OVER;
-        else if (ks == XK_F11 && !ctrl)
-            dc = shift ? CMD_DEBUG_STEP_OUT : CMD_DEBUG_STEP_INTO;
-        if (dc >= 0) {
-            command(dc);
-            return;
-        }
-    }
+    if (debug_key(ks, state))
+        return;
     if (ctrl && !alt) {
         switch (ks) {
         case XK_n: case XK_N: command(CMD_NEW); return;
@@ -2283,6 +2329,7 @@ void App::save_settings()
     f.set("debugProgram", dbg_program_.c_str());
     f.set("debugArgs", dbg_args_.c_str());
     f.set("debugDir", dbg_dir_.c_str());
+    save_watches(&f);
     f.remove("treeWidth");
     f.remove("bottomHeight");
     sprintf(v, "%d", opt_.tab_width);
@@ -2353,6 +2400,7 @@ void App::set_scheme(const char* name)
     }
     if (grid_)
         TwGridDamage(grid_);
+    recolor_lists();
     for (int i = 0; scheme_items_ && i < schemes_.count(); i++)
         XmToggleButtonSetState(scheme_items_[i],
                                th::compare_names(schemes_[i].name, scheme_.name) == 0, False);

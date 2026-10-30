@@ -6,8 +6,10 @@
 #ifndef TTRCODE_APP_H
 #define TTRCODE_APP_H
 
+#include "celllist.h"
 #include "dock.h"
 #include "editsource.h"
+#include "valuetree.h"
 
 #include "../../td/session.h"
 
@@ -24,6 +26,9 @@
 
 namespace tx {
 class FontChooser;
+}
+namespace ttr {
+class SettingsFile;
 }
 
 namespace ttrcode {
@@ -44,6 +49,8 @@ struct Options {
     const char* debug_program;  /* Debug > Settings */
     const char* debug_args;
     const char* debug_dir;
+    const char* debug_watch;    /* Watch's expressions, separated by ';' */
+    const char* debug_breakpoints;  /* file:line;file:line */
     bool auto_indent;           /* Enter keeps the previous line's indentation */
     bool show_whitespace;
     bool highlight_line;
@@ -120,12 +127,12 @@ enum Command {
     /* Debug (debug.cpp). */
     CMD_DEBUG_GO, CMD_DEBUG_STOP, CMD_DEBUG_RESTART, CMD_DEBUG_BREAK, CMD_DEBUG_STEP_INTO,
     CMD_DEBUG_STEP_OVER, CMD_DEBUG_STEP_OUT, CMD_DEBUG_RUN_TO_CURSOR, CMD_DEBUG_TOGGLE_BP,
-    CMD_DEBUG_SETTINGS, CMD_VIEW_PROGRAM,
+    CMD_DEBUG_SETTINGS, CMD_VIEW_PROGRAM, CMD_DEBUG_QUICKWATCH,
     /* View > Debug Windows: one per pane in k_debug_panes (app.cpp). */
     CMD_VIEW_DEBUG
 };
 
-class App : public tt::PaneHost, public PaneBuilder, public LineMarks {
+class App : public tt::PaneHost, public PaneBuilder, public LineMarks, public CellListHost {
 public:
     App(Widget top, const Options& o);
     ~App();
@@ -176,9 +183,20 @@ public:
 
     /* LineMarks: breakpoints and the program's place in the margin. */
     int line_marks(const te::View* v, long line) const;
-    /* Debugger panes' callbacks (debug.cpp). */
+    /* Debugger panes' callbacks (debug.cpp, debugpanes.cpp). */
     void frame_chosen(int i);
     void debug_settings_button(int which);
+    void vars_mode(bool autos);
+    void memory_address_entered();
+    void memory_format_chosen(int f);
+    void quickwatch_button(int which);
+
+    /* CellListHost: the debugger's panes (debugpanes.cpp). */
+    void list_activate(CellList* l, int row);
+    void list_toggle(CellList* l, int row);
+    bool list_key(CellList* l, TwGridCallbackStruct* cb);
+    void list_edited(CellList* l, int row, const char* text);
+    void list_resized(CellList* l);
 
 private:
     void build_menus();
@@ -196,7 +214,30 @@ private:
     void toggle_breakpoint();
     void goto_source(const char* path, long line);
     Widget build_debug_pane(Pane* p, Widget parent);
+    void drop_debug_pane(Pane* p);
     static void debug_idle(void* ctx);
+    /* The debugger's keys (VC6), from the editor and the debug panes. */
+    bool debug_key(KeySym ks, unsigned state);
+    /* The panes (debugpanes.cpp). */
+    CellList* make_list(Widget parent, const char* name, int tag);
+    ListColors list_colors() const;
+    void recolor_lists();
+    void fill_callstack();
+    void fill_registers();
+    void fill_threads();
+    void fill_variables();
+    void fill_watch();
+    void fill_memory();
+    void fill_quickwatch();
+    void auto_values(ttr::Vector<td::Value>* out);
+    void show_quickwatch();
+    void add_watch(const char* expr);
+    void save_watches(ttr::SettingsFile* f);
+    int watch_index(int row) const;
+    const td::Frame* frame() const
+    {
+        return dbg_ && cur_frame_ < frames_.size() ? &frames_[cur_frame_] : 0;
+    }
     void make_panes();
     ttr::Str default_layout() const;
     /* Open the pane (where it was last) and give it the focus. */
@@ -342,11 +383,37 @@ private:
     long frame_line_;
     int cur_frame_;
     ttr::Vector<td::Frame> frames_;
-    td::Regs last_regs_;        /* to mark the registers that changed */
+    td::Regs last_regs_;        /* the last stop's, to mark the registers that changed */
     bool have_last_regs_;
+    td::Regs cur_regs_;         /* this stop's (frame 0) */
+    int regs_stop_;             /* the stop cur_regs_ is from */
     bool dbg_kill_req_;         /* Stop Debugging while it runs */
     ttr::Str edit_layout_, debug_layout_;
-    Widget callstack_, registers_, threads_;    /* 0 while their panes are closed */
+    /* The debugger's panes (debugpanes.cpp): 0 while closed. */
+    CellList* stack_list_;
+    CellList* regs_list_;
+    CellList* threads_list_;
+    CellList* watch_list_;
+    CellList* vars_list_;
+    CellList* mem_list_;
+    Widget vars_box_, vars_context_, vars_menu_, vars_auto_w_, vars_locals_w_;
+    Widget mem_box_, mem_addr_w_, mem_format_w_;
+    ValueTree watch_tree_, vars_tree_, quick_tree_;
+    ttr::Vector<ttr::Str> watches_;
+    bool vars_auto_;            /* Variables shows Auto, else Locals */
+    int vars_menu_stop_;        /* the stop Context's frames are from */
+    int mem_format_;            /* MEM_BYTE... (debugpanes.cpp) */
+    ttr::Str mem_expr_;         /* the address, as typed: evaluated at every stop */
+    td::Addr mem_addr_;
+    int mem_per_row_;           /* units on a row, from the pane's width */
+    /* What Memory showed at the stop before, to mark what changed. */
+    ttr::Vector<unsigned char> mem_prev_, mem_cur_;
+    td::Addr mem_prev_addr_, mem_cur_addr_;
+    int mem_prev_stop_;
+    int stop_serial_;           /* counts stops: what "changed" compares with */
+    Widget quick_dlg_, quick_expr_;
+    CellList* quick_list_;
+    ttr::Str quick_text_;
     Widget dbg_dlg_, dbg_prog_, dbg_args_w_, dbg_dir_w_;
     ttr::Str dbg_msg_;          /* the status bar's first words */
     /* Find Results (0 while its pane is closed). */

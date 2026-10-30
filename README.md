@@ -798,8 +798,8 @@ your shell in the workspace below, and the line, column and line ends in
 the status bar. The editor takes all the room the side panes leave.
 
 The tool panes (Workspace, Terminal, Find Results, and the debugger's
-Watch, Variables, Registers, Memory, Call Stack and Threads, which say
-"Not debugging" for now) sit in three areas around the editor: left,
+Program, Watch, Variables, Registers, Memory, Call Stack and Threads) sit
+in three areas around the editor: left,
 bottom and right. An area holds groups of tabs, one over another at the
 sides and side by side at the bottom. Right-click a pane's tab to move it
 to another area, into one of the groups there or a new one of its own,
@@ -839,6 +839,7 @@ are not shown in the tree.
 | Shift+Alt+Enter | full screen with only the text (again, Esc or F11 to come back); on window managers without full-screen support, such as 4Dwm and mwm, the window drops its frame and covers the screen |
 | F5, Shift+F5, Ctrl+Shift+F5 | debug: go or continue, stop, restart |
 | F9 | set or clear a breakpoint on the caret's line |
+| Shift+F9 | QuickWatch: the selection or the word at the caret |
 | F10, F11, Shift+F11, Ctrl+F10 | step over, step into, step out, run to the caret |
 
 With the mouse: click to place the caret, drag to select (past the edge
@@ -882,12 +883,33 @@ yellow arrow on its line. F10, F11 and Shift+F11 step over, into and out
 of functions, Ctrl+F10 runs to the caret, F5 continues, Debug > Break
 stops a running program and Shift+F5 ends debugging. F10 or F11 before
 the program has started runs it to the start of `main`. While debugging,
-the window switches to its debugging layout: Call Stack (double-click a
-frame to show its line, with a green arrow), Registers (a `*` marks those
-that changed since the last stop) and Threads; Variables, Watch and
-Memory follow when the debugger reads types. The debugging layout is
-remembered separately (`debugLayout`). The debugger is td, shared with
-ttrdb (`td/DESIGN.md`).
+the window switches to its debugging layout, with Visual C++ 6's windows:
+
+- **Variables** (Alt+4): the variables of a frame, chosen in Context:
+  Auto shows those the current line and the one before use, Locals all
+  in scope.
+- **Watch** (Alt+3): expressions. Type on the empty last row to add one,
+  on a watch (or F2) to change it, Delete removes it. They are C
+  expressions: `p->next->name`, `arr[i] * 2`, `*(ip + 3)`, `(char)c`,
+  `sizeof(Point)`, registers as `$sp` or `@rip`; `x,x` shows a value in
+  hex and `p,10` what p points to as 10 elements.
+- In both, structs, arrays and pointers open as trees (click the `+`, or
+  Right and Left), and what is open stays open from step to step. Values
+  that changed since the last stop are red.
+- **Memory** (Alt+6): type an address or an expression (`&g_pt`, `p`)
+  and Enter; Format shows bytes with their characters, shorts, longs,
+  quads, ASCII or floats. Up, Down, Page Up and Page Down move through
+  memory, and bytes that changed are red.
+- **Registers** (Alt+5), with those that changed in red.
+- **Call Stack** (Alt+7): double-click a frame to show its line, with a
+  green arrow, and its variables.
+- **QuickWatch** (Shift+F9): one expression in a dialog, as a tree; Add
+  Watch moves it to Watch.
+
+Breakpoints and Watch's expressions are kept in the settings
+(`debugBreakpoints`, `debugWatch`), and the debugging layout separately
+from the other (`debugLayout`). The debugger is td, shared with ttrdb
+(`td/DESIGN.md`).
 
 **Find and replace in files.** Search > Find in Files (Ctrl+Shift+F)
 searches every text file of the workspace, or of another folder, for a
@@ -1100,6 +1122,11 @@ The notification area uses common tools when they are installed:
   ```sh
   build/ttrdb build/td_demo        # b main, r, n, s, f, bt, regs, help
   ```
+
+  `p EXPR` prints a value (a C expression, as ttrcode's Watch takes it),
+  `locals` the frame's variables, `e EXPR` a value's members or
+  elements, `pt EXPR` its type, and `fr N` chooses the frame they look
+  in.
 
   It reads the shared objects a program loads (`mods` lists them), so
   breakpoints, lines and backtraces work in libraries too; a breakpoint

@@ -26,6 +26,7 @@ namespace {
 
 td::Session* g_s;
 td::Sources g_src;      /* "dir" adds to where sources are looked for */
+int g_frame;            /* "fr N": the frame p and locals look in */
 char** g_argv;          /* the program's, for "r" after it ended */
 bool g_script;
 /* What the last command printed, for "expect". */
@@ -86,6 +87,7 @@ void show_line(const td::Frame& f)
 void report(const td::Stop& s)
 {
     td::Frame f;
+    g_frame = 0;
     switch (s.kind) {
     case td::EV_EXITED:
         out("Program exited with code %d.\n", s.status);
@@ -128,6 +130,119 @@ void cmd_bt()
     }
     if (!n)
         out("No stack.\n");
+}
+
+/* The frame chosen with "fr" (0 after every run). */
+bool current_frame(td::Frame* f)
+{
+    ttr::Vector<td::Frame> frames;
+    int n = g_s->backtrace(&frames, g_frame + 1);
+    if (n <= 0) {
+        out("The program is not running.\n");
+        return false;
+    }
+    if (g_frame >= n)
+        g_frame = n - 1;
+    *f = frames[g_frame];
+    return true;
+}
+
+void cmd_frame(const char* args)
+{
+    if (*args)
+        g_frame = atoi(args);
+    td::Frame f;
+    if (!current_frame(&f))
+        return;
+    ttr::Str w = td::format_place(f);
+    out("#%d  %s\n", g_frame, w.c_str());
+    show_line(f);
+}
+
+void print_value(const td::Value& v, const char* prefix)
+{
+    ttr::Str t = td::type_name(v.type);
+    ttr::Str text = g_s->format(v);
+    out("%s%s %s = %s\n", prefix, t.c_str(), v.name.c_str(), text.c_str());
+}
+
+void cmd_print(const char* args)
+{
+    td::Frame f;
+    if (!*args) {
+        out("p EXPR\n");
+        return;
+    }
+    if (!current_frame(&f))
+        return;
+    td::Value v = g_s->evaluate(f, args);
+    out("%s = %s\n", v.name.c_str(), g_s->format(v).c_str());
+}
+
+void cmd_locals()
+{
+    td::Frame f;
+    if (!current_frame(&f))
+        return;
+    ttr::Vector<td::Value> vs;
+    if (!g_s->locals(f, &vs))
+        out("No locals.\n");
+    int i;
+    for (i = 0; i < vs.size(); i++)
+        print_value(vs[i], "");
+}
+
+/* "e EXPR": its members, elements or what it points to. */
+void cmd_expand(const char* args)
+{
+    td::Frame f;
+    if (!current_frame(&f))
+        return;
+    td::Value v = g_s->evaluate(f, args);
+    out("%s = %s\n", v.name.c_str(), g_s->format(v).c_str());
+    ttr::Vector<td::Value> kids;
+    g_s->children(v, &kids, 100);
+    int i;
+    for (i = 0; i < kids.size(); i++) {
+        ttr::Str t = td::type_name(kids[i].type);
+        out("  %s %s = %s   (%s)\n", t.c_str(), kids[i].name.c_str(),
+            g_s->format(kids[i]).c_str(), kids[i].expr.c_str());
+    }
+}
+
+/* "pt EXPR": its type, a struct's members. */
+void cmd_ptype(const char* args)
+{
+    td::Frame f;
+    if (!current_frame(&f))
+        return;
+    td::Value v = g_s->evaluate(f, args);
+    if (!v.ok()) {
+        out("%s\n", v.error.c_str());
+        return;
+    }
+    ttr::Str t = td::type_name(v.type);
+    out("type = %s\n", t.c_str());
+    const td::Type* s = td::strip(v.type);
+    while (s && (s->kind == td::TK_POINTER || s->kind == td::TK_ARRAY))
+        s = td::strip(s->target);
+    if (s && (s->kind == td::TK_STRUCT || s->kind == td::TK_UNION || s->kind == td::TK_CLASS)) {
+        int i;
+        for (i = 0; i < s->nmembers; i++) {
+            const td::Member& m = s->members[i];
+            ttr::Str mt = td::type_name(m.type);
+            if (m.bit_size)
+                out("  %s %s : %d;  /* bit %d */\n", mt.c_str(), m.name ? m.name : "",
+                    m.bit_size, (int)m.bit_offset);
+            else
+                out("  %s %s;  /* offset %d */\n", mt.c_str(), m.name ? m.name : "",
+                    (int)m.offset);
+        }
+    } else if (s && s->kind == td::TK_ENUM) {
+        int i;
+        for (i = 0; i < s->nenums; i++)
+            out("  %s = %d\n", s->enums[i].name, (int)s->enums[i].value);
+    }
 }
 
 void cmd_regs()
@@ -329,6 +444,16 @@ bool command(char* line)
             if (!g_src.dir_count())
                 out("Sources are read where the compiler recorded them.\n");
         }
+    } else if (!strcmp(c, "p") || !strcmp(c, "print")) {
+        cmd_print(args);
+    } else if (!strcmp(c, "locals")) {
+        cmd_locals();
+    } else if (!strcmp(c, "e")) {
+        cmd_expand(args);
+    } else if (!strcmp(c, "pt")) {
+        cmd_ptype(args);
+    } else if (!strcmp(c, "fr") || !strcmp(c, "frame")) {
+        cmd_frame(args);
     } else if (!strcmp(c, "mods")) {
         cmd_modules();
     } else if (!strcmp(c, "regs")) {
@@ -356,7 +481,9 @@ bool command(char* line)
     } else if (!strcmp(c, "help") || !strcmp(c, "h")) {
         out("r run, c continue, s step, n next, si step instruction, f finish,\n"
             "b SPEC (file:line, function, *addr), b list, d N delete,\n"
-            "bt backtrace, where, l list, regs, x ADDR [N] memory, mods modules,\n"
+            "bt backtrace, fr N frame, where, l list, regs, x ADDR [N] memory,\n"
+            "p EXPR print (EXPR,x hex; p,N N elements), locals, e EXPR expand,\n"
+            "pt EXPR type, mods modules,\n"
             "dir DIR source directory, k kill, detach, q quit\n");
     } else {
         out("Unknown command \"%s\" (help lists them).\n", c);

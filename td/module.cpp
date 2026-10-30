@@ -56,7 +56,7 @@ bool file_matches(const char* full, const char* want)
 
 } /* namespace */
 
-Module::Module() : bias_(0), dbg_(0)
+Module::Module() : bias_(0), dbg_(0), info_(0)
 {
     cie_[0] = cie_[1] = fde_[0] = fde_[1] = 0;
     ncie_[0] = ncie_[1] = nfde_[0] = nfde_[1] = 0;
@@ -64,6 +64,7 @@ Module::Module() : bias_(0), dbg_(0)
 
 Module::~Module()
 {
+    delete info_;
     Dwarf_Debug dbg = dbg_of(dbg_);
     int k;
     for (k = 0; k < 2; k++)
@@ -384,14 +385,19 @@ Addr Module::after_prologue(Addr start, Addr end) const
     return p + bias_;
 }
 
-bool Module::unwind(Target* t, const Regs& in, bool caller, Regs* out) const
+Info* Module::info() const
 {
-    const Arch* arch = elf_.arch();
-    if (!arch)
-        return false;
+    if (!info_ && dbg_ && elf_.arch())
+        info_ = new Info(dbg_, elf_.arch());
+    return info_;
+}
+
+/* The frame table's rules at a pc (look: a link address), and the return
+ * address column the CIE names. */
+bool Module::frame_rules(Addr look, void* vtable, int* ra_col) const
+{
     Dwarf_Debug dbg = dbg_of(dbg_);
     Dwarf_Error de = 0;
-    Dwarf_Addr look = in.pc - bias_ - (caller ? 1 : 0);
     Dwarf_Fde found = 0;
     int k;
     for (k = 0; dbg && k < 2 && !found; k++) {
@@ -404,8 +410,68 @@ bool Module::unwind(Target* t, const Regs& in, bool caller, Regs* out) const
             found = 0;
         }
     }
+    if (!found)
+        return false;
+    Dwarf_Regtable3* table = (Dwarf_Regtable3*)vtable;
+    Dwarf_Addr row_pc = 0, next_pc = 0;
+    Dwarf_Bool more = 0;
+    if (dwarf_get_fde_info_for_all_regs3_b(found, look, table, &row_pc, &more, &next_pc, &de) !=
+        DW_DLV_OK) {
+        drop_error(dbg, &de);
+        return false;
+    }
+    Dwarf_Cie cie = 0;
+    if (dwarf_get_cie_of_fde(found, &cie, &de) == DW_DLV_OK) {
+        Dwarf_Unsigned bytes = 0, initlen = 0, codealign = 0;
+        Dwarf_Small ver = 0;
+        char* aug = 0;
+        Dwarf_Signed dataalign = 0;
+        Dwarf_Half rareg = 0, offsize = 0;
+        Dwarf_Small* init = 0;
+        if (dwarf_get_cie_info_b(cie, &bytes, &ver, &aug, &codealign, &dataalign, &rareg, &init,
+                                 &initlen, &offsize, &de) == DW_DLV_OK)
+            *ra_col = rareg;
+        else
+            drop_error(dbg, &de);
+    } else {
+        drop_error(dbg, &de);
+    }
+    return true;
+}
+
+bool Module::cfa(const Regs& in, bool caller, Addr* out) const
+{
+    Dwarf_Regtable_Entry3 rules[MAX_REGS];
+    memset(rules, 0, sizeof(rules));
+    Dwarf_Regtable3 table;
+    memset(&table, 0, sizeof(table));
+    table.rt3_reg_table_size = MAX_REGS;
+    table.rt3_rules = rules;
+    int ra_col = 0;
+    if (!frame_rules(in.pc - bias_ - (caller ? 1 : 0), &table, &ra_col))
+        return false;
+    const Dwarf_Regtable_Entry3& c = table.rt3_cfa_rule;
+    if (c.dw_value_type != DW_EXPR_OFFSET || c.dw_regnum >= MAX_REGS || !in.valid[c.dw_regnum])
+        return false;
+    *out = in.r[c.dw_regnum] + (Addr)(int64_t)c.dw_offset;
+    return true;
+}
+
+bool Module::unwind(Target* t, const Regs& in, bool caller, Regs* out) const
+{
+    const Arch* arch = elf_.arch();
+    if (!arch)
+        return false;
+    Dwarf_Addr look = in.pc - bias_ - (caller ? 1 : 0);
+    Dwarf_Regtable_Entry3 rules[MAX_REGS];
+    memset(rules, 0, sizeof(rules));
+    Dwarf_Regtable3 table;
+    memset(&table, 0, sizeof(table));
+    table.rt3_reg_table_size = MAX_REGS;
+    table.rt3_rules = rules;
+    int ra_col = arch->ra_column;
     out->clear();
-    if (!found) {
+    if (!frame_rules(look, &table, &ra_col)) {
         /* No frame information: follow the frame pointer (x86-64). */
         if (arch->fp_reg < 0 || !in.valid[arch->fp_reg] || !in.r[arch->fp_reg])
             return false;
@@ -418,38 +484,6 @@ bool Module::unwind(Target* t, const Regs& in, bool caller, Regs* out) const
         out->set(arch->sp_reg, fp + 2 * arch->ptr_size);
         out->pc = ret;
         return true;
-    }
-
-    Dwarf_Regtable_Entry3 rules[MAX_REGS];
-    memset(rules, 0, sizeof(rules));
-    Dwarf_Regtable3 table;
-    memset(&table, 0, sizeof(table));
-    table.rt3_reg_table_size = MAX_REGS;
-    table.rt3_rules = rules;
-    Dwarf_Addr row_pc = 0, next_pc = 0;
-    Dwarf_Bool more = 0;
-    if (dwarf_get_fde_info_for_all_regs3_b(found, look, &table, &row_pc, &more, &next_pc, &de) !=
-        DW_DLV_OK) {
-        drop_error(dbg, &de);
-        return false;
-    }
-    /* The return address column: the CIE says which. */
-    int ra_col = arch->ra_column;
-    Dwarf_Cie cie = 0;
-    if (dwarf_get_cie_of_fde(found, &cie, &de) == DW_DLV_OK) {
-        Dwarf_Unsigned bytes = 0, initlen = 0, codealign = 0;
-        Dwarf_Small ver = 0;
-        char* aug = 0;
-        Dwarf_Signed dataalign = 0;
-        Dwarf_Half rareg = 0, offsize = 0;
-        Dwarf_Small* init = 0;
-        if (dwarf_get_cie_info_b(cie, &bytes, &ver, &aug, &codealign, &dataalign, &rareg, &init,
-                                 &initlen, &offsize, &de) == DW_DLV_OK)
-            ra_col = rareg;
-        else
-            drop_error(dbg, &de);
-    } else {
-        drop_error(dbg, &de);
     }
 
     /* The frame's address: a register plus an offset. */

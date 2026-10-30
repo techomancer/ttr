@@ -171,6 +171,12 @@ void App::set_font(const char* xlfd)
         return;
     strcpy(copy, f);
     XtVaSetValues(grid_, TwNfont, copy, (char*)0);
+    /* The debugger's panes follow the editor. */
+    CellList* lists[7] = { stack_list_, regs_list_, threads_list_, watch_list_, vars_list_,
+                           mem_list_, quick_list_ };
+    for (int i = 0; i < 7; i++)
+        if (lists[i] && lists[i]->grid())
+            XtVaSetValues(lists[i]->grid(), TwNfont, copy, (char*)0);
     /* The terminal follows unless it has a font of its own. */
     if (term_ && !(term_font_ && *term_font_))
         term_->set_font(copy);

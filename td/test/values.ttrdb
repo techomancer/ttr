@@ -1,0 +1,102 @@
+# program: td_values
+# Variables, types and expressions (td/value.h, td/expr.cpp).
+b values.c:27
+r
+expect Breakpoint 1, sum (values.c:27)
+locals
+expect int n = 3
+expect p = 0x
+expect {x=3 y=4 name="abc" next=0x
+expect flag=1 kind=2 neg=1}
+expect int i = 0
+expect int s = 0
+expect int sq = 0
+c
+locals
+expect int i = 1
+expect int s = 3
+expect int sq = 1
+d 1
+b values.c:29
+c
+locals
+expect int i = 3
+expect int s = 14
+absent sq
+p sq
+expect <no symbol "sq" here>
+p p->x
+expect p->x = 3
+p p->next
+expect {x=1 y=2 name="hi" next=0x0
+expect flag=5 kind=17 neg=-3}
+e p
+expect int x = 3   (p->x)
+expect name = "abc"   (p->name)
+expect unsigned int kind = 2   (p->kind)
+p g_count * 2 + 1
+expect g_count * 2 + 1 = 7
+p g_d / 2
+expect g_d / 2 = 1.25
+p g_msg
+expect "hello"
+p g_grid
+expect g_grid = {{1, 2, 3}, {4, 5, 6}}
+p g_grid[1][2]
+expect g_grid[1][2] = 6
+p g_num
+expect g_num = {i=1065353216 f=1}
+p RED
+expect RED = RED
+p (int)BLUE
+expect (int)BLUE = 6
+p sum
+expect <sum>
+p $sp
+expect $sp = 0x
+pt g_pt
+expect type = Point
+expect char [8] name;  /* offset 8 */
+p sizeof(Point)
+expect sizeof(Point) =
+p nothere
+expect <no symbol "nothere" here>
+p p.x
+expect <not a struct or union>
+fr 1
+expect #1  main (values.c:42)
+locals
+expect Point a = {x=3 y=4 name="abc"
+expect enum color c = GREEN
+expect float f = 1.5
+expect sh = -7
+expect uc = 200
+expect int [4] arr = {10, 20, 30, 40}
+p a.zz
+expect <no member "zz">
+p arr,x
+expect arr,x = {0x0000000a, 0x00000014, 0x0000001e, 0x00000028}
+p ip,4
+expect ip,4 = {10, 20, 30, 40}
+p ip[1] + ip[2]
+expect ip[1] + ip[2] = 50
+p *(ip + 3)
+expect *(ip + 3) = 40
+p &arr[2] - ip
+expect &arr[2] - ip = 2
+p a.next->name
+expect a.next->name = "hi"
+p g_pt.neg
+expect g_pt.neg = -3
+p c == GREEN
+expect c == GREEN = 1
+p f * 2
+expect f * 2 = 3
+p -sh
+expect -sh = 7
+p (char)65
+expect (char)65 = 65 'A'
+p 10 / 0
+expect <division by zero>
+c
+expect Program exited with code 0.

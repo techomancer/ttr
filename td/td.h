@@ -51,6 +51,33 @@ struct Arch {
     bool entry_return_address(const Regs& r, class Target* t, Addr* ra) const;
 };
 
+/* Text being put together (messages, values, type names). */
+class Text {
+public:
+    Text();
+    ~Text();
+    void add(const char* s);
+    void add(const char* s, size_t n);
+    void addf(const char* fmt, ...);
+    void add_char(char c);
+    /* Numbers without printf's long long (C++98). */
+    void add_int(int64_t v);
+    void add_uint(uint64_t v);
+    /* "0x" and at least digits hex digits. */
+    void add_hex(uint64_t v, int digits = 1);
+    const char* c_str() const { return p_ ? p_ : ""; }
+    size_t length() const { return n_; }
+    void truncate(size_t n);
+    void clear() { truncate(0); }
+
+private:
+    char* p_;
+    size_t n_, cap_;
+
+    Text(const Text&);
+    Text& operator=(const Text&);
+};
+
 /* "0x" and hex digits into buf (at least 19 bytes); returns buf. */
 const char* hex(uint64_t v, char* buf);
 /* A number in C notation (0x hex, 0 octal, decimal); *end past it. */

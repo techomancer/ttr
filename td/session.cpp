@@ -65,6 +65,8 @@ Session::~Session()
 {
     delete target_;
     int i;
+    for (i = 0; i < synth_.size(); i++)
+        delete synth_[i];
     for (i = 0; i < mods_.size(); i++)
         delete mods_[i];
 }
@@ -663,6 +665,7 @@ bool Session::describe(Addr pc, bool caller, Frame* f)
 {
     Addr look = pc - (caller ? 1 : 0);
     f->pc = pc;
+    f->caller = caller;
     f->func_start = 0;
     f->module = module_at(look);
     f->func = f->module ? f->module->function_at(look, &f->func_start, 0) : 0;

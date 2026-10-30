@@ -4,9 +4,9 @@
  * Ctrl+Shift+F5 restarts, F9 sets or clears a breakpoint on the caret's
  * line, F10, F11 and Shift+F11 step over, into and out, Ctrl+F10 runs to
  * the caret. Breakpoints show as red dots in the margin and where the
- * program stopped as a yellow arrow; Call Stack, Registers and Threads
- * fill from td. While the program runs, td calls debug_idle, which goes
- * on handling the window's events (Debug > Break interrupts it).
+ * program stopped as a yellow arrow; the panes fill from td
+ * (debugpanes.cpp). While the program runs, td calls debug_idle, which
+ * goes on handling the window's events (Debug > Break interrupts it).
  */
 #include "app.h"
 
@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <X11/keysym.h>
 #include <Xm/Form.h>
 #include <Xm/Label.h>
 #include <Xm/List.h>
@@ -36,11 +37,6 @@ const char k_debug_layout[] =
 void idle_done(XtPointer data, XtIntervalId*)
 {
     *(bool*)data = true;
-}
-
-void callstack_cb(Widget, XtPointer data, XtPointer call)
-{
-    ((App*)data)->frame_chosen(((XmListCallbackStruct*)call)->item_position - 1);
 }
 
 struct SettingsHook {
@@ -78,21 +74,6 @@ const char* signal_name(int sig)
     case SIGTERM: return "SIGTERM";
     default: return "a signal";
     }
-}
-
-void set_list(Widget list, const ttr::Vector<ttr::Str>& items, int selected)
-{
-    if (!list)
-        return;
-    XmListDeleteAllItems(list);
-    int i;
-    for (i = 0; i < items.size(); i++) {
-        XmString s = XmStringCreateLocalized((char*)items[i].c_str());
-        XmListAddItem(list, s, 0);
-        XmStringFree(s);
-    }
-    if (selected >= 0 && selected < items.size())
-        XmListSelectPos(list, selected + 1, False);
 }
 
 } /* namespace */
@@ -180,6 +161,7 @@ bool App::debug_start()
     }
     dbg_kill_req_ = false;
     have_last_regs_ = false;
+    regs_stop_ = -1;
     debug_status("Running");
     return true;
 }
@@ -197,6 +179,11 @@ void App::debug_end()
     frames_.clear();
     cur_frame_ = 0;
     have_last_regs_ = false;
+    /* td's values go with the session; what is open stays. */
+    watch_tree_.clear();
+    vars_tree_.clear();
+    quick_tree_.clear();
+    debug_fill();
     debug_layout_ = docks_->layout();
     docks_->apply(edit_layout_.c_str());
     save_settings();
@@ -231,6 +218,7 @@ void App::debug_stopped(const td::Stop& s)
     frames_.clear();
     dbg_->backtrace(&frames_, 64);
     cur_frame_ = 0;
+    stop_serial_++;
     stop_path_ = "";
     if (frames_.size() > 0 && frames_[0].has_place && frames_[0].place.file) {
         stop_path_ = real_path(frames_[0].place.file);
@@ -255,6 +243,10 @@ void App::debug_command(int cmd)
     }
     if (cmd == CMD_DEBUG_SETTINGS) {
         show_debug_settings();
+        return;
+    }
+    if (cmd == CMD_DEBUG_QUICKWATCH) {
+        show_quickwatch();
         return;
     }
     if (dbg_ && dbg_->busy()) {
@@ -360,6 +352,7 @@ void App::toggle_breakpoint()
                     }
             }
             TwGridDamage(grid_);
+            save_settings();
             return;
         }
     SourceBreakpoint b;
@@ -374,6 +367,29 @@ void App::toggle_breakpoint()
             debug_status(err.c_str());
     }
     TwGridDamage(grid_);
+    save_settings();
+}
+
+/* F5, F9, F10, F11 and their Shift and Ctrl forms; Shift+F9 QuickWatch. */
+bool App::debug_key(KeySym ks, unsigned state)
+{
+    bool ctrl = (state & ControlMask) != 0, shift = (state & ShiftMask) != 0;
+    bool alt = (state & Mod1Mask) != 0;
+    if (alt)
+        return false;
+    int dc = -1;
+    if (ks == XK_F5)
+        dc = ctrl && shift ? CMD_DEBUG_RESTART : shift ? CMD_DEBUG_STOP : ctrl ? -1 : CMD_DEBUG_GO;
+    else if (ks == XK_F9 && !ctrl)
+        dc = shift ? CMD_DEBUG_QUICKWATCH : CMD_DEBUG_TOGGLE_BP;
+    else if (ks == XK_F10 && !shift)
+        dc = ctrl ? CMD_DEBUG_RUN_TO_CURSOR : CMD_DEBUG_STEP_OVER;
+    else if (ks == XK_F11 && !ctrl)
+        dc = shift ? CMD_DEBUG_STEP_OUT : CMD_DEBUG_STEP_INTO;
+    if (dc < 0)
+        return false;
+    command(dc);
+    return true;
 }
 
 int App::line_marks(const te::View* v, long line) const
@@ -434,89 +450,6 @@ void App::frame_chosen(int i)
 {
     if (dbg_ && !dbg_->busy())
         debug_show_frame(i, false);
-}
-
-/* Call Stack, Registers, Threads: from what td has now. */
-void App::debug_fill()
-{
-    ttr::Vector<ttr::Str> items;
-    int i;
-    for (i = 0; i < frames_.size(); i++) {
-        char h[24];
-        ttr::Str w = td::format_place(frames_[i]);
-        char line[1600];
-        snprintf(line, sizeof(line), "%s  %s", w.c_str(), td::hex(frames_[i].pc, h));
-        items.push_back(ttr::Str(line));
-    }
-    set_list(callstack_, items, cur_frame_);
-
-    items.clear();
-    td::Regs r;
-    if (dbg_ && frames_.size() > 0) {
-        r = frames_[cur_frame_].regs;
-        const td::Arch* a = dbg_->target()->arch();
-        for (i = 0; i < a->nregs; i++) {
-            const char* n = a->reg_name(i);
-            if (!n || !r.valid[i])
-                continue;
-            char h[24], line[80];
-            /* Changed since the last stop: marked, as VC6 drew them red. */
-            bool changed = cur_frame_ == 0 && have_last_regs_ && last_regs_.valid[i] &&
-                           last_regs_.r[i] != r.r[i];
-            snprintf(line, sizeof(line), "%-5s %s%s", n, td::hex(r.r[i], h), changed ? "  *" : "");
-            items.push_back(ttr::Str(line));
-        }
-        char h[24], line[80];
-        snprintf(line, sizeof(line), "%-5s %s", "pc", td::hex(frames_[cur_frame_].pc, h));
-        items.push_back(ttr::Str(line));
-    }
-    set_list(registers_, items, -1);
-    if (dbg_ && frames_.size() > 0 && cur_frame_ == 0) {
-        last_regs_ = frames_[0].regs;
-        have_last_regs_ = true;
-    }
-
-    items.clear();
-    if (dbg_ && frames_.size() > 0) {
-        char line[1600];
-        ttr::Str w = td::format_place(frames_[0]);
-        snprintf(line, sizeof(line), "1  %d  %s", dbg_->target()->pid(), w.c_str());
-        items.push_back(ttr::Str(line));
-    }
-    set_list(threads_, items, 0);
-}
-
-Widget App::build_debug_pane(Pane* p, Widget parent)
-{
-    const char* id = p->id();
-    Widget* slot = !strcmp(id, "callstack") ? &callstack_
-                   : !strcmp(id, "registers") ? &registers_
-                   : !strcmp(id, "threads")   ? &threads_
-                                              : 0;
-    if (slot) {
-        if (*slot)
-            XtDestroyWidget(XtParent(*slot));
-        Arg args[4];
-        Cardinal n = 0;
-        XtSetArg(args[n], XmNselectionPolicy, XmBROWSE_SELECT); n++;
-        XtSetArg(args[n], XmNscrollBarDisplayPolicy, XmAS_NEEDED); n++;
-        XtSetArg(args[n], XmNlistSizePolicy, XmCONSTANT); n++;
-        *slot = XmCreateScrolledList(parent, (char*)id, args, n);
-        if (slot == &callstack_)
-            XtAddCallback(*slot, XmNdefaultActionCallback, callstack_cb, (XtPointer)this);
-        XtManageChild(*slot);
-        debug_fill();
-        return XtParent(*slot);
-    }
-    /* Variables, Watch, Memory: values come with td's next milestone. */
-    Widget f = XtVaCreateManagedWidget(id, xmFormWidgetClass, parent, (char*)0);
-    XmString l = XmStringCreateLocalized(
-        (char*)"Values come with the debugger's types (td milestone 3).");
-    XtVaCreateManagedWidget("note", xmLabelWidgetClass, f, XmNlabelString, l,
-                            XmNtopAttachment, XmATTACH_FORM, XmNleftAttachment, XmATTACH_FORM,
-                            XmNtopOffset, 6, XmNleftOffset, 6, (char*)0);
-    XmStringFree(l);
-    return f;
 }
 
 /* ---- Debug > Settings ---- */

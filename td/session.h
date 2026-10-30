@@ -16,6 +16,7 @@
 #include "module.h"
 #include "target.h"
 #include "td.h"
+#include "value.h"
 
 #include "core/str.h"
 #include "core/vector.h"
@@ -39,6 +40,7 @@ struct Frame {
     const Module* module;
     Place place;        /* place.file 0 if unknown */
     bool has_place;
+    bool caller;        /* pc is a return address: the call is just before it */
 };
 
 /* Why the program stopped, for the user interface. */
@@ -100,6 +102,21 @@ public:
     bool describe(Addr pc, bool caller, Frame* f);
     bool regs(Regs* r);
 
+    /* Values (td/value.h). A frame's arguments and the local variables in
+     * scope at its pc, arguments first: VC6's Locals. */
+    int locals(const Frame& f, ttr::Vector<Value>* out);
+    /* A C expression in a frame: variables, members, elements, pointers,
+     * arithmetic, comparisons, casts, sizeof, registers ($sp or @sp).
+     * "expr,x" shows it in hex, "p,10" what p points to as 10 elements. */
+    Value evaluate(const Frame& f, const char* expr);
+    /* One line: 42, 97 'a', 0x0804a000 "text", {x=1 y=2}, {1, 2, 3}. */
+    ttr::Str format(const Value& v);
+    /* Members, elements, what a pointer points to: at most max. */
+    bool has_children(const Value& v);
+    int children(const Value& v, ttr::Vector<Value>* out, int max);
+    /* Its bytes (n at most its size). */
+    bool value_bytes(const Value& v, void* buf, size_t n);
+
 private:
     bool load_exe(ttr::Str* err);
     void insert_all();
@@ -117,6 +134,24 @@ private:
     bool wait_event(Event* e);
 
     const char* func_at(Addr pc, Addr* start, Addr* end) const;
+
+    friend class Evaluator;
+    /* value.cpp */
+    bool locate(const Frame& f, const Module* m, const Function* fn, const Location& loc,
+                Value* v, int depth);
+    Value variable_value(const Frame& f, const Module* m, const Function* fn,
+                         const Variable& var);
+    bool lookup(const Frame& f, const char* name, Value* out);
+    bool scalar(const Value& v, uint64_t* bits);
+    bool as_double(const Value& v, double* d);
+    Type* synth(TypeKind kind, const char* name, uint64_t size, bool is_signed, bool is_char);
+    Type* pointer_to(const Type* t);
+    Type* array_of(const Type* t, long n);
+    Type* find_type(const Frame& f, const char* name);
+    void format_into(Text* out, const Value& v, int depth);
+    Value member_value(const Value& v, const Member& m, uint64_t base);
+    Value deref(const Value& p);
+
     bool place_at(Addr pc, Place* p) const;
 
     Target* target_;
@@ -130,6 +165,7 @@ private:
     bool busy_;
     bool interrupted_;      /* interrupt() asked: its stop is a pause */
     ttr::Vector<Breakpoint> bps_;
+    ttr::Vector<Type*> synth_;     /* types expressions make: int, pointers to */
 };
 
 /* "main (demo.c:12)" style, for messages. */
