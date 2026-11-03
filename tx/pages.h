@@ -40,6 +40,8 @@ public:
 private:
     PagedDialog(const PagedDialog&);
     PagedDialog& operator=(const PagedDialog&);
+    void fit(int width, int height);
+    static void content_resized(Widget w, XtPointer closure, XEvent* ev, Boolean* go_on);
     static void page_cb(Widget w, XtPointer closure, XtPointer call);
     static void button_cb(Widget w, XtPointer closure, XtPointer call);
 

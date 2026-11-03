@@ -125,35 +125,17 @@ void PagedDialog::finish(const char* note, int buttons, Pressed pressed, void* d
     int n = 0;
     XtSetArg(args[n], XmNwidth, pw); n++;
     XtSetArg(args[n], XmNheight, ph); n++;
-    XtSetArg(args[n], XmNresizePolicy, XmRESIZE_NONE); n++;
+    /* Grow only: a row that gets taller (a font chooser's preview in a
+     * larger font) must get the room, or Motif squeezes it to nothing. */
+    XtSetArg(args[n], XmNresizePolicy, XmRESIZE_GROW); n++;
     XtSetValues(content_, args, n);
     XtManageChild(content_);
     show_page(shown_);
-    /* At most most of the screen, beside the list and above the buttons;
-     * scroll bars where the pages need more. */
-    Screen* scr = XtScreen(dialog_);
-    XtWidgetGeometry lp;
-    XtQueryGeometry(XtParent(list_), 0, &lp);
-    int max_w = WidthOfScreen(scr) * 9 / 10 - (int)lp.width - scaled(40);
-    int max_h = HeightOfScreen(scr) * 9 / 10 - scaled(90);
-    int w = pw, h = ph;
-    if (w > max_w || h > max_h) {
-        /* Room for the scroll bar across the other way. */
-        int bar = scaled(17) + scaled(4);
-        if (w > max_w)
-            h += bar;
-        if (h > max_h)
-            w += bar;
-    }
-    if (w > max_w && max_w > scaled(200))
-        w = max_w;
-    if (h > max_h && max_h > scaled(150))
-        h = max_h;
-    n = 0;
-    XtSetArg(args[n], XmNwidth, w); n++;
-    XtSetArg(args[n], XmNheight, h); n++;
-    XtSetValues(scroll_, args, n);
+    fit(pw, ph);
     XtManageChild(scroll_);
+    /* A page that grows (a larger preview font) grows the dialog with it,
+     * as far as the screen allows. */
+    XtAddEventHandler(content_, StructureNotifyMask, False, content_resized, (XtPointer)this);
 
     /* The note and the buttons along the bottom. */
     n = 0;
@@ -220,6 +202,44 @@ void PagedDialog::finish(const char* note, int buttons, Pressed pressed, void* d
     }
     if (n)
         XtSetValues(dialog_, args, n);
+}
+
+/* The page area's window: the pages' size, at most most of the screen
+ * beside the list and above the buttons; scroll bars where they need
+ * more. */
+void PagedDialog::fit(int pw, int ph)
+{
+    Screen* scr = XtScreen(dialog_);
+    XtWidgetGeometry lp;
+    XtQueryGeometry(XtParent(list_), 0, &lp);
+    int max_w = WidthOfScreen(scr) * 9 / 10 - (int)lp.width - scaled(40);
+    int max_h = HeightOfScreen(scr) * 9 / 10 - scaled(90);
+    int w = pw, h = ph;
+    if (w > max_w || h > max_h) {
+        /* Room for the scroll bar across the other way. */
+        int bar = scaled(17) + scaled(4);
+        if (w > max_w)
+            h += bar;
+        if (h > max_h)
+            w += bar;
+    }
+    if (w > max_w && max_w > scaled(200))
+        w = max_w;
+    if (h > max_h && max_h > scaled(150))
+        h = max_h;
+    Dimension sw = 0, sh = 0;
+    XtVaGetValues(scroll_, XmNwidth, &sw, XmNheight, &sh, (char*)0);
+    if (w != (int)sw || h != (int)sh)
+        XtVaSetValues(scroll_, XmNwidth, (Dimension)w, XmNheight, (Dimension)h, (char*)0);
+}
+
+void PagedDialog::content_resized(Widget w, XtPointer closure, XEvent* ev, Boolean*)
+{
+    if (ev->type != ConfigureNotify)
+        return;
+    Dimension cw = 0, ch = 0;
+    XtVaGetValues(w, XmNwidth, &cw, XmNheight, &ch, (char*)0);
+    ((PagedDialog*)closure)->fit(cw, ch);
 }
 
 void PagedDialog::show_page(int i)

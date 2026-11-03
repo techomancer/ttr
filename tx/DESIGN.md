@@ -50,7 +50,9 @@ all build theirs with it, so they look and work alike:
   pages does not resize the dialog. Where the screen is too small for
   that (a large UI scale), the page area scrolls: a window manager would
   otherwise squeeze the dialog to the screen, and Motif rows drop what no
-  longer fits (ttrt's font chooser vanished). and adds a note (where the settings
+  longer fits (ttrt's font chooser vanished). A page that grows later (a font
+  chooser's preview in a larger font) grows the dialog with it, up to the
+  same limit; a page area of fixed size squeezed the chooser to nothing. and adds a note (where the settings
   are saved, or that ttr restarts) and OK, Apply and Cancel as the
   program asks. The program decides what each button does.
 
