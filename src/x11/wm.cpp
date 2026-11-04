@@ -854,6 +854,10 @@ bool Wm::on_client_message(XClientMessageEvent* ev)
         if (max)
             set_maximized(c, op == 1 ? true : op == 0 ? false
                                                       : !c->maximized);
+    } else {
+        /* Not for us: WM_PROTOCOLS (WM_DELETE_WINDOW) that we send to
+         * the shell's own dialogs must reach their Motif shells. */
+        return false;
     }
     return true;
 }
