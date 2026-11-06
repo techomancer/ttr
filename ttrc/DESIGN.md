@@ -630,8 +630,11 @@ IRIS 3# _
 
 ttrc follows ttrt's rule: its settings are its own. They are in
 `~/.config/ttrc/settings` ("name: value" lines, `core/settings.h`
-format), changed from Options > Configuration and kept in the same way
-(only changed values are written). Other files in that directory:
+format), changed from Options > Configuration and Appearance and kept
+in the same way (only changed values are written). Appearance can hide
+the menu bar (`menuBar`) and the function key bar (`keyBar`), as mc's
+Layout does; the panels take the rows, and F9 draws the menu bar over
+the panels' top row while a menu is open. Other files in that directory:
 `hotlist`, `history`, `menu`, `assoc`.
 
 ## 9. The name `tc`

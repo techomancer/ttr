@@ -166,7 +166,7 @@ void App::draw_key_bar()
 
 void App::draw_command_line()
 {
-    int w = screen_.cols(), y = screen_.rows() - 2;
+    int w = screen_.cols(), y = command_row();
     screen_.fill(0, y, w, 1, ' ', theme_.command);
     if (message_[0]) {
         screen_.text(0, y, message_, theme_.error, w);
@@ -231,13 +231,16 @@ void App::draw()
         screen_.set_cursor(0, 0, false);
         return;
     }
-    draw_menu_bar();
-    int full = h - 3;
+    /* Either bar can be hidden, and the panels get its row. */
+    if (config_.menu_bar)
+        draw_menu_bar();
+    int top = config_.menu_bar ? 1 : 0;
+    int full = command_row() - top;
     if (shrink_ > full - 6)
         shrink_ = full - 6;
     if (shrink_ < 0)
         shrink_ = 0;
-    panel_y_ = 1;
+    panel_y_ = top;
     panel_h_ = full - shrink_;
     panel_w_[0] = w / 2;
     panel_w_[1] = w - w / 2;
@@ -255,7 +258,8 @@ void App::draw()
         shell_.paint(screen_, from, panel_y_ + panel_h_, shrink_);
     }
     draw_command_line();
-    draw_key_bar();
+    if (config_.key_bar)
+        draw_key_bar();
 }
 
 /* ------------------------------------------------------------------ */
@@ -639,7 +643,7 @@ void App::handle_mouse(const tu::Event& ev)
     }
     if (ev.action != tu::MOUSE_PRESS || ev.button != 1)
         return;
-    if (ev.y == 0) {
+    if (ev.y == 0 && config_.menu_bar) {
         /* The menu bar: the title under the click, laid out as
          * draw_menu_bar() does. */
         static const char* const items[] = { "Left", "File", "Command", "Options", "Right", 0 };
@@ -652,7 +656,7 @@ void App::handle_mouse(const tu::Event& ev)
         open_menu(which);
         return;
     }
-    if (ev.y == screen_.rows() - 1) {
+    if (ev.y == screen_.rows() - 1 && config_.key_bar) {
         int slot = screen_.cols() / 10;
         if (slot > 0)
             function_key(ev.x / slot + 1 > 10 ? 10 : ev.x / slot + 1);

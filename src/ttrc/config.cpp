@@ -57,6 +57,7 @@ Config::Config()
     : confirm_delete(true), confirm_overwrite(true), confirm_exit(true), auto_return(true),
       show_hidden(true),
       remember_dirs(true), preserve_attrs(true), internal_viewer(true), internal_editor(true),
+      menu_bar(true), key_bar(true),
       left_mode(0), right_mode(0), left_sort(0),
       right_sort(0)
 {
@@ -79,6 +80,8 @@ void Config::load()
     theme = text(f, "theme", "");
     tier = text(f, "terminal", "");
     images = text(f, "viewerImages", "");
+    menu_bar = flag(f, "menuBar", true);
+    key_bar = flag(f, "keyBar", true);
     left_dir = text(f, "leftDirectory", "");
     right_dir = text(f, "rightDirectory", "");
     left_mode = number(f, "leftListing", 0);
@@ -105,6 +108,8 @@ bool Config::save() const
     f.set("theme", theme.c_str());
     f.set("terminal", tier.c_str());
     f.set("viewerImages", images.c_str());
+    f.set("menuBar", menu_bar ? "true" : "false");
+    f.set("keyBar", key_bar ? "true" : "false");
     if (remember_dirs) {
         f.set("leftDirectory", left_dir.c_str());
         f.set("rightDirectory", right_dir.c_str());

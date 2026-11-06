@@ -1355,7 +1355,7 @@ void App::cmd_config()
 
 void App::cmd_appearance()
 {
-    tu::Dialog d("Appearance", 78, 16);
+    tu::Dialog d("Appearance", 78, 19);
     d.add(new tu::Label("Theme:"), 4, 2, 20);
     tu::RadioGroup* th = new tu::RadioGroup();
     th->add("&Automatic");
@@ -1394,10 +1394,18 @@ void App::cmd_appearance()
             im->selected = i;
     d.add(im, 54, 3, 22, im->h);
     d.add(new tu::Label("Automatic: what the terminal says it can do."), 4, 10, 70);
+    d.add(new tu::Label("Show:"), 4, 12, 8);
+    tu::CheckBox* mb = new tu::CheckBox("M&enu bar", config_.menu_bar);
+    tu::CheckBox* kb = new tu::CheckBox("Function ke&y bar", config_.key_bar);
+    d.add(mb, 12, 12, 16);
+    d.add(kb, 30, 12, 24);
+    d.add(new tu::Label("Hidden, F9 still opens the menus and the keys still work."), 12, 13, 62);
     tu::Button* b[2] = { new tu::Button("&OK", 1, true), new tu::Button("&Cancel", 2) };
-    d.add_buttons(13, b, 2);
+    d.add_buttons(16, b, 2);
     if (modal(d, theme_.dialog) != 1)
         return;
+    config_.menu_bar = mb->on;
+    config_.key_bar = kb->on;
     config_.theme = th->selected > 0 ? names[th->selected - 1] : "";
     config_.tier = tiers[tr->selected];
     config_.images = images[im->selected];

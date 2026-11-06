@@ -704,6 +704,11 @@ IRIX), and bold and reverse on a vt100. It reads terminfo itself, with no
 curses library. Options > Appearance picks the theme (classic, midnight,
 dark, mono) and can override what the terminal is taken to be.
 
+Options > Appearance > Show also hides the menu bar and the function key
+bar (settings `menuBar` and `keyBar`, `true` or `false`), and the panels
+get their rows. The keys still work: F9 shows the menu bar over the top
+of the panels while a menu is open.
+
 ttrc keeps its files in `~/.config/ttrc/` (or `$XDG_CONFIG_HOME/ttrc/`):
 
 | File | Contents |

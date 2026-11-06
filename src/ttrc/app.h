@@ -55,6 +55,8 @@ private:
     void draw_menu_bar();
     void draw_key_bar();
     void draw_command_line();
+    /* The command line's row: the last, or above the function key bar. */
+    int command_row() { return screen_.rows() - (config_.key_bar ? 2 : 1); }
     void apply_look();
 
     /* Input */
