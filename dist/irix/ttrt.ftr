@@ -1,0 +1,9 @@
+TYPE TtrtExecutable
+    MATCH       tag == 0x54545254;
+    LEGEND      ttrt terminal
+    SUPERTYPE   Executable
+    CMD OPEN    $LEADER
+    CMD ALTOPEN launch -c $LEADER
+    ICON        {
+        include("iconlib/ttrt.fti");
+    }

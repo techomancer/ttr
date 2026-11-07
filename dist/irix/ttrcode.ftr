@@ -1,0 +1,10 @@
+TYPE TtrcodeExecutable
+    MATCH       tag == 0x54544344;
+    LEGEND      ttrcode code editor
+    SUPERTYPE   Executable
+    CMD OPEN    $LEADER
+    CMD ALTOPEN launch -c $LEADER
+    CMD DROP    $TARGET $SELECTED
+    ICON        {
+        include("iconlib/ttrcode.fti");
+    }

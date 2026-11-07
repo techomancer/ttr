@@ -45,6 +45,17 @@ IDB="$ROOT/build-irix/ttr.idb"
          "exitop(\"TERMINFO=\$rbase/usr/share/lib/terminfo tic \$rbase/usr/share/ttr/ttrt.ti\")" \
          "removeop(\"rm -f \$rbase/usr/share/lib/terminfo/t/ttrt\")"
     echo "f 0644 root sys usr/lib/X11/app-chests/ttrt.chest usr/lib/X11/app-chests/ttrt.chest ttr.sw.term"
+    # Desktop icons: a filetype rule on each program's tag, with its icon
+    # (dist/irix/*.fti, made by tools/svg2fti.py); the desktop's database
+    # is rebuilt on install and removal.
+    for p in ttr:wm ttrt:term ttrcode:code; do
+        n=`echo $p | cut -d: -f1`; s=ttr.sw.`echo $p | cut -d: -f2`
+        echo "f 0644 root sys usr/lib/filetype/local/iconlib/$n.fti" \
+             "usr/lib/filetype/local/iconlib/$n.fti $s"
+        echo "f 0644 root sys usr/lib/filetype/local/$n.ftr usr/lib/filetype/local/$n.ftr $s" \
+             "exitop(\"cd \$rbase/usr/lib/filetype && make\")" \
+             "removeop(\"cd \$rbase/usr/lib/filetype && make\")"
+    done
 } > "$IDB"
 
 sed "s/VERSION/$VERSION/g" "$ROOT/dist/irix/ttr.spec" > "$ROOT/build-irix/ttr.spec"
@@ -55,15 +66,16 @@ IN="cd /tmp/ttr-dist/root &&"
 $SH run \
 "rm -rf /tmp/ttr-dist && mkdir -p /tmp/ttr-dist/root/usr/bin /tmp/ttr-dist/out" \
 "$IN mkdir -p usr/share/ttr/fonts usr/share/ttr/schemes/ttr usr/share/ttr/schemes/irix usr/share/ttr/schemes/text" \
-"$IN mkdir -p usr/share/ttrc usr/lib/X11/app-chests" \
+"$IN mkdir -p usr/share/ttrc usr/lib/X11/app-chests usr/lib/filetype/local/iconlib" \
 "$IN cd /shared/build-irix && cp ttr ttrt ttrc ttre ttrcode /tmp/ttr-dist/root/usr/bin/" \
 "$IN strip usr/bin/ttr usr/bin/ttrt usr/bin/ttrc usr/bin/ttre usr/bin/ttrcode && ln -s ttrc usr/bin/tc" \
-"$IN /usr/sbin/tag 0x54545252 usr/bin/ttr; /usr/sbin/tag 0x54545254 usr/bin/ttrt" \
+"$IN /usr/sbin/tag 0x54545252 usr/bin/ttr; /usr/sbin/tag 0x54545254 usr/bin/ttrt; /usr/sbin/tag 0x54544344 usr/bin/ttrcode" \
 "$IN cp /shared/data/ttrc/tc.sh /shared/data/ttrc/tc.csh usr/share/ttrc/" \
 "$IN cp /shared/data/schemes/ttr/* usr/share/ttr/schemes/ttr/" \
 "$IN cp /shared/data/schemes/irix/* usr/share/ttr/schemes/irix/" \
 "$IN cp /shared/data/schemes/text/* usr/share/ttr/schemes/text/" \
 "$IN for f in \`awk '\$7 == \"ttr.sw.term\" { print \$5 }' /shared/build-irix/ttr.idb | grep fonts/\`; do cp /shared/third_party/misc-misc/\`basename \$f\` \$f; done" \
 "$IN cp /shared/data/ttrt.ti usr/share/ttr/ttrt.ti && cp /shared/dist/irix/ttrt.chest usr/lib/X11/app-chests/" \
+"$IN cp /shared/dist/irix/*.ftr usr/lib/filetype/local/ && cp /shared/dist/irix/*.fti usr/lib/filetype/local/iconlib/" \
 "cd /tmp/ttr-dist && sort -k 5,6 /shared/build-irix/ttr.idb -o ttr.idb && /usr/sbin/gendist -sbase root -idb ttr.idb -spec /shared/build-irix/ttr.spec -dist out 2>&1 | tail -5" \
 "cd /tmp/ttr-dist/out && ls -l && tar cf /shared/build-irix/ttr-$VERSION.tardist * && ls -l /shared/build-irix/ttr-$VERSION.tardist"

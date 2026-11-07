@@ -212,6 +212,14 @@ ttrc, since IRIX has no other `tc`) and `ttr.sw.code` (ttrcode and its color
 schemes). Installing it compiles ttrt's terminfo entry into
 `/usr/share/lib/terminfo` with `tic`, and removing it deletes the entry.
 
+ttr, ttrt and ttrcode get their icons in the IRIX desktop (file manager
+and icon catalog): filetype rules in `/usr/lib/filetype/local/` match each
+program's tag, and the icons are in `/usr/lib/filetype/local/iconlib/`.
+They are made from the SVG icons in `data/icons/` by `tools/svg2fti.py`
+(run it again after changing an SVG: `tools/svg2fti.py
+data/icons/ttrt.svg > dist/irix/ttrt.fti`). Minimized ttrt and ttrcode
+windows show the icon under 4Dwm as well, from the windows themselves.
+
 ## Running
 
 ### Try it in a window first

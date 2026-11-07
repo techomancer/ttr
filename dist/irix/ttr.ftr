@@ -1,0 +1,8 @@
+TYPE TtrExecutable
+    MATCH       tag == 0x54545252;
+    LEGEND      ttr window manager and desktop
+    SUPERTYPE   Executable
+    CMD OPEN    $LEADER
+    ICON        {
+        include("iconlib/ttr.fti");
+    }
