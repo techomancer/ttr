@@ -12,8 +12,12 @@
 #include "../../tw/grid_widget.h"
 #include "../../tt/pane.h"
 #include "core/settings.h"
+#include "../../tx/appicon.h"
 #include "../../tx/scale.h"
 #include "../../tx/ttr.h"
+
+/* data/icons/ttrt.svg, made into a header by the Makefile. */
+#include "icon_ttrt.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -641,6 +645,7 @@ int main(int argc, char** argv)
     a->update_size_hints();
 
     XtRealizeWidget(a->top);
+    tx::set_app_icon(a->top, k_icon_ttrt);
     XDefineCursor(dpy, XtWindow(a->pane->grid()), XCreateFontCursor(dpy, XC_xterm));
     a->pane->focus();
     /* The first resize callback may have come before realization ended. */

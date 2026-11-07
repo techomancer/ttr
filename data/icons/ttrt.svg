@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ttrt: a terminal window with lines of text and a cursor. Drawn on a
+     48 pixel grid so it stays sharp at 16, 32 and 48 pixels. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- The window and its title bar -->
+  <rect x="2" y="4" width="44" height="40" fill="#1c1c1c"/>
+  <rect x="3" y="5" width="42" height="38" fill="#c0c0c0"/>
+  <rect x="3" y="5" width="42" height="6" fill="#4a6ea8"/>
+  <rect x="4" y="6" width="5" height="4" fill="#c0c0c0"/>
+  <rect x="5" y="8" width="3" height="1" fill="#1c1c1c"/>
+  <!-- The screen -->
+  <rect x="5" y="13" width="38" height="28" fill="#808080"/>
+  <rect x="6" y="14" width="37" height="27" fill="#ffffff"/>
+  <rect x="6" y="14" width="36" height="26" fill="#0c0c0c"/>
+  <!-- Text: lines of white dots -->
+  <g fill="#e8e8e8">
+    <rect x="8" y="17" width="2" height="2"/>
+    <rect x="11" y="17" width="2" height="2"/>
+    <rect x="14" y="17" width="2" height="2"/>
+    <rect x="20" y="17" width="2" height="2"/>
+    <rect x="23" y="17" width="2" height="2"/>
+    <rect x="8" y="21" width="2" height="2"/>
+    <rect x="11" y="21" width="2" height="2"/>
+    <rect x="14" y="21" width="2" height="2"/>
+    <rect x="17" y="21" width="2" height="2"/>
+    <rect x="23" y="21" width="2" height="2"/>
+    <rect x="26" y="21" width="2" height="2"/>
+    <rect x="29" y="21" width="2" height="2"/>
+    <rect x="35" y="21" width="2" height="2"/>
+    <rect x="8" y="25" width="2" height="2"/>
+    <rect x="11" y="25" width="2" height="2"/>
+    <rect x="17" y="25" width="2" height="2"/>
+    <rect x="20" y="25" width="2" height="2"/>
+    <rect x="23" y="25" width="2" height="2"/>
+    <rect x="8" y="29" width="2" height="2"/>
+    <rect x="11" y="29" width="2" height="2"/>
+    <rect x="14" y="29" width="2" height="2"/>
+    <rect x="17" y="29" width="2" height="2"/>
+    <rect x="20" y="29" width="2" height="2"/>
+    <rect x="26" y="29" width="2" height="2"/>
+    <rect x="29" y="29" width="2" height="2"/>
+    <rect x="8" y="33" width="2" height="2"/>
+    <rect x="11" y="33" width="2" height="2"/>
+  </g>
+  <!-- The cursor -->
+  <rect x="15" y="32" width="3" height="4" fill="#e8e8e8"/>
+</svg>

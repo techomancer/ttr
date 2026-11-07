@@ -17,7 +17,7 @@ license=('BSD-3-Clause')
 # size the UI scale needs, and mkfontscale indexes font folders (fonts.dir)
 # as font packages are installed, so the X server can use them.
 depends=('openmotif' 'libxt' 'libxpm' 'libpng' 'libjpeg-turbo' 'giflib' 'libtiff'
-         'dbus' 'libx11'
+         'dbus' 'libx11' 'hicolor-icon-theme'
          'xorg-fonts-75dpi' 'xorg-fonts-100dpi' 'xorg-fonts-misc'
          'xorg-mkfontscale')
 makedepends=('git')

@@ -12,7 +12,11 @@
 #include "../../th/motif.h"
 #include "../../tt/pane.h"
 #include "core/settings.h"
+#include "../../tx/appicon.h"
 #include "../../tx/scale.h"
+
+/* data/icons/ttrcode.svg, made into a header by the Makefile. */
+#include "icon_ttrcode.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -243,6 +247,7 @@ int main(int argc, char** argv)
         app->command(ttrcode::CMD_NEW);
 
     XtRealizeWidget(top);
+    tx::set_app_icon(top, k_icon_ttrcode);
     app->realized();
     XtAppMainLoop(ctx);
     return 0;

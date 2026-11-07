@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ttr: a desktop with two overlapping windows and a taskbar. Drawn on a
+     48 pixel grid so it stays sharp at 16, 32 and 48 pixels. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- The screen -->
+  <rect x="1" y="3" width="46" height="42" fill="#1c1c1c"/>
+  <rect x="2" y="4" width="44" height="40" fill="#3d7a8c"/>
+  <!-- The window behind -->
+  <rect x="5" y="7" width="24" height="20" fill="#1c1c1c"/>
+  <rect x="6" y="8" width="22" height="18" fill="#c0c0c0"/>
+  <rect x="6" y="8" width="22" height="4" fill="#8c8c8c"/>
+  <rect x="7" y="9" width="3" height="2" fill="#c0c0c0"/>
+  <!-- The window in front, active -->
+  <rect x="16" y="13" width="27" height="21" fill="#1c1c1c"/>
+  <rect x="17" y="14" width="25" height="19" fill="#d4d4d4"/>
+  <rect x="17" y="14" width="25" height="4" fill="#4a6ea8"/>
+  <rect x="18" y="15" width="3" height="2" fill="#d4d4d4"/>
+  <rect x="19" y="21" width="14" height="1" fill="#6a6a6a"/>
+  <rect x="19" y="24" width="19" height="1" fill="#6a6a6a"/>
+  <rect x="19" y="27" width="10" height="1" fill="#6a6a6a"/>
+  <!-- The taskbar with Start and the clock -->
+  <rect x="2" y="37" width="44" height="7" fill="#c0c0c0"/>
+  <rect x="2" y="37" width="44" height="1" fill="#ffffff"/>
+  <rect x="3" y="39" width="12" height="4" fill="#808080"/>
+  <rect x="3" y="39" width="11" height="3" fill="#ffffff"/>
+  <rect x="4" y="40" width="10" height="2" fill="#d4d4d4"/>
+  <rect x="5" y="40" width="2" height="2" fill="#2f8f3f"/>
+  <rect x="8" y="40" width="5" height="1" fill="#1c1c1c"/>
+  <rect x="17" y="39" width="12" height="4" fill="#ffffff"/>
+  <rect x="17" y="39" width="11" height="3" fill="#808080"/>
+  <rect x="18" y="40" width="10" height="2" fill="#e0e0e0"/>
+  <rect x="37" y="39" width="8" height="4" fill="#ffffff"/>
+  <rect x="37" y="39" width="7" height="3" fill="#808080"/>
+  <rect x="38" y="40" width="6" height="2" fill="#c0c0c0"/>
+</svg>

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ttrt
+GenericName=Terminal
+Comment=The To The Roots terminal
+Exec=ttrt
+Icon=ttrt
+Terminal=false
+Categories=System;TerminalEmulator;

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ttrcode
+GenericName=Code Editor
+Comment=The To The Roots code editor and debugger
+Exec=ttrcode %F
+Icon=ttrcode
+Terminal=false
+Categories=Development;IDE;TextEditor;
+MimeType=text/plain;text/x-csrc;text/x-chdr;text/x-c++src;text/x-c++hdr;text/x-makefile;

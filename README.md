@@ -176,6 +176,8 @@ This installs:
 | `/usr/bin/ttr-session` | starts a ttr session (see below) |
 | `/usr/share/xsessions/ttr.desktop` | makes display managers offer "To The Roots" |
 | `/usr/share/ttr/schemes/` | the color themes (`ttr`, `irix`) and text color schemes (`text`) |
+| `/usr/share/icons/hicolor/scalable/apps/` | the icons of ttr, ttrt and ttrcode (`ttr.svg`, `ttrt.svg`, `ttrcode.svg`) |
+| `/usr/share/applications/ttrt.desktop`, `ttrcode.desktop` | menu entries for ttrt and ttrcode, in ttr's Start menu and other desktops' |
 
 You can install while ttr is running: the old program is renamed to
 `ttr.old` and keeps running, and Start > Restart ttr switches to the new

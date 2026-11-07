@@ -41,9 +41,11 @@ extern "C" long long strtoll(const char*, char**, int);
 
 namespace ttr {
 
-bool svg_render(const char* path, int size, uint32_t* argb)
+namespace {
+
+/* Renders and frees img. */
+bool render(NSVGimage* img, int size, uint32_t* argb)
 {
-    NSVGimage* img = nsvgParseFromFile(path, "px", 96.0f);
     if (!img)
         return false;
     if (img->width <= 0 || img->height <= 0 || !img->shapes) {
@@ -77,6 +79,24 @@ bool svg_render(const char* path, int size, uint32_t* argb)
     nsvgDeleteRasterizer(rast);
     nsvgDelete(img);
     return true;
+}
+
+} /* namespace */
+
+bool svg_render(const char* path, int size, uint32_t* argb)
+{
+    return render(nsvgParseFromFile(path, "px", 96.0f), size, argb);
+}
+
+bool svg_render_text(const char* text, int size, uint32_t* argb)
+{
+    /* nanosvg parses in place. */
+    size_t n = strlen(text);
+    char* copy = new char[n + 1];
+    memcpy(copy, text, n + 1);
+    bool ok = render(nsvgParse(copy, "px", 96.0f), size, argb);
+    delete [] copy;
+    return ok;
 }
 
 }

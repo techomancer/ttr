@@ -45,12 +45,15 @@ TW_LIBS = -lXext $(GL_LIBS)
 
 # make install: the program and the session launcher go to BINDIR, the
 # session file to XSESSIONDIR, where display managers look for sessions,
-# and the color themes to DATADIR/schemes. DESTDIR is prepended to all of
-# them, for packaging.
+# the color themes to DATADIR/schemes, the icons to ICONDIR (the hicolor
+# theme every desktop falls back to) and ttrt's and ttrcode's menu entries
+# to APPDIR. DESTDIR is prepended to all of them, for packaging.
 PREFIX = /usr
 BINDIR = $(PREFIX)/bin
 XSESSIONDIR = $(PREFIX)/share/xsessions
 DATADIR = $(PREFIX)/share/ttr
+ICONDIR = $(PREFIX)/share/icons/hicolor/scalable/apps
+APPDIR = $(PREFIX)/share/applications
 # ttrc's own files (the tc shell function); ttrc does not need ttr.
 TTRC_DATADIR = $(PREFIX)/share/ttrc
 # Where tic puts ttrt's compiled terminfo entry. Empty: tic's own default,
@@ -360,11 +363,12 @@ $(B)/te_test_te.o: $(B)/.dir te/test/test_te.cpp $(TE_H)
 
 # tx, Motif pieces every ttr program shares (tx/DESIGN.md): the font
 # chooser.
-TX_OBJS = $(B)/tx_fontchooser.o \
+TX_OBJS = $(B)/tx_appicon.o \
+	$(B)/tx_fontchooser.o \
 	$(B)/tx_pages.o \
 	$(B)/tx_scale.o \
 	$(B)/tx_ttr.o
-TX_H = tx/fontchooser.h tx/dialog.h tx/pages.h tx/scale.h tx/ttr.h src/core/str.h src/core/vector.h
+TX_H = tx/appicon.h tx/fontchooser.h tx/dialog.h tx/pages.h tx/scale.h tx/ttr.h src/core/str.h src/core/vector.h
 
 $(B)/libtx.a: $(TX_OBJS)
 	rm -f $@
@@ -378,6 +382,19 @@ $(B)/tx_scale.o: $(B)/.dir tx/scale.cpp $(TX_H) src/core/scale.h
 	$(COMPILE) -c tx/scale.cpp -o $@
 $(B)/tx_ttr.o: $(B)/.dir tx/ttr.cpp $(TX_H) src/core/scale.h src/core/settings.h
 	$(COMPILE) -c tx/ttr.cpp -o $@
+$(B)/tx_appicon.o: $(B)/.dir tx/appicon.cpp $(TX_H) src/x11/svg.h src/core/port.h
+	$(COMPILE) -c tx/appicon.cpp -o $@
+
+# The programs' icons (data/icons/) built in as C strings, for
+# tx::set_app_icon: $(B)/icon_<name>.h defines k_icon_<name>.
+$(B)/icon_ttrt.h: $(B)/.dir data/icons/ttrt.svg
+	{ echo 'static const char k_icon_ttrt[] ='; \
+	  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/^/"/' -e 's/$$/\\n"/' data/icons/ttrt.svg; \
+	  echo ';'; } > $@
+$(B)/icon_ttrcode.h: $(B)/.dir data/icons/ttrcode.svg
+	{ echo 'static const char k_icon_ttrcode[] ='; \
+	  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/^/"/' -e 's/$$/\\n"/' data/icons/ttrcode.svg; \
+	  echo ';'; } > $@
 
 # tx_demo shows the font chooser (needs a display).
 $(B)/tx_demo: $(B)/tx_demo.o $(B)/libtx.a $(B)/core_str.o
@@ -839,6 +856,7 @@ $(B)/tt_source.o: $(B)/.dir tt/source.cpp tt/source.h tw/tw.h $(TL_TERMINAL_H)
 # ttrt, the terminal (ttrt/DESIGN.md): one tt pane in a Motif window.
 TTRT_OBJS = $(B)/ttrt_main.o \
 	$(B)/ttrt_settingsdlg.o \
+	$(B)/x11_svg.o \
 	$(B)/core_color.o \
 	$(B)/core_scale.o \
 	$(B)/core_settings.o \
@@ -854,8 +872,8 @@ $(B)/ttrt: $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRT_OBJS) $(B)/libtt.a $(B)/libtw.a \
 		$(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(B)/libti.a $(B)/libtx.a $(TI_LIBS) $(TW_LIBS) $(LIBS)
 
-$(B)/ttrt_main.o: $(B)/.dir src/ttrt/main.cpp $(TTRT_H) $(CORE_H)
-	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrt/main.cpp -o $@
+$(B)/ttrt_main.o: $(B)/.dir src/ttrt/main.cpp $(TTRT_H) $(CORE_H) $(B)/icon_ttrt.h
+	$(COMPILE) -I$(B) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrt/main.cpp -o $@
 $(B)/ttrt_settingsdlg.o: $(B)/.dir src/ttrt/settingsdlg.cpp $(TTRT_H) \
 		src/shell/colorpicker.h $(CORE_H)
 	$(COMPILE) -c src/ttrt/settingsdlg.cpp -o $@
@@ -876,6 +894,7 @@ TTRCODE_OBJS = $(B)/ttrcode_main.o \
 	$(B)/ttrcode_findfiles.o \
 	$(B)/ttrcode_settings.o \
 	$(B)/ttrcode_valuetree.o \
+	$(B)/x11_svg.o \
 	$(B)/core_scale.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
@@ -892,8 +911,8 @@ $(B)/ttrcode: $(TTRCODE_OBJS) $(B)/libtt.a $(B)/libte.a $(B)/libtw.a $(B)/libtl.
 		$(B)/libtw.a $(B)/libtl.a $(B)/libtp.a $(B)/libth.a $(B)/libti.a $(B)/libtx.a \
 		$(B)/libtd.a $(B)/libdwarf.a $(TI_LIBS) $(TW_LIBS) $(LIBS)
 
-$(B)/ttrcode_main.o: $(B)/.dir src/ttrcode/main.cpp $(TTRCODE_H)
-	$(COMPILE) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrcode/main.cpp -o $@
+$(B)/ttrcode_main.o: $(B)/.dir src/ttrcode/main.cpp $(TTRCODE_H) $(B)/icon_ttrcode.h
+	$(COMPILE) -I$(B) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrcode/main.cpp -o $@
 $(B)/ttrcode_app.o: $(B)/.dir src/ttrcode/app.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/app.cpp -o $@
 $(B)/ttrcode_dock.o: $(B)/.dir src/ttrcode/dock.cpp $(TTRCODE_H)
@@ -1177,6 +1196,12 @@ install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode
 		$(DESTDIR)$(DATADIR)/schemes/text
 	chmod 644 $(DESTDIR)$(DATADIR)/schemes/ttr/* \
 		$(DESTDIR)$(DATADIR)/schemes/irix/* $(DESTDIR)$(DATADIR)/schemes/text/*
+	mkdir -p $(DESTDIR)$(ICONDIR) $(DESTDIR)$(APPDIR)
+	cp data/icons/ttr.svg data/icons/ttrt.svg data/icons/ttrcode.svg $(DESTDIR)$(ICONDIR)
+	chmod 644 $(DESTDIR)$(ICONDIR)/ttr.svg $(DESTDIR)$(ICONDIR)/ttrt.svg \
+		$(DESTDIR)$(ICONDIR)/ttrcode.svg
+	cp dist/applications/ttrt.desktop dist/applications/ttrcode.desktop $(DESTDIR)$(APPDIR)
+	chmod 644 $(DESTDIR)$(APPDIR)/ttrt.desktop $(DESTDIR)$(APPDIR)/ttrcode.desktop
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old \
@@ -1185,7 +1210,10 @@ uninstall:
 		$(DESTDIR)$(TERMINFO_DIR)/t/ttrt \
 		$(DESTDIR)/usr/share/terminfo/t/ttrt \
 		$(DESTDIR)/usr/share/lib/terminfo/t/ttrt \
-		$(DESTDIR)$(XSESSIONDIR)/ttr.desktop
+		$(DESTDIR)$(XSESSIONDIR)/ttr.desktop \
+		$(DESTDIR)$(ICONDIR)/ttr.svg $(DESTDIR)$(ICONDIR)/ttrt.svg \
+		$(DESTDIR)$(ICONDIR)/ttrcode.svg \
+		$(DESTDIR)$(APPDIR)/ttrt.desktop $(DESTDIR)$(APPDIR)/ttrcode.desktop
 	rm -rf $(DESTDIR)$(DATADIR) $(DESTDIR)$(TTRC_DATADIR)
 
 clean:

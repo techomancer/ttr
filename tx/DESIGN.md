@@ -84,3 +84,21 @@ The font they pick when none is set (`tt::pick_font()`) is scaled too; a
 font the user chose stays the size chosen. ttrcode saves its docks'
 sizes at 100% (`ttr::unscaled()`), so a layout keeps its proportions
 when the scale changes.
+
+## Program icons (`tx/appicon.h`)
+
+ttr, ttrt and ttrcode have SVG icons in `data/icons/`, drawn on a 48
+pixel grid with plain rectangles so they stay sharp at 16, 32 and 48
+pixels and nanosvg draws them exactly. `make install` puts them in the
+hicolor theme, where ttr's Start menu and other desktops find them by
+the name in the `.desktop` files.
+
+A window's own icon must not depend on an installation, so ttrt and
+ttrcode carry their SVG: the Makefile turns it into a C string
+(`$(B)/icon_ttrt.h`, with sed, which works the same on IRIX), and
+`tx::set_app_icon()` draws it with nanosvg (`x11/svg.cpp`) when the
+window is realized. It sets `_NET_WM_ICON` at 16, 32 and 48 pixels (ttr's
+taskbar, EWMH window managers) and a 48 pixel icon pixmap with a mask in
+`WM_HINTS`, which mwm and 4Dwm show for a minimized window. On a screen
+with a colormap (8 bit IRIX) the pixmap's few colours are allocated in
+the default colormap.

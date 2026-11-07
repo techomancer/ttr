@@ -13,6 +13,8 @@ namespace ttr {
 /* Render the SVG file at 'path' into size x size non-premultiplied ARGB
  * pixels (0xAARRGGBB), centered and scaled to fit. False on failure. */
 bool svg_render(const char* path, int size, uint32_t* argb);
+/* The same from the SVG's text. */
+bool svg_render_text(const char* text, int size, uint32_t* argb);
 
 }
 
