@@ -44,11 +44,11 @@ uint32_t mix(uint32_t fg, uint32_t bg, int quarter)
     return out;
 }
 
-long now_ms()
+int64_t now_ms()
 {
     struct timeval tv;
     gettimeofday(&tv, 0);
-    return (long)tv.tv_sec * 1000L + (long)(tv.tv_usec / 1000);
+    return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
 struct Quad {
@@ -598,7 +598,7 @@ public:
                      (float)(bg & 255) / 255.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         if (bg_) {
-            long t = now_ms();
+            int64_t t = now_ms();
             float dt = (float)(t - last_anim_) / 1000.0f;
             if (dt > 0.1f)
                 dt = 0.1f;
@@ -1384,7 +1384,7 @@ private:
     int cache_gen_;
     Background* bg_;
     char bg_name_[32];
-    long last_anim_;
+    int64_t last_anim_;
     uint32_t default_bg_;
     bool whole_;                /* this frame is drawn whole */
     Quads fills_, glyphs_, solids_;

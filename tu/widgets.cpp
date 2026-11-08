@@ -19,11 +19,11 @@ char* dup(const char* s)
     return d;
 }
 
-long now_ms()
+int64_t now_ms()
 {
     struct timeval tv;
     gettimeofday(&tv, 0);
-    return (long)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
 uint32_t lower(uint32_t c)
@@ -682,7 +682,7 @@ void Dialog::handle(const Event& ev)
             if (rx >= wd->x && rx < wd->x + wd->w && ry >= wd->y && ry < wd->y + wd->h) {
                 if (wd->focusable())
                     focus_ = i;
-                long t = now_ms();
+                int64_t t = now_ms();
                 bool dbl = wd == last_click_widget_ && t - last_click_ < 400;
                 last_click_ = t;
                 last_click_widget_ = wd;

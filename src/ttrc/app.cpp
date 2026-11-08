@@ -17,11 +17,11 @@ namespace ttrc {
 
 namespace {
 
-long now_ms()
+int64_t now_ms()
 {
     struct timeval tv;
     gettimeofday(&tv, 0);
-    return (long)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
 const char k_ctrl_o = 0x0f;
@@ -389,7 +389,7 @@ void App::run(const char* command)
  * whatever was typed at its prompt on ttrc's command line. */
 void App::back_to_panels(bool finished)
 {
-    long now = now_ms();
+    int64_t now = now_ms();
     if (shell_.alive() && shell_.idle(now)) {
         ttr::Str typed = shell_.typed();
         if (!typed.empty() && !finished) {
@@ -418,7 +418,7 @@ void App::follow_shell()
         active()->load(tf::Path(where));
 }
 
-void App::tick(long now)
+void App::tick(int64_t now)
 {
     if (!shell_.alive())
         return;
@@ -669,7 +669,7 @@ void App::handle_mouse(const tu::Event& ev)
     int i = panels_[side]->entry_at(ev.x, ev.y);
     if (i < 0)
         return;
-    long t = now_ms();
+    int64_t t = now_ms();
     bool dbl = i == last_click_entry_ && t - last_click_ < 400;
     panels_[side]->set_cursor(i);
     last_click_ = t;

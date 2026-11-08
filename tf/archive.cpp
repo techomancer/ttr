@@ -58,12 +58,12 @@ const char* g_progress_what = "";
 /* Report progress (at most every 100 ms); false: the user stopped it. */
 bool report(uint64_t done, uint64_t total)
 {
-    static long last = 0;
+    static int64_t last = 0;
     if (!g_progress)
         return true;
     struct timeval tv;
     gettimeofday(&tv, 0);
-    long now = (long)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    int64_t now = (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
     if (now - last < 100 && done < total)
         return true;
     last = now;

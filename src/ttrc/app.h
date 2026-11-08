@@ -82,7 +82,7 @@ private:
     void show_shell();
     void back_to_panels(bool finished);
     void follow_shell();
-    void tick(long now);
+    void tick(int64_t now);
     void shell_output();
     void resize();
 
@@ -142,7 +142,7 @@ private:
     char quick_text_[128];
     int panel_x_[2], panel_w_[2], panel_y_, panel_h_;
     int shrink_;                /* panel rows given to the shell's output */
-    long last_click_;
+    int64_t last_click_;
     int last_click_entry_;
     bool ctrl_x_;               /* Ctrl-X was pressed: a second key follows */
     tu::MenuBar menu_;
@@ -152,7 +152,7 @@ private:
     Mode mode_;
     Pending pending_;
     bool syncing_;
-    long sync_started_, cmd_started_;
+    int64_t sync_started_, cmd_started_;
     ttr::Str pending_cmd_;
     ttr::Str queued_cmd_;       /* asked for before the shell was ready */
     ttr::Str prompt_;           /* the shell's prompt, when last idle */

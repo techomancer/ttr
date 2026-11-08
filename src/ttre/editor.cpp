@@ -77,11 +77,11 @@ size_t utf8(uint32_t cp, char* b)
     return 4;
 }
 
-long now_ms()
+int64_t now_ms()
 {
     struct timeval tv;
     gettimeofday(&tv, 0);
-    return (long)tv.tv_sec * 1000L + (long)(tv.tv_usec / 1000);
+    return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
 bool is_rgb(tu::Color c)
@@ -882,7 +882,7 @@ void Editor::mouse(const tu::Event& ev)
     int x = ev.x - g + view_.left();
     te::Pos p = view_.pos_at(view_.top() + ev.y - 1, x < 0 ? 0 : x);
     if (ev.action == tu::MOUSE_PRESS) {
-        long t = now_ms();
+        int64_t t = now_ms();
         click_count_ = t - last_click_ < 400 ? click_count_ + 1 : 1;
         last_click_ = t;
         if (click_count_ == 2)

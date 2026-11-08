@@ -54,8 +54,8 @@ public:
     /* At its prompt with nothing running: quiet for a moment, its own
      * process group in the terminal's foreground, and (for shells without
      * job control) no children. */
-    bool idle(long now_ms);
-    long last_output() const { return last_output_; }
+    bool idle(int64_t now_ms);
+    int64_t last_output() const { return last_output_; }
     /* Where the shell is, from the kernel. */
     bool cwd(char* buf, size_t n) const;
 
@@ -86,7 +86,7 @@ private:
     bool alive_;
     bool answering_;
     bool job_control_;
-    long last_output_;
+    int64_t last_output_;
     int prompt_x_, prompt_y_;
     ShellFamily family_;
     char name_[64];

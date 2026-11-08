@@ -88,7 +88,7 @@ private:
     void draw_row(int y, int lo, int hi);
     void draw_cursor();
     void clear_margins();
-    long now_ms() const;
+    int64_t now_ms() const;
 
     Display* dpy_;
     Window win_;
@@ -107,8 +107,8 @@ private:
     bool blink_on_;
     bool blink_armed_;
     TextRendering text_;
-    long hold_since_;
-    long last_frame_;
+    int64_t hold_since_;
+    int64_t last_frame_;
     CellData* row_buf_;
     int row_cap_;
     int stat_cells_;

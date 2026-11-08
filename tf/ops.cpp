@@ -53,11 +53,11 @@ const char* base_name(const char* p)
     return s && s[1] ? s + 1 : p;
 }
 
-long now_ms()
+int64_t now_ms()
 {
     struct timeval tv;
     gettimeofday(&tv, 0);
-    return (long)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
 /* b is a or inside a. */
@@ -591,7 +591,7 @@ Job::State Job::step(int budget_ms)
 {
     if (state_ != WORKING)
         return state_;
-    long end = now_ms() + budget_ms;
+    int64_t end = now_ms() + budget_ms;
     if (counting_) {
         while (now_ms() < end)
             if (!count_step()) {

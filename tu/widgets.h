@@ -224,7 +224,7 @@ private:
     int n_, cap_;
     int focus_;
     int result_;
-    long last_click_;
+    int64_t last_click_;
     Widget* last_click_widget_;
 };
 

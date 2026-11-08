@@ -22,11 +22,11 @@ namespace ttrc {
 
 namespace {
 
-long now_ms()
+int64_t now_ms()
 {
     struct timeval tv;
     gettimeofday(&tv, 0);
-    return (long)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
 enum MenuId {
@@ -328,10 +328,10 @@ bool App::run_job(tf::Job& job, const char* title)
     d.add(count, 3, 7, w - 6);
     tu::Button* abort_b[1] = { new tu::Button("&Abort", 1, true) };
     d.add_buttons(9, abort_b, 1);
-    long last_draw = 0;
+    int64_t last_draw = 0;
     for (;;) {
         tf::Job::State st = job.step(60);
-        long now = now_ms();
+        int64_t now = now_ms();
         if (st == tf::Job::WORKING && now - last_draw < 100 && !input_.pending()) {
             /* keep working; look at the keyboard now and then */
         } else {
@@ -764,7 +764,7 @@ bool contains(tf::Fs* fs, const char* path, const char* text)
 bool find_step(void* ctx)
 {
     FindState* f = (FindState*)ctx;
-    long end = now_ms() + 40;
+    int64_t end = now_ms() + 40;
     while (f->dirs.size() > 0 && now_ms() < end) {
         ttr::Str dir = f->dirs[f->dirs.size() - 1];
         f->dirs.remove_at(f->dirs.size() - 1);

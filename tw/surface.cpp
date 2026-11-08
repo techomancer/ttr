@@ -165,20 +165,22 @@ void Surface::cell_at(int px, int py, int* col, int* row) const
     *row = r;
 }
 
-long Surface::now_ms() const
+int64_t Surface::now_ms() const
 {
     struct timeval tv;
     gettimeofday(&tv, 0);
-    return (long)tv.tv_sec * 1000L + (long)(tv.tv_usec / 1000);
+    return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
 void Surface::damage()
 {
     if (!sched_ || scheduled_)
         return;
-    long since = now_ms() - last_frame_;
+    /* 64-bit: in a 32-bit long, milliseconds since 1970 wrap, and a
+     * negative "since" once put the first frame days away (IRIX n32). */
+    int64_t since = now_ms() - last_frame_;
     int delay = frame_delay_;
-    if (since < k_min_frame_ms && k_min_frame_ms - since > delay)
+    if (since >= 0 && since < k_min_frame_ms && k_min_frame_ms - since > delay)
         delay = (int)(k_min_frame_ms - since);
     scheduled_ = true;
     sched_->schedule_frame(delay);
@@ -321,7 +323,7 @@ void Surface::frame()
     if (!src_ || !r_)
         return;
     src_->frame_begin();
-    long now = now_ms();
+    int64_t now = now_ms();
     if (src_->held()) {
         if (hold_since_ < 0)
             hold_since_ = now;

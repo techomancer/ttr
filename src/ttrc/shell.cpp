@@ -12,11 +12,11 @@ namespace ttrc {
 
 namespace {
 
-long now_ms()
+int64_t now_ms()
 {
     struct timeval tv;
     gettimeofday(&tv, 0);
-    return (long)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
 /* IRIX's tty takes at most 256 bytes of canonical input per line. */
@@ -198,7 +198,7 @@ void Shell::write_pty(const uint8_t* data, size_t n)
         write((const char*)data, n);
 }
 
-bool Shell::idle(long now)
+bool Shell::idle(int64_t now)
 {
     if (!alive_ || now - last_output_ < 100)
         return false;

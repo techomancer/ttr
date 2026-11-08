@@ -78,6 +78,10 @@ Not allowed:
 - Reusing a `for`-loop variable name after the loop in the same scope. Older
   compilers disagree about `for`-init scoping, so declare the variable before
   the loop if you need it afterwards.
+- `long` for anything that needs more than 32 bits. `long` is 32 bits on IRIX
+  n32, so milliseconds since 1970 (`tv_sec * 1000`) wrap and go negative for
+  half of every 50 days; use `int64_t` for such clocks and the variables that
+  hold them.
 - Variable-length arrays, designated initializers, `#pragma once`, and other
   compiler extensions.
 

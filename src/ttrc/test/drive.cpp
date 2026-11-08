@@ -33,18 +33,18 @@ struct Answer : public tl::Host {
 };
 Answer g_host;
 
-long now_ms()
+int64_t now_ms()
 {
     struct timeval tv;
     gettimeofday(&tv, 0);
-    return (long)tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    return (int64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
 bool pump(int ms)
 {
-    long end = now_ms() + ms;
+    int64_t end = now_ms() + ms;
     for (;;) {
-        long left = end - now_ms();
+        long left = (long)(end - now_ms());
         if (left < 0)
             left = 0;
         int r = g_pty.wait_readable((int)left);
@@ -146,7 +146,7 @@ int main(int argc, char** argv)
         } else if (strncmp(line, "expect ", 7) == 0 || strncmp(line, "absent ", 7) == 0) {
             bool want = line[0] == 'e';
             unescape(line + 7, text);
-            long end = now_ms() + (want ? 8000 : 0);
+            int64_t end = now_ms() + (want ? 8000 : 0);
             bool found = false;
             for (;;) {
                 screen_text(b);

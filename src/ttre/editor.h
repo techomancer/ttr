@@ -92,7 +92,7 @@ private:
     ttr::Str find_text_;
     bool match_case_, whole_word_, backwards_;
     tu::StrList hist_find_, hist_replace_;
-    long last_click_;
+    int64_t last_click_;
     int click_count_;
     bool dragging_;
 };

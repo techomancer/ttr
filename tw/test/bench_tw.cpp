@@ -24,11 +24,11 @@
 
 namespace {
 
-long now_us()
+int64_t now_us()
 {
     struct timeval tv;
     gettimeofday(&tv, 0);
-    return (long)tv.tv_sec * 1000000L + tv.tv_usec;
+    return (int64_t)tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
 class NoScheduler : public tw::Scheduler {
@@ -317,7 +317,7 @@ int main(int argc, char** argv)
     }
     XSync(dpy, False);
     long cells = 0;
-    long t0 = now_us();
+    int64_t t0 = now_us();
     for (int i = 0; i < frames; i++) {
         src.step();
         sp->frame();
@@ -328,7 +328,7 @@ int main(int argc, char** argv)
 #endif
         XSync(dpy, False);
     }
-    long t = now_us() - t0;
+    long t = (long)(now_us() - t0);
     (void)gl;
     printf("%s %s%s%s %dx%d: %d frames, %.2f ms a frame, %.1f fps, %ld cells a frame\n",
            sp->renderer_name(), mode_name, dynbg ? " +" : "", dynbg ? dynbg : "", cols, rows, frames,
