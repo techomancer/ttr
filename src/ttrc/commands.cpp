@@ -37,7 +37,7 @@ enum MenuId {
     M_RIGHT_UNSORTED, M_RIGHT_REVERSE, M_RIGHT_HIDDEN, M_RIGHT_REREAD,
     M_VIEW = 41, M_EDIT, M_COPY, M_MOVE, M_MKDIR, M_DELETE, M_CHMOD, M_CHOWN, M_SYMLINK,
     M_SELECT, M_UNSELECT, M_INVERT, M_QUIT,
-    M_USERMENU = 61, M_HOTLIST, M_FIND, M_COMPARE, M_SWAP, M_SHELL,
+    M_USERMENU = 61, M_HOTLIST, M_FIND, M_COMPARE, M_SWAP, M_SHELL, M_OTHER_DIR,
     M_CONFIG = 81, M_APPEARANCE, M_SAVE
 };
 
@@ -100,6 +100,7 @@ const tu::MenuItem k_command[] = {
     { "&Compare directories", "C-x d", M_COMPARE },
     { 0, 0, -1 },
     { "S&wap panels", "C-u", M_SWAP },
+    { "&Directory to other panel", "M-o", M_OTHER_DIR },
     { "&Shell", "C-o", M_SHELL },
     { 0, 0, 0 }
 };
@@ -675,6 +676,14 @@ void App::cmd_symlink()
 
 /* ------------------------------------------------------------------ */
 /* Hotlist, find, compare                                              */
+
+void App::cmd_other_dir()
+{
+    /* mc's Alt+O: the other panel shows the directory under the cursor,
+     * or this one's parent. */
+    if (!other()->load(active()->cursor_dir()))
+        message("%s", other()->error());
+}
 
 void App::cmd_hotlist()
 {
@@ -1287,6 +1296,7 @@ void App::menu_command(int id)
     case M_HOTLIST: cmd_hotlist(); break;
     case M_FIND: cmd_find(); break;
     case M_COMPARE: cmd_compare(); break;
+    case M_OTHER_DIR: cmd_other_dir(); break;
     case M_SWAP: {
         Panel* t = panels_[0];
         panels_[0] = panels_[1];

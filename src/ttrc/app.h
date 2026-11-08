@@ -103,6 +103,7 @@ private:
     void cmd_chown();
     void cmd_symlink();
     void cmd_hotlist();
+    void cmd_other_dir();
     void cmd_find();
     void cmd_compare();
     void cmd_user_menu();

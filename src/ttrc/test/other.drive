@@ -1,0 +1,21 @@
+# Alt+O: the other panel shows the directory under the cursor, or this
+# panel's parent when the cursor is on a file.
+expect note.txt
+send mkdir other/deep\r
+wait 1500
+send \t
+send cd /\r
+expect UP--DIR
+absent deep
+send \t
+send \eOH
+send \eOB
+send \eo
+expect deep
+send \eOF
+send \eo
+expect ttrc-test.
+absent deep
+send \e0
+expect Quit ttrc?
+send y

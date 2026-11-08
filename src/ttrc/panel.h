@@ -69,6 +69,9 @@ public:
     /* A file that enter() opens as an archive. */
     static bool is_archive(const Entry& e);
     bool up();
+    /* Alt+O: the directory under the cursor, or else (a file, "..")
+     * this panel's parent. */
+    tf::Path cursor_dir() const;
     void toggle_mark();
 
     SortMode sort() const { return sort_; }

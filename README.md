@@ -677,6 +677,7 @@ file to edit. A file in an archive is edited as a temporary copy. Options
 | Alt+? | find file |
 | Alt+T | full or brief listing |
 | Alt+. | show or hide files starting with a dot |
+| Alt+O | show the directory under the cursor in the other panel (on a file or `..`: this panel's parent) |
 | Ctrl+F3, F4, F5, F6 | sort by name, extension, time, size (again: reverse) |
 | Ctrl+S, Alt+S | search by typing the start of a name |
 | Alt+letter | jump to the next name starting with it |

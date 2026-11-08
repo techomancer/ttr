@@ -839,6 +839,9 @@ void App::handle(const tu::Event& ev)
         case '.':
             active()->toggle_hidden();
             return;
+        case 'o': case 'O':
+            cmd_other_dir();
+            return;
         case 's': case 'S':
             quick_ = true;
             quick_text_[0] = 0;

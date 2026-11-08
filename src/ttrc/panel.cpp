@@ -596,6 +596,14 @@ bool Panel::up()
     return load(path_.parent(), from.c_str());
 }
 
+tf::Path Panel::cursor_dir() const
+{
+    const Entry* e = current();
+    if (e && !e->up && is_dir(e))
+        return path_.child(e->name.c_str());
+    return path_.is_root() || panelized_ ? path_ : path_.parent();
+}
+
 void Panel::toggle_mark()
 {
     Entry* e = cursor_ < entries_.size() ? entries_[cursor_] : 0;
