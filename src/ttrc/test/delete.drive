@@ -1,0 +1,20 @@
+# After F8 the cursor stays where the deleted file was: on the entry
+# before it (zz2 goes, zz1 comes next above it), not back at the top.
+expect note.txt
+send echo first > zz1; echo second > zz2\r
+wait 1500
+expect zz2
+send \x13zz2
+send \r
+send \e[19~
+expect Delete "zz2"?
+send \r
+wait 600
+absent zz2
+send \e[13~
+expect first
+send \e[21~
+wait 300
+send \e0
+expect Quit ttrc?
+send y

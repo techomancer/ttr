@@ -114,6 +114,7 @@ private:
     void sort_entries();
     void fill_panelized();
     void clamp();
+    int last_survivor(const ttr::Vector<ttr::Str>& names) const;
     void draw_entry(tu::Screen& s, const Theme& t, const Entry& e, int x, int y, int w,
                     bool cursor);
     void free_entries();

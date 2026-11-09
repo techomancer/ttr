@@ -312,6 +312,11 @@ void Panel::reload()
     for (int i = 0; i < entries_.size(); i++)
         if (entries_[i]->marked)
             marks.push_back(entries_[i]->name);
+    /* And the names above the cursor: if its entry has gone (deleted,
+     * moved away), the cursor goes to the nearest one still there. */
+    ttr::Vector<ttr::Str> above;
+    for (int i = 0; i < cursor_ && i < entries_.size(); i++)
+        above.push_back(entries_[i]->name);
     int old_top = top_;
     if (panelized_) {
         fill_panelized();
@@ -319,12 +324,42 @@ void Panel::reload()
     } else if (!load(path_, at.c_str())) {
         return;
     }
+    if ((!current() || strcmp(current()->name.c_str(), at.c_str()) != 0) && above.size() > 0)
+        cursor_ = last_survivor(above);
     for (int i = 0; i < entries_.size(); i++)
         for (int k = 0; k < marks.size(); k++)
             if (strcmp(entries_[i]->name.c_str(), marks[k].c_str()) == 0)
                 entries_[i]->marked = true;
     top_ = old_top;
     clamp();
+}
+
+static int compare_name_ptrs(const void* a, const void* b)
+{
+    return strcmp(*(const char* const*)a, *(const char* const*)b);
+}
+
+/* The last entry whose name is in 'names' (0 if none): the entries keep
+ * their order across a reload, so that is the nearest survivor. */
+int Panel::last_survivor(const ttr::Vector<ttr::Str>& names) const
+{
+    int n = names.size();
+    const char** sorted = (const char**)malloc((size_t)n * sizeof(const char*));
+    if (!sorted)
+        return 0;
+    for (int i = 0; i < n; i++)
+        sorted[i] = names[i].c_str();
+    qsort(sorted, (size_t)n, sizeof(const char*), compare_name_ptrs);
+    int found = 0;
+    for (int i = entries_.size() - 1; i > 0; i--) {
+        const char* key = entries_[i]->name.c_str();
+        if (bsearch(&key, sorted, (size_t)n, sizeof(const char*), compare_name_ptrs)) {
+            found = i;
+            break;
+        }
+    }
+    free(sorted);
+    return found;
 }
 
 void Panel::panelize(const tf::Path& base, const ttr::Vector<ttr::Str>& names)

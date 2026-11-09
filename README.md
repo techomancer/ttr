@@ -694,7 +694,8 @@ Typing goes to the command line under the panels; `cd DIR` there changes
 the panel's directory. Esc then a digit works as the function key of that
 number on terminals without them. The mouse selects files (double-click
 opens), scrolls, opens menus and presses buttons. Copies, moves and
-deletes show their progress and can be stopped with Esc; when a file
+deletes show their progress and can be stopped with Esc (after a
+delete the cursor stays put, on the nearest file above the deleted ones); when a file
 exists, ttrc asks whether to overwrite it, all of them, none, or only
 older ones.
 
