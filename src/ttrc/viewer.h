@@ -117,7 +117,7 @@ private:
     size_t len_;
     bool truncated_;
     ttr::Vector<size_t> lines_;     /* start offsets */
-    char name_[512];
+    char name_[4200];               /* the full path, as mc shows it */
     bool hex_, wrap_;
     long top_line_;
     int top_sub_;               /* screen row within the top line */

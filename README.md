@@ -639,7 +639,8 @@ which ttrc removes when it quits.
 or not, or hex; F7 or `/` searches for text or, with Hex bytes chosen,
 for bytes such as `de ad be ef`; `n` finds the next; F5 or `g` goes to a
 line, or in hex to a file offset such as `0x1f40`, `1f40h` or `8000`;
-`q` quits); it also reads files inside archives.
+`q` quits); it also reads files inside archives. Its top line shows the
+file's full path, shortened from the left when it does not fit.
 
 Images (PNG, JPEG, GIF, TIFF, BMP, PNM and SGI `.rgb`) show as pictures,
 fitted to the screen: through kitty's graphics protocol in kitty,

@@ -5,6 +5,8 @@ send \r
 send \e[13~
 expect line two
 expect line 1 of 2
+expect /tmp/ttrc-test.
+expect /note.txt   line 1 of 2
 send \e[14~
 expect 6c 69 6e 65
 send \e[14~

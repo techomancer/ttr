@@ -221,8 +221,7 @@ int Viewer::load(tf::Fs* fs, const char* path)
     for (size_t i = 0; i < len_; i++)
         if (data_[i] == '\n' && i + 1 < len_)
             lines_.push_back(i + 1);
-    const char* b = strrchr(path, '/');
-    snprintf(name_, sizeof(name_), "%s", b ? b + 1 : path);
+    snprintf(name_, sizeof(name_), "%s", path);
     /* Binary (control bytes other than tabs and line ends in more than
      * one byte of twenty): start in hex. */
     size_t bad = 0, look = len_ < 4096 ? len_ : 4096;
@@ -368,7 +367,7 @@ void Viewer::draw(tu::Screen& s, const Theme& t)
         rows_ = 1;
     s.fill(0, 0, w, h, ' ', t.text);
     /* The status line. */
-    char st[700], where[80];
+    char st[4600], where[80];
     int pct = len_ ? (int)((hex_ ? (double)hex_top_ * bpr_ : (double)line_start(top_line_)) * 100 /
                             (double)len_) : 100;
     if (image_)
@@ -381,10 +380,24 @@ void Viewer::draw(tu::Screen& s, const Theme& t)
     char pcts[16] = "";
     if (!image_)
         sprintf(pcts, "%d%%   ", pct);
-    snprintf(st, sizeof(st), " %s   %s   %s%lu bytes%s%s%s", name_, where, pcts,
+    char rest[300];
+    snprintf(rest, sizeof(rest), "   %s   %s%lu bytes%s%s%s", where, pcts,
              (unsigned long)len_, image_ ? "   [image]" : hex_ ? "   [hex]" : "",
              !image_ && !hex_ && !wrap_ ? "   [unwrapped]" : "",
              truncated_ ? "   [first 64 MB]" : "");
+    /* The path gets what the rest leaves; a long one loses its start,
+     * so the file name stays in sight. */
+    const char* name = name_;
+    int room = w - 1 - (int)strlen(rest);
+    if (room < 12)
+        room = 12;
+    bool cut = (int)strlen(name) > room;
+    if (cut) {
+        name += strlen(name) - (room - 3);
+        while ((*name & 0xc0) == 0x80)  /* not inside a UTF-8 character */
+            name++;
+    }
+    snprintf(st, sizeof(st), " %s%s%s", cut ? "..." : "", name, rest);
     s.fill(0, 0, w, 1, ' ', t.text_status);
     s.text(0, 0, note_[0] ? note_ : st, t.text_status, w);
 
