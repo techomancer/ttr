@@ -815,7 +815,16 @@ void App::handle(const tu::Event& ev)
             quick_text_[0] = 0;
             return;
         case 'z': suspend(); return;
-        case 'a': cmd_.pos = 0; return;
+        case 'a': {
+            /* The panel's directory onto the command line (Home goes to
+             * the start of a line that has text). */
+            char q[4200];
+            if (shell_.quote(active_path().c_str(), q, sizeof(q) - 1)) {
+                strcat(q, " ");
+                cmd_.insert_text(q);
+            }
+            return;
+        }
         case 'e': cmd_.pos = cmd_.len; return;
         case 'k': cmd_.erase(cmd_.pos, cmd_.len); return;
         case 'w': {

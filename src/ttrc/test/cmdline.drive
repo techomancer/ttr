@@ -1,0 +1,10 @@
+# Ctrl+A puts the panel's directory on the command line; Enter runs it.
+expect note.txt
+send echo X
+send \x01
+send \r
+expect X/tmp/ttrc-test.
+wait 1500
+send \e0
+expect Quit ttrc?
+send y

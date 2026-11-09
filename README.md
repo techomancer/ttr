@@ -683,6 +683,7 @@ file to edit. A file in an archive is edited as a temporary copy. Options
 | Alt+letter | jump to the next name starting with it |
 | Ctrl+O | show the shell; again: back to the panels |
 | Alt+Enter | put the file name on the command line |
+| Ctrl+A | put the panel's directory on the command line |
 | Alt+P, Alt+N | previous and next command |
 | Ctrl+Up, Ctrl+Down | make the panels shorter or taller, to see the shell's output |
 | Ctrl+U | swap the panels |
