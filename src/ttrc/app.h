@@ -154,6 +154,7 @@ private:
     Pending pending_;
     bool syncing_;
     int64_t sync_started_, cmd_started_;
+    ttr::Str synced_path_;      /* the active panel's directory when the shell last followed it */
     ttr::Str pending_cmd_;
     ttr::Str queued_cmd_;       /* asked for before the shell was ready */
     ttr::Str prompt_;           /* the shell's prompt, when last idle */

@@ -693,7 +693,8 @@ file to edit. A file in an archive is edited as a temporary copy. Options
 | Ctrl+Z | suspend to the shell (`fg` comes back) |
 
 Typing goes to the command line under the panels; `cd DIR` there changes
-the panel's directory. Esc then a digit works as the function key of that
+the panel's directory, and the shell follows the active panel wherever it
+goes, so the prompt there shows its directory. Esc then a digit works as the function key of that
 number on terminals without them. The mouse selects files (double-click
 opens), scrolls, opens menus and presses buttons. Copies, moves and
 deletes show their progress and can be stopped with Esc (after a

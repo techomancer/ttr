@@ -441,6 +441,16 @@ void App::tick(int64_t now)
             mode_ = MODE_SHELL;     /* stay in the shell; Ctrl-O comes back */
         return;
     }
+    /* The shell follows the active panel (Enter, the hotlist, Tab, ...),
+     * so that its prompt on the command line shows where the panel is. */
+    if (mode_ == MODE_PANELS && queued_cmd_.empty() &&
+        strcmp(synced_path_.c_str(), active_path().c_str()) != 0 && shell_.idle(now)) {
+        synced_path_ = active_path().c_str();
+        if (needs_cd()) {
+            send_cd();
+            return;
+        }
+    }
     if (mode_ == MODE_PANELS && !prompt_known_ && shell_.idle(now)) {
         shell_.mark_prompt();
         prompt_ = shell_.prompt();
