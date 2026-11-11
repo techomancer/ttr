@@ -467,7 +467,7 @@ ttrt -e top                 # run a program instead of the shell
 | `-ls`, `+ls` | start the shell as a login shell, or not |
 | `-nomenu` | no menu bar |
 | `-vb` | flash the window instead of beeping |
-| `-title TEXT` | window title (programs can change it) |
+| `-title TEXT` | window title (programs can change it, in UTF-8, and restore it with the xterm title stack) |
 | `-renderer NAME` | how text is drawn: `core` (X11 server drawing, the default and fastest on an Indy), `soft` (a TrueColor framebuffer, through MIT-SHM on a local display), `gl` (OpenGL) or `auto` |
 | `-dynbg NAME` | an animated background behind the text: `night`, `sunset`, `ocean`, `aurora`, `embers` or `static` (needs OpenGL; `auto` then picks it) |
 | `-text sharp\|smooth\|auto` | text drawn with the font's own pixels, or smoothed (antialiased; needs OpenGL; `auto` then picks it), or smooth for scalable fonts of 18 pixels and more |
@@ -615,6 +615,12 @@ come back; Ctrl+O switches between the panels and the shell at any time,
 also while a program such as vi runs in it. If you `cd` in the shell, the
 panel follows; if you move the panel elsewhere, ttrc sends the shell a
 `cd` before your next command (you will see it in the shell's history).
+
+**The window title** shows the active panel's directory as mc does,
+`ttrc [user@host]:/usr/share`, in terminals that have a title: xterm and
+compatible ones (ttrt among them) and IRIX's xwsh and winterm. When ttrc
+exits, an xterm-like terminal gets back the title it had; xwsh keeps
+ttrc's until something else sets one.
 
 **Archives** open like directories: Enter on a `.tar`, `.tar.gz`,
 `.tgz`, `.tar.bz2`, `.tar.Z`, `.zip` or `.jar` file goes into it, and a

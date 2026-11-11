@@ -172,11 +172,12 @@ const AcsMap* acs_for(uint32_t cp)
 Term::Term()
     : in_fd_(-1), out_fd_(-1), have_saved_(false), started_(false), cols_(80), rows_(24),
       tier_(TIER_BASIC), colors_(0), utf8_(false), am_(false), xenl_(false), bce_(false),
-      xterm_like_(false), truecolor_(false), acs_on_(false), cx_(-1), cy_(-1),
+      xterm_like_(false), iris_ansi_(false), title_pushed_(false), truecolor_(false), acs_on_(false), cx_(-1), cy_(-1),
       pen_known_(false), cursor_shown_(true), cursor_style_(0), cursor_color_(-1), buf_(0),
       len_(0), cap_(0)
 {
     memset(acs_, 0, sizeof(acs_));
+    title_[0] = 0;
 }
 
 Term::~Term()
@@ -206,6 +207,7 @@ bool Term::open(int in_fd, int out_fd, const char* term)
                   name_starts(term, "foot") || name_starts(term, "alacritty") ||
                   name_starts(term, "wezterm") || name_starts(term, "ghostty") ||
                   ti_.str("kmous") != 0;
+    iris_ansi_ = name_starts(term, "iris-ansi");
 
     /* The alternate character set, as pairs of (vt100 letter, terminal's
      * character). */
@@ -346,6 +348,11 @@ void Term::stop()
 {
     if (!started_)
         return;
+    if (title_pushed_) {
+        out("\033[23;0t");
+        title_pushed_ = false;
+    }
+    title_[0] = 0;
     suspend_ui(true);
     if (have_saved_)
         tcsetattr(in_fd_, TCSAFLUSH, &saved_);
@@ -354,6 +361,7 @@ void Term::stop()
 
 void Term::resume_ui(bool enter_alt)
 {
+    title_[0] = 0;
     if (enter_alt)
         cap("smcup");
     cap("smkx");
@@ -405,6 +413,54 @@ void Term::suspend_ui(bool leave_alt)
     flush();
     cx_ = cy_ = -1;
     pen_known_ = false;
+}
+
+void Term::set_title(const char* utf8)
+{
+    if ((!xterm_like_ && !iris_ansi_) || !started_)
+        return;
+    /* Control characters would end the string early; xwsh takes printable
+     * ASCII only; a terminal that is not UTF-8 gets no C1 bytes. */
+    char t[sizeof(title_)];
+    size_t n = 0;
+    for (const unsigned char* p = (const unsigned char*)utf8; *p && n + 4 < sizeof(t); ) {
+        unsigned char c = *p;
+        if (c < 0x20 || c == 0x7f) {
+            p++;
+            continue;
+        }
+        if (c < 0x80 || (xterm_like_ && utf8_)) {
+            t[n++] = (char)c;
+            p++;
+            continue;
+        }
+        /* One character as '?' (bytes of a UTF-8 sequence together). */
+        p++;
+        if (c >= 0xc0)
+            while ((*p & 0xc0) == 0x80)
+                p++;
+        t[n++] = '?';
+    }
+    t[n] = 0;
+    if (!t[0] || strcmp(t, title_) == 0)
+        return;
+    strcpy(title_, t);
+    if (iris_ansi_) {
+        out("\033P1.y");
+        out(t);
+        out("\033\\\033P3.y");
+        out(t);
+        out("\033\\");
+    } else {
+        if (!title_pushed_) {
+            out("\033[22;0t");
+            title_pushed_ = true;
+        }
+        out("\033]0;");
+        out(t);
+        out("\007");
+    }
+    flush();
 }
 
 void Term::write_raw(const char* data, size_t n)

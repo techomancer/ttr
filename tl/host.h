@@ -26,6 +26,8 @@ public:
     /* Bytes for the application: replies to queries, encoded keys. */
     virtual void write_pty(const uint8_t* /*data*/, size_t /*n*/) {}
     virtual void bell() {}
+    /* OSC 0/1/2, or a pop of the title stack (XTWINOPS 23). A null title
+     * means the one the window had before the application set any. */
     virtual void title_changed(TitleKind /*kind*/, const char* /*utf8*/) {}
     /* The application asks for a new size in cells (DECCOLM, XTWINOPS 8).
      * Return true if the host will resize; it then calls

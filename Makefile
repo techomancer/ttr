@@ -861,6 +861,7 @@ TTRT_OBJS = $(B)/ttrt_main.o \
 	$(B)/core_scale.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o \
+	$(B)/core_text.o \
 	$(B)/core_theme.o \
 	$(B)/shell_colorpicker.o
 TTRT_H = src/ttrt/settings.h src/ttrt/settingsdlg.h $(TT_H) $(TX_H)

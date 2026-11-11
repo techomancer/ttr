@@ -12,6 +12,7 @@
 #include "../../tw/grid_widget.h"
 #include "../../tt/pane.h"
 #include "core/settings.h"
+#include "core/text.h"
 #include "../../tx/appicon.h"
 #include "../../tx/scale.h"
 #include "../../tx/ttr.h"
@@ -135,7 +136,7 @@ public:
     Resources res;
     char** cmd;                 /* -e command, or null for the shell */
 
-    App() : ctx(0), top(0), main_w(0), bar(0), pane(0), cmd(0), settings(0), popup(0),
+    App() : ctx(0), top(0), main_w(0), bar(0), pane(0), cmd(0), names_saved(false), settings(0), popup(0),
             base_w(0), base_h(0)
     {
     }
@@ -143,6 +144,10 @@ public:
     /* tt::PaneHost */
     void pane_exited(tt::TermPane*, int code) { exit(code); }
     void pane_title(tt::TermPane*, tl::TitleKind kind, const char* utf8);
+    /* The title and icon name before the first OSC: a pop of the title
+     * stack past every OSC puts them back. */
+    ttr::Str own_title, own_icon;
+    bool names_saved;
     void pane_context_menu(tt::TermPane*, XEvent* ev) { post_popup(ev); }
 
     /* Settings: the window's values, the dialog, applying changes. */
@@ -227,12 +232,51 @@ tt::BellMode bell_mode(const char* s)
          : strcmp(s, "visual") == 0 ? tt::BELL_VISUAL : tt::BELL_AUDIBLE;
 }
 
+/* Titles from OSC 0/1/2 arrive as UTF-8. Motif runs in the C locale here
+ * and would store those bytes as Latin-1, so it gets the Latin-1 form (for
+ * WM_NAME, which window managers of every age read), and the UTF-8 bytes
+ * go into _NET_WM_NAME / _NET_WM_ICON_NAME afterwards: after every Motif
+ * call, since Open Motif 2.3 rewrites both properties on either change.
+ * A null title (a pop of the title stack past every OSC) gives the window
+ * its own name back, with the UTF-8 copy dropped (Motif 2.1 on IRIX would
+ * never replace it). */
 void App::pane_title(tt::TermPane*, tl::TitleKind kind, const char* utf8)
 {
-    if (kind & tl::TITLE_WINDOW)
-        XtVaSetValues(top, XmNtitle, utf8, (char*)0);
-    if (kind & tl::TITLE_ICON)
-        XtVaSetValues(top, XmNiconName, utf8, (char*)0);
+    if (!names_saved && XtIsRealized(top)) {
+        /* What the window manager was given (XmNtitle reads back empty). */
+        char* t = 0;
+        char* i = 0;
+        XFetchName(XtDisplay(top), XtWindow(top), &t);
+        XGetIconName(XtDisplay(top), XtWindow(top), &i);
+        own_title = t && *t ? t : XtName(top);
+        own_icon = i && *i ? i : own_title.c_str();
+        if (t)
+            XFree(t);
+        if (i)
+            XFree(i);
+        names_saved = true;
+    }
+    static const char* const resources[2] = { XmNtitle, XmNiconName };
+    static const char* const atoms[2] = { "_NET_WM_NAME", "_NET_WM_ICON_NAME" };
+    const ttr::Str* own[2] = { &own_title, &own_icon };
+    int kinds[2] = { tl::TITLE_WINDOW, tl::TITLE_ICON };
+    bool realized = XtIsRealized(top);
+    Display* dpy = XtDisplay(top);
+    ttr::Str latin1 = utf8 ? ttr::utf8_to_latin1(utf8, (int)strlen(utf8)) : ttr::Str();
+    for (int k = 0; k < 2; k++) {
+        if (!(kind & kinds[k]))
+            continue;
+        if (!utf8 && realized)
+            XDeleteProperty(dpy, XtWindow(top), XInternAtom(dpy, atoms[k], False));
+        XtVaSetValues(top, resources[k], utf8 ? latin1.c_str() : own[k]->c_str(), (char*)0);
+    }
+    if (!utf8 || !realized)
+        return;
+    for (int k = 0; k < 2; k++)
+        if (kind & kinds[k])
+            XChangeProperty(dpy, XtWindow(top), XInternAtom(dpy, atoms[k], False),
+                            XInternAtom(dpy, "UTF8_STRING", False), 8, PropModeReplace,
+                            (const unsigned char*)utf8, (int)strlen(utf8));
 }
 
 /* ---- menus --------------------------------------------------------------------- */

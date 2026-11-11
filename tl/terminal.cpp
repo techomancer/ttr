@@ -37,7 +37,7 @@ static void cursor_reset(Cursor& c)
 
 Terminal::Terminal()
     : host_(&null_host_), alt_(false), cols_(0), rows_(0), scrollback_(0),
-      cursor_shape_(CURSOR_BLOCK), top_(0), bot_(0), tabs_(0),
+      cursor_shape_(CURSOR_BLOCK), top_(0), bot_(0), tabs_(0), title_set_(false), icon_set_(false), title_depth_(0),
       ambiguous_wide_(false), reflow_(true), backspace_del_(true), mouse_buttons_(0),
       mouse_last_col_(-1), mouse_last_row_(-1), sel_anchor_(0), sel_point_(0), sel_alt_(false),
       sel_mode_(SELECT_CHAR), sel_shown_(false), sel_shown_r0_(0), sel_shown_r1_(0),
@@ -137,6 +137,9 @@ void Terminal::reset()
     kloading_ = false;
     kdata_n_ = 0;
     title_.clear();
+    icon_title_.clear();
+    title_set_ = icon_set_ = false;
+    title_depth_ = 0;
     select_clear();
     mouse_buttons_ = 0;
     follow_ = true;
@@ -1593,7 +1596,66 @@ void Terminal::window_ops(const Params& p)
     case 14: sprintf(b, "\x1b[4;%d;%dt", rows_ * ch, cols_ * cw); reply(b); break;
     case 16: sprintf(b, "\x1b[6;%d;%dt", ch, cw); reply(b); break;
     case 18: sprintf(b, "\x1b[8;%d;%dt", rows_, cols_); reply(b); break;
+    case 22: push_title(p.top(1, 0)); break;
+    case 23: pop_title(p.top(1, 0)); break;
     default: break;
+    }
+}
+
+/* XTWINOPS 22 and 23: save and restore the window title (2), the icon
+ * title (1) or both (0). A full stack drops its oldest entry. */
+static int title_kinds(int which)
+{
+    return which == 1 ? TITLE_ICON : which == 2 ? TITLE_WINDOW : which == 0 ? TITLE_BOTH : 0;
+}
+
+void Terminal::push_title(int which)
+{
+    int kinds = title_kinds(which);
+    if (!kinds)
+        return;
+    if (title_depth_ == TITLE_STACK) {
+        for (int i = 1; i < TITLE_STACK; i++) {
+            SavedTitle& d = title_stack_[i - 1];
+            const SavedTitle& s = title_stack_[i];
+            d.title.clear();
+            d.title.append(s.title.c_str());
+            d.icon.clear();
+            d.icon.append(s.icon.c_str());
+            d.kinds = s.kinds;
+            d.title_set = s.title_set;
+            d.icon_set = s.icon_set;
+        }
+        title_depth_--;
+    }
+    SavedTitle& e = title_stack_[title_depth_++];
+    e.title.clear();
+    e.title.append(title_.c_str());
+    e.icon.clear();
+    e.icon.append(icon_title_.c_str());
+    e.kinds = kinds;
+    e.title_set = title_set_;
+    e.icon_set = icon_set_;
+}
+
+void Terminal::pop_title(int which)
+{
+    int kinds = title_kinds(which);
+    if (!kinds || title_depth_ == 0)
+        return;
+    SavedTitle& e = title_stack_[--title_depth_];
+    kinds &= e.kinds;
+    if (kinds & TITLE_WINDOW) {
+        title_.clear();
+        title_.append(e.title.c_str());
+        title_set_ = e.title_set;
+        host_->title_changed(TITLE_WINDOW, title_set_ ? title_.c_str() : 0);
+    }
+    if (kinds & TITLE_ICON) {
+        icon_title_.clear();
+        icon_title_.append(e.icon.c_str());
+        icon_set_ = e.icon_set;
+        host_->title_changed(TITLE_ICON, icon_set_ ? icon_title_.c_str() : 0);
     }
 }
 
@@ -1757,6 +1819,12 @@ void Terminal::osc_dispatch(const uint8_t* s, size_t n, bool truncated)
         if (code != 1) {
             title_.clear();
             title_.append(t.c_str());
+            title_set_ = true;
+        }
+        if (code != 2) {
+            icon_title_.clear();
+            icon_title_.append(t.c_str());
+            icon_set_ = true;
         }
         host_->title_changed(code == 0 ? TITLE_BOTH : code == 1 ? TITLE_ICON : TITLE_WINDOW,
                              t.c_str());

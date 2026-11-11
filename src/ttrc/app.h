@@ -52,6 +52,7 @@ private:
 
     /* Drawing */
     void draw();
+    void update_title();
     void draw_menu_bar();
     void draw_key_bar();
     void draw_command_line();
@@ -156,6 +157,7 @@ private:
     Pending pending_;
     bool syncing_;
     int64_t sync_started_, cmd_started_;
+    ttr::Str who_;              /* user@host for the window title */
     ttr::Str synced_path_;      /* the active panel's directory when the shell last followed it */
     ttr::Str pending_cmd_;
     ttr::Str queued_cmd_;       /* asked for before the shell was ready */

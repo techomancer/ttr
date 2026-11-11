@@ -16,7 +16,10 @@ public:
     TestHost() : bells(0) {}
     virtual void write_pty(const uint8_t* d, size_t n) { out.append(d, n); }
     virtual void bell() { bells++; }
-    virtual void title_changed(TitleKind, const char* t) { title.clear(); title.append(t); }
+    virtual void title_changed(TitleKind k, const char* t)
+    {
+        if (k & TITLE_WINDOW) { title.clear(); title.append(t ? t : "(null)"); }
+    }
 };
 
 struct T {
@@ -374,6 +377,15 @@ void reports_and_modes()
     t.feed("\x1b]2;hello\x07");
     TL_CHECK_STR(t.host.title.c_str(), "hello");
     TL_CHECK_STR(t.term.title(), "hello");
+    t.feed("\x1b[22;0t\x1b]0;other\x07");
+    TL_CHECK_STR(t.term.title(), "other");
+    t.feed("\x1b[23;0t");
+    TL_CHECK_STR(t.term.title(), "hello");
+    TL_CHECK_STR(t.host.title.c_str(), "hello");
+    t.feed("\x1b[23;0t");                  /* empty stack: nothing */
+    TL_CHECK_STR(t.host.title.c_str(), "hello");
+    t.feed("\x1b" "c\x1b[22;2t\x1b]2;ttrc\x07\x1b[23;2t");
+    TL_CHECK_STR(t.host.title.c_str(), "(null)");  /* the window's own */
     t.feed("\x07");
     TL_CHECK(t.host.bells == 1);
     t.feed("\x1b" "c");

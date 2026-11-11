@@ -4,6 +4,7 @@
 #include "../../tf/vfs.h"
 
 #include <errno.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -975,6 +976,28 @@ bool App::wait_input(int timeout_ms, bool* timed_out)
     return true;
 }
 
+/* The terminal's window title, as mc sets it: "ttrc [user@host]:dir". */
+void App::update_title()
+{
+    if (who_.empty()) {
+        struct passwd* pw = getpwuid(getuid());
+        const char* user = pw ? pw->pw_name : getenv("USER");
+        char host[256];
+        if (gethostname(host, sizeof(host) - 1) != 0)
+            host[0] = 0;
+        host[sizeof(host) - 1] = 0;
+        char* dot = strchr(host, '.');
+        if (dot)
+            *dot = 0;
+        char w[400];
+        snprintf(w, sizeof(w), "%.120s@%.200s", user ? user : "?", host);
+        who_ = w;
+    }
+    char t[4400];
+    snprintf(t, sizeof(t), "ttrc [%s]:%s", who_.c_str(), active_path().c_str());
+    term_.set_title(t);
+}
+
 int App::run()
 {
     if (!term_.start())
@@ -991,6 +1014,7 @@ int App::run()
         if (mode_ == MODE_PANELS) {
             draw();
             screen_.flush();
+            update_title();
         }
         bool polling = syncing_ || mode_ == MODE_COMMAND || (mode_ == MODE_PANELS && !prompt_known_);
         int timeout = input_.pending() ? input_.timeout_ms() : polling ? 50 : -1;

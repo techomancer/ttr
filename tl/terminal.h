@@ -287,6 +287,20 @@ private:
     int top_, bot_;                       /* scroll region, inclusive */
     bool* tabs_;
     Buffer title_;
+    Buffer icon_title_;
+    bool title_set_, icon_set_;         /* set by OSC since the start */
+
+    /* The title stack (XTWINOPS 22/23), as deep as xterm's. */
+    enum { TITLE_STACK = 10 };
+    struct SavedTitle {
+        Buffer title, icon;
+        int kinds;                      /* TitleKind bits pushed */
+        bool title_set, icon_set;
+    };
+    SavedTitle title_stack_[TITLE_STACK];
+    int title_depth_;
+    void push_title(int which);
+    void pop_title(int which);
     bool ambiguous_wide_;
     bool reflow_;
     bool backspace_del_;

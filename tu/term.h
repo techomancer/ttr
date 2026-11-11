@@ -78,6 +78,12 @@ public:
     bool has_acs() const { return acs_[(unsigned char)'q'] != 0; }
     const Terminfo& info() const { return ti_; }
     bool xterm_like() const { return xterm_like_; }
+    /* The window title of a terminal that has one (xterm-likes by OSC 0,
+     * xwsh and winterm by DCS 1.y and 3.y), UTF-8. Sent when it differs
+     * from the last one sent, and again after resume_ui(), since a
+     * program may have set its own meanwhile. An xterm-like gets the title
+     * it had back at stop(), from its title stack; xwsh has no stack. */
+    void set_title(const char* utf8);
     /* Writing the bottom right cell would scroll the screen. */
     bool last_cell_scrolls() const { return am_ && !xenl_; }
 
@@ -126,6 +132,9 @@ private:
     bool utf8_;
     bool am_, xenl_, bce_;
     bool xterm_like_;
+    bool iris_ansi_;
+    bool title_pushed_;         /* XTWINOPS 22 sent, 23 due at stop() */
+    char title_[512];           /* last sent; empty: send the next */
     bool truecolor_;
     char acs_[128];             /* vt100 ACS letter -> terminal's character */
     bool acs_on_;
