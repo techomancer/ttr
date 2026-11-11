@@ -121,7 +121,15 @@ int Editor::load()
     syntax_.set_language(te::language_for(path_.c_str(), doc_.line(0), doc_.length(0)));
     if (start_line_ > 0)
         view_.goto_line(start_line_);
+    if (!err && !find_text_.empty())
+        find(true);
     return err;
+}
+
+void Editor::set_search(const char* text)
+{
+    find_text_ = text;
+    match_case_ = true;
 }
 
 /* ---- the look ---- */

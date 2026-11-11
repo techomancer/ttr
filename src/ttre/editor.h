@@ -25,6 +25,9 @@ public:
     ~Editor();
     /* Read the file (a missing one is a new, empty file). 0 or errno. */
     int load();
+    /* Before load(): find TEXT (matching case) once the file is read,
+     * as ttrc's F4 does for a file that Find file found by its text. */
+    void set_search(const char* text);
     int run();
 
     /* Menu ids, public for the menu tables. */

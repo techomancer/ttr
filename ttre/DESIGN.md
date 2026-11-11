@@ -8,12 +8,14 @@ of a project, find in files and the like belong to ttrc, which plays the
 workspace manager here, and to ttrcode.
 
 ```
-ttre [+LINE] [file]
+ttre [+LINE] [-s TEXT] [file]
 ```
 
 ttre is a program of its own, in the Unix way:
 - ttrc's F4 runs it in ttrc's shell, on the file under the cursor. A
-  file inside an archive is edited as a temporary copy.
+  file inside an archive is edited as a temporary copy. For a file that
+  Find file found by its text, `-s TEXT` finds that text (matching case,
+  as Find file did) and leaves it as the search for Shift+F7.
 - `$EDITOR` and `$VISUAL` can name it, so git, crontab and mail
   programs use it.
 - ttrc can run another editor instead: Options > Configuration, F4 off

@@ -362,9 +362,11 @@ int Panel::last_survivor(const ttr::Vector<ttr::Str>& names) const
     return found;
 }
 
-void Panel::panelize(const tf::Path& base, const ttr::Vector<ttr::Str>& names)
+void Panel::panelize(const tf::Path& base, const ttr::Vector<ttr::Str>& names,
+                     const char* search)
 {
     path_ = base;
+    search_ = search ? search : "";
     found_.clear();
     for (int i = 0; i < names.size(); i++)
         found_.push_back(names[i]);

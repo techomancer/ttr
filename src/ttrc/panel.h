@@ -50,7 +50,11 @@ public:
     /* Files found under 'base', named relative to it ("src/a.c"), shown
      * as if they were one directory (mc's panelize). ".." or load()
      * leaves it; reload() looks at the same files again. */
-    void panelize(const tf::Path& base, const ttr::Vector<ttr::Str>& names);
+    void panelize(const tf::Path& base, const ttr::Vector<ttr::Str>& names,
+                  const char* search = "");
+    /* The text Find file looked for, while the panel shows what it found
+     * (F3 and F4 start with it), else "". */
+    const char* search_text() const { return panelized_ ? search_.c_str() : ""; }
     bool panelized() const { return panelized_; }
     const tf::Path& path() const { return path_; }
     const char* error() const { return error_; }
@@ -129,6 +133,7 @@ private:
     bool hidden_;
     bool panelized_;
     ttr::Vector<ttr::Str> found_;   /* what panelize() shows */
+    ttr::Str search_;
     char error_[300];
     /* Geometry of the last draw. */
     int lx_, ly_, lw_, lh_;     /* the listing area */

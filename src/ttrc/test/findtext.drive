@@ -1,0 +1,40 @@
+# Find file with text: F3 and F4 open the file at the first match, from
+# the result list and from the panelized panel.
+expect note.txt
+send awk 'BEGIN { for (i = 1; i <= 60; i++) printf "filler %02d\\n", i; print "needle here" }' > hay.txt\r
+wait 1500
+expect hay.txt
+send \e?
+expect Start at
+send \x7fhay.txt\tneedle\r
+expect Done: 1 found.
+send \e[13~
+expect needle here
+absent filler 01
+send \e
+expect Done: 1 found.
+send \e[14~
+expect line 61 of
+absent filler 01
+send \e[21~
+expect PullDn
+send \e?
+expect Start at
+send \x7fhay.txt\tneedle\r
+expect Done: 1 found.
+send p
+expect Found in
+send \eOB
+send \e[13~
+expect needle here
+absent filler 01
+send \e
+expect Found in
+send \e[14~
+expect line 61 of
+absent filler 01
+send \e[21~
+expect Found in
+send \e0
+expect Quit ttrc?
+send y

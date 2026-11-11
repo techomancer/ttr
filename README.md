@@ -710,7 +710,10 @@ list, and F4 goes to the file and edits it. Panelize puts the whole list
 into the active panel, as if the files were one directory (the title
 says "Found in ..."): view, edit, copy, move and delete work on them as
 usual, Ctrl+R looks at them again, and `..` goes back to the directory
-the search started in.
+the search started in. When the search was for text, F3 and F4 on a
+found file, from the list or the panel, open it at the first match, and
+searching again (`n` in the viewer, Shift+F7 in ttre) goes on with that
+text.
 
 ttrc uses what the terminal offers: true colour and Unicode lines in ttrt
 and modern Linux terminals, 256 or 8 colours elsewhere, ASCII frames
@@ -766,6 +769,7 @@ and you can make it your `$EDITOR`:
 ```sh
 ttre notes.txt
 ttre +120 src/main.c        # at line 120
+ttre -s needle src/main.c   # at the first "needle" (case matters)
 export EDITOR=ttre VISUAL=ttre
 ```
 

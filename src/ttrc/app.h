@@ -107,17 +107,19 @@ private:
     void cmd_find();
     void cmd_compare();
     void cmd_user_menu();
-    void cmd_view();
+    /* F3, F4: 'search' (Find file's text) is found once open; 0: the
+     * panel's search_text(). */
+    void cmd_view(const char* search = 0);
     /* ttrc's viewer on a file, until it closes. */
-    void view_internal(const tf::Path& p);
-    void cmd_edit();
+    void view_internal(const tf::Path& p, const char* search = "");
+    void cmd_edit(const char* search = 0);
     void cmd_config();
     void cmd_appearance();
     void save_setup();
     bool open_file(const Entry& e);
     void run_tool(FullScreen* tool);
     /* The command F4 runs for a file: ttre or $EDITOR. */
-    ttr::Str editor_command(const char* file);
+    ttr::Str editor_command(const char* file, const char* search = "");
     void cmd_new_file();
     /* Opening a big archive: a progress dialog, Esc stops it. */
     static bool archive_progress_cb(void* ctx, const char* what, uint64_t done, uint64_t total);

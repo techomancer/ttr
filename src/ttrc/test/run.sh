@@ -15,7 +15,7 @@ for sh in /bin/sh /bin/bash /bin/zsh /bin/ksh /usr/bin/ksh /bin/csh /usr/bin/tcs
     [ -x $sh ] || continue
     for d in $T/*.drive; do
         name=`basename $d .drive`
-        rm -rf $W/other $W/newdir $W/.config $W/made.txt
+        rm -rf $W/other $W/newdir $W/.config $W/made.txt $W/hay.txt $W/zz1 $W/zz2
         printf 'line one\nline two\n' > $W/note.txt
         mkdir -p $W/other
         cp $T/../../../tf/test/data/t.tar.gz $W/

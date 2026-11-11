@@ -894,7 +894,7 @@ void App::cmd_find()
             tf::Path p = base.child(f.list->items[f.list->current]);
             tf::Stat st;
             if (f.fs->stat(p.c_str(), &st, true) == 0 && st.type != tf::FT_DIR)
-                view_internal(p);
+                view_internal(p, f.content);
             continue;
         }
         break;
@@ -903,7 +903,7 @@ void App::cmd_find()
         ttr::Vector<ttr::Str> names;
         for (int i = 0; i < f.list->items.size(); i++)
             names.push_back(ttr::Str(f.list->items[i]));
-        active()->panelize(base, names);
+        active()->panelize(base, names, f.content);
         return;
     }
     if ((r == FIND_GOTO || r == FIND_VIEW || r == FIND_EDIT) && f.list->items.size() > 0) {
@@ -914,9 +914,9 @@ void App::cmd_find()
         }
         active()->select_name(p.name());
         if (r == FIND_VIEW)
-            cmd_view();
+            cmd_view(f.content);
         else if (r == FIND_EDIT)
-            cmd_edit();
+            cmd_edit(f.content);
     }
 }
 
@@ -1166,13 +1166,14 @@ ttr::Str App::local_file(const Entry& e)
 
 /* F3: ttrc's viewer, which reads through tf (archives too), or $PAGER on
  * a local copy. */
-void App::cmd_view()
+void App::cmd_view(const char* search)
 {
     const Entry* e = active()->current();
     if (!e || e->up || e->st.type == tf::FT_DIR)
         return;
     if (config_.internal_viewer) {
-        view_internal(active_path().child(e->name.c_str()));
+        view_internal(active_path().child(e->name.c_str()),
+                      search ? search : active()->search_text());
         return;
     }
     ttr::Str f = local_file(*e);
@@ -1184,7 +1185,7 @@ void App::cmd_view()
     run(c);
 }
 
-void App::view_internal(const tf::Path& p)
+void App::view_internal(const tf::Path& p, const char* search)
 {
     Viewer v;
     v.set_images(ti::protocol_from_setting(config_.images.c_str()), &term_);
@@ -1195,12 +1196,13 @@ void App::view_internal(const tf::Path& p)
         show_error(m);
         return;
     }
+    v.start_search(search);
     run_tool(&v);
 }
 
 /* ttre, or $VISUAL / $EDITOR (vi) when the configuration says so, on the
  * file in the shell. A file in an archive is edited as a temporary copy. */
-ttr::Str App::editor_command(const char* file)
+ttr::Str App::editor_command(const char* file, const char* search)
 {
     ttr::Str prog("");
     if (config_.internal_editor) {
@@ -1211,12 +1213,16 @@ ttr::Str App::editor_command(const char* file)
             ed = getenv("EDITOR");
         prog = ed && *ed ? ed : "vi";
     }
-    char c[4400];
-    snprintf(c, sizeof(c), "%s %s", prog.c_str(), quoted(file).c_str());
+    /* ttre finds Find file's text; other editors open at the top. */
+    char find[1100] = "";
+    if (config_.internal_editor && search && *search)
+        snprintf(find, sizeof(find), " -s %s", quoted(search).c_str());
+    char c[5400];
+    snprintf(c, sizeof(c), "%s%s %s", prog.c_str(), find, quoted(file).c_str());
     return ttr::Str(c);
 }
 
-void App::cmd_edit()
+void App::cmd_edit(const char* search)
 {
     const Entry* e = active()->current();
     if (!e || e->up || e->st.type == tf::FT_DIR)
@@ -1226,7 +1232,7 @@ void App::cmd_edit()
         return;
     if (!tf::is_local_path(active_path().c_str()))
         message("%s", "Changes to a file in an archive stay in the temporary copy.");
-    run(editor_command(f.c_str()).c_str());
+    run(editor_command(f.c_str(), search ? search : active()->search_text()).c_str());
 }
 
 /* ------------------------------------------------------------------ */

@@ -89,6 +89,9 @@ public:
     ToolRequest handle(const tu::Event& ev);
     void search_defaults(SearchQuery* q) const;
     void search(const SearchQuery& q);
+    /* After load(): find TEXT from the top, matching case (Find file's
+     * text, for a file it found); 'n' goes on from there. */
+    void start_search(const char* text);
     /* Repeat the last search ('n', Shift+F7). */
     void search_again();
     const char* goto_title() const;

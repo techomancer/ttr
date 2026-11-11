@@ -777,6 +777,16 @@ void Viewer::search(const SearchQuery& q)
     search_again();
 }
 
+void Viewer::start_search(const char* text)
+{
+    if (!text || !*text)
+        return;
+    SearchQuery q;
+    q.text = text;
+    q.match_case = true;
+    search(q);
+}
+
 void Viewer::search_again()
 {
     size_t tl = pat_len_;
