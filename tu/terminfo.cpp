@@ -66,6 +66,7 @@ struct Builtin {
 static const Builtin k_builtins[] = {
     { "xterm-256color", k_builtin_xterm },
     { "xterm", k_builtin_xterm },
+    { "xterm-ttrt", k_builtin_xterm },
     { "ttrt", k_builtin_xterm },
     { "vt100", k_builtin_vt100 },
     { "vt102", k_builtin_vt100 },

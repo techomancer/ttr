@@ -667,7 +667,8 @@ and settings code as the rest of ttr:
 - The pty: `tl/pty.cpp` wraps `openpty()`/`forkpty()` on Linux and
   `_getpty()` plus the `/dev/tty*` slave convention on IRIX, with
   `TIOCSWINSZ` on resize and `utmp` left alone. The child's environment
-  gets `TERM=ttrt` if the terminfo entry is installed, else
+  gets `TERM=xterm-ttrt` if the terminfo entry is installed (`ttrt`
+  for an entry installed before the rename), else
   `TERM=xterm-256color`; `COLORTERM=truecolor` on 24-bit visuals only.
 - Selection: on press, release and motion the host converts pixels to
   cells, creates two anchors, and the `View` reports selected ranges per

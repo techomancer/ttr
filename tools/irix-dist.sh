@@ -43,7 +43,7 @@ IDB="$ROOT/build-irix/ttr.idb"
     # terminfo is compiled on the target, into the system directory.
     echo "f 0644 root sys usr/share/ttr/ttrt.ti usr/share/ttr/ttrt.ti ttr.sw.term" \
          "exitop(\"TERMINFO=\$rbase/usr/share/lib/terminfo tic \$rbase/usr/share/ttr/ttrt.ti\")" \
-         "removeop(\"rm -f \$rbase/usr/share/lib/terminfo/t/ttrt\")"
+         "removeop(\"rm -f \$rbase/usr/share/lib/terminfo/t/ttrt \$rbase/usr/share/lib/terminfo/x/xterm-ttrt\")"
     echo "f 0644 root sys usr/lib/X11/app-chests/ttrt.chest usr/lib/X11/app-chests/ttrt.chest ttr.sw.term"
     # Desktop icons: a filetype rule on each program's tag, with its icon
     # (dist/irix/*.fti, made by tools/svg2fti.py); the desktop's database

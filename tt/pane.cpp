@@ -1044,7 +1044,8 @@ const char* pick_term(const char** terminfo_dir)
     static char dir[512];
     dir[0] = 0;
     *terminfo_dir = dir;
-    static const char* const names[] = { "ttrt", "xterm-256color", "xterm", 0 };
+    /* "ttrt" alone: an entry installed before it was renamed. */
+    static const char* const names[] = { "xterm-ttrt", "ttrt", "xterm-256color", "xterm", 0 };
     char home_ti[512];
     const char* home = getenv("HOME");
     home_ti[0] = 0;

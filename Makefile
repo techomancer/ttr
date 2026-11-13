@@ -1208,9 +1208,10 @@ uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old \
 		$(DESTDIR)$(BINDIR)/ttrt $(DESTDIR)$(BINDIR)/ttr-session \
 		$(DESTDIR)$(BINDIR)/ttrc $(DESTDIR)$(BINDIR)/ttrcode $(DESTDIR)$(BINDIR)/ttre \
-		$(DESTDIR)$(TERMINFO_DIR)/t/ttrt \
-		$(DESTDIR)/usr/share/terminfo/t/ttrt \
+		$(DESTDIR)$(TERMINFO_DIR)/t/ttrt $(DESTDIR)$(TERMINFO_DIR)/x/xterm-ttrt \
+		$(DESTDIR)/usr/share/terminfo/t/ttrt $(DESTDIR)/usr/share/terminfo/x/xterm-ttrt \
 		$(DESTDIR)/usr/share/lib/terminfo/t/ttrt \
+		$(DESTDIR)/usr/share/lib/terminfo/x/xterm-ttrt \
 		$(DESTDIR)$(XSESSIONDIR)/ttr.desktop \
 		$(DESTDIR)$(ICONDIR)/ttr.svg $(DESTDIR)$(ICONDIR)/ttrt.svg \
 		$(DESTDIR)$(ICONDIR)/ttrcode.svg \

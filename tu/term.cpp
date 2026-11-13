@@ -66,6 +66,7 @@ const Gap k_gaps[] = {
     { "iris-ansi", "colors#8, setaf=\\E[3%p1%dm, setab=\\E[4%p1%dm," },
     /* ttrt: the built-in entry if the installed one is missing pieces. */
     { "ttrt", "RGB, colors#256," },
+    { "xterm-ttrt", "RGB, colors#256," },
     { 0, 0 }
 };
 

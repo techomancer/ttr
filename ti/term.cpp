@@ -48,6 +48,7 @@ Protocol detect_protocol()
         return PROTO_BLOCKS;
     if (getenv("KITTY_WINDOW_ID") || env_is("TERM", "xterm-kitty") ||
         env_is("TERM_PROGRAM", "ttrt") || env_starts("TERM", "ttrt") ||
+        env_is("TERM", "xterm-ttrt") ||
         env_is("TERM_PROGRAM", "ghostty") || env_is("TERM", "xterm-ghostty"))
         return PROTO_KITTY;
     if (env_is("TERM_PROGRAM", "iTerm.app") || env_is("TERM_PROGRAM", "WezTerm"))

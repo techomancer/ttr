@@ -6,7 +6,11 @@
 #
 #   tic -o ~/.terminfo data/ttrt.ti     (Linux, for one user)
 #   TERMINFO=$HOME/.terminfo tic data/ttrt.ti   (IRIX)
-ttrt|ttr terminal emulator,
+#
+# The name starts with xterm- (as xterm-kitty and xterm-ghostty do):
+# shells' rc files and programs such as mc set the window title, mouse
+# and colours only for TERM names they know, and most look for xterm*.
+xterm-ttrt|ttrt|ttr terminal emulator,
 	am, bce, km, mir, msgr, npc, xenl,
 	colors#256, cols#80, it#8, lines#24, pairs#32767,
 	acsc=``aaffggiijjkkllmmnnooppqqrrssttuuvvwwxxyyzz{{||}}~~,

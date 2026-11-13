@@ -172,7 +172,7 @@ This installs:
 | `/usr/bin/ttrcode` | the code editor |
 | `/usr/share/ttrc/tc.sh`, `tc.csh` | the `tc` command for your shell (see "The file manager") |
 | `/usr/share/ttr/fonts/` | ttrt's Unicode fonts (public domain misc-fixed BDF) |
-| `/usr/share/terminfo/t/ttrt` | ttrt's terminfo entry (`/usr/share/lib/terminfo` on IRIX; with `DESTDIR` it goes under `DESTDIR`, never into the system directory; `TERMINFO_DIR` names another place) |
+| `/usr/share/terminfo/x/xterm-ttrt` | ttrt's terminfo entry, also named `ttrt` (`/usr/share/lib/terminfo` on IRIX; with `DESTDIR` it goes under `DESTDIR`, never into the system directory; `TERMINFO_DIR` names another place) |
 | `/usr/bin/ttr-session` | starts a ttr session (see below) |
 | `/usr/share/xsessions/ttr.desktop` | makes display managers offer "To The Roots" |
 | `/usr/share/ttr/schemes/` | the color themes (`ttr`, `irix`) and text color schemes (`text`) |
@@ -548,7 +548,11 @@ terminal uses the mouse itself (vim with `mouse=a`, mc, htop), hold
 Shift to select instead. The Edit menu also has Select All; the
 Terminal menu has Clear Scrollback and Reset.
 
-ttrt sets `TERM` to `ttrt` when its terminfo entry is installed. `make
+ttrt sets `TERM` to `xterm-ttrt` when its terminfo entry is installed.
+The name starts with `xterm-`, as kitty's and Ghostty's do, because shell
+startup files and programs such as mc only set the window title (and
+often mouse and colours) for names they know; an entry installed by an
+older ttrt is called only `ttrt` and is used until it is replaced. `make
 install` compiles `data/ttrt.ti` with `tic` into the system's terminfo
 directory, where every user's programs find it (`/usr/share/lib/terminfo`
 on IRIX, `/usr/share/terminfo` on Linux). Without root, one user can
