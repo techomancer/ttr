@@ -118,6 +118,11 @@ public:
     void select_all(Time t);
     void clear_scrollback();
     void reset();
+    /* reset(), and the tty modes the shell started with: for a program
+     * that left the terminal raw (no echo, no Ctrl+C). At the shell's
+     * prompt it also runs "stty sane" there, since the shell would put
+     * its copy of the broken modes back. */
+    void reset_with_tty();
 
     /* Settings that apply at once. */
     void set_font(const char* xlfd);

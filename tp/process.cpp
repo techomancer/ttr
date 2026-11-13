@@ -173,6 +173,28 @@ void report(int fd, int stage)
 
 } /* namespace */
 
+bool Pty::restore_modes(const SpawnOptions& o)
+{
+    if (fd_ < 0 || !slave_[0]) {
+        strcpy(error_, "no terminal");
+        return false;
+    }
+    /* The slave by name, without making it anyone's controlling tty;
+     * ttrt is in no session on it, so this needs no foreground. */
+    int t = ::open(slave_, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    if (t < 0) {
+        set_error("open", errno);
+        return false;
+    }
+    struct termios modes;
+    make_termios(&modes, o);
+    bool ok = tcsetattr(t, TCSANOW, &modes) == 0;
+    if (!ok)
+        set_error("tcsetattr", errno);
+    ::close(t);
+    return ok;
+}
+
 Process::Process() : pid_(-1), done_(false), exited_(false), code_(0)
 {
     error_[0] = 0;

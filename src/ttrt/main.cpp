@@ -340,6 +340,11 @@ void reset_cb(Widget, XtPointer data, XtPointer)
     ((App*)data)->pane->reset();
 }
 
+void reset_tty_cb(Widget, XtPointer data, XtPointer)
+{
+    ((App*)data)->pane->reset_with_tty();
+}
+
 void settings_cb(Widget, XtPointer data, XtPointer);
 
 Widget make_menu_bar(App* a, Widget parent)
@@ -376,6 +381,7 @@ Widget make_menu_bar(App* a, Widget parent)
                             (char*)0);
     menu_item(term, "Clear Scrollback", 'C', 0, clear_sb_cb, a);
     menu_item(term, "Reset", 'R', 0, reset_cb, a);
+    menu_item(term, "Reset with Vengeance", 'V', 0, reset_tty_cb, a);
     XtVaCreateManagedWidget("sep", xmSeparatorWidgetClass, term, (char*)0);
     menu_item(term, "Settings...", 'S', 0, settings_cb, a);
     XtManageChild(bar);
@@ -397,6 +403,7 @@ void App::post_popup(XEvent* ev)
         XtVaCreateManagedWidget("sep", xmSeparatorWidgetClass, popup, (char*)0);
         menu_item(popup, "Clear Scrollback", 'b', 0, clear_sb_cb, this);
         menu_item(popup, "Reset", 'R', 0, reset_cb, this);
+        menu_item(popup, "Reset with Vengeance", 'V', 0, reset_tty_cb, this);
         menu_item(popup, "Settings...", 'S', 0, settings_cb, this);
         XtVaCreateManagedWidget("sep", xmSeparatorWidgetClass, popup, (char*)0);
         menu_item(popup, "Close", 'l', 0, close_cb, this);

@@ -548,6 +548,17 @@ terminal uses the mouse itself (vim with `mouse=a`, mc, htop), hold
 Shift to select instead. The Edit menu also has Select All; the
 Terminal menu has Clear Scrollback and Reset.
 
+Reset puts the terminal itself back in order (colours, modes, character
+sets). When typing no longer shows and Ctrl+C does nothing, a program
+has left the tty raw, which is a setting of the system's terminal driver,
+not of ttrt: use **Reset with Vengeance**. It also puts back the tty
+modes the shell started with, and if the shell is waiting at its prompt
+it runs ` stty sane` there, because the shell would otherwise restore
+its own copy of the broken modes. If you use it while a command runs,
+the fix takes when that command ends normally; if you then interrupt it
+with Ctrl+C, the shell brings the broken modes back, so use it once
+more at the prompt.
+
 ttrt sets `TERM` to `xterm-ttrt` when its terminfo entry is installed.
 The name starts with `xterm-`, as kitty's and Ghostty's do, because shell
 startup files and programs such as mc only set the window title (and

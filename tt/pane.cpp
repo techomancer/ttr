@@ -823,6 +823,29 @@ void TermPane::reset()
     update_scrollbar();
 }
 
+void TermPane::reset_with_tty()
+{
+    reset();
+    if (!running_)
+        return;
+    pty_.restore_modes(tp::SpawnOptions());
+    /* A shell keeps its own copy of the modes: bash takes over a job's
+     * when it exits normally and puts its copy back when one is killed,
+     * and readline restores what it found when the line began. So the
+     * fix must also come from inside: with the user's shell waiting for
+     * input (no job in the foreground), type "stty sane" into it, after
+     * a line kill, with a leading space for HISTCONTROL=ignorespace.
+     * Never for a -e program, which would take it as input. */
+    if (argv_)
+        return;
+    int fg = pty_.foreground_group();
+    bool idle = fg > 0 ? fg == proc_.pid() : tp::process_has_children(proc_.pid()) == 0;
+    if (idle) {
+        static const char k_sane[] = "\025 stty sane\r";
+        write_pty((const uint8_t*)k_sane, sizeof(k_sane) - 1);
+    }
+}
+
 void TermPane::request_paste(Atom sel, Time t)
 {
     if (running_)

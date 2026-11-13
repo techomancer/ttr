@@ -18,6 +18,8 @@ struct WinSize {
     int width_px, height_px;     /* 0 if unknown */
 };
 
+struct SpawnOptions;
+
 /* The master side of a pseudo-terminal. */
 class Pty {
 public:
@@ -46,6 +48,10 @@ public:
      * running in it), or -1 where the system cannot tell from the master
      * side. */
     int foreground_group() const;
+    /* Put back the tty modes spawn() gives a child with these options
+     * (echo, signals, line editing), over whatever a program left behind:
+     * what "stty sane" does, done from the master's side. */
+    bool restore_modes(const SpawnOptions& opts);
 
     const char* error() const { return error_; }
 

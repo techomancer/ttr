@@ -196,6 +196,29 @@ static void test_modes()
         fprintf(stderr, "output: %s\n", r.out);
 }
 
+/* A program left the tty raw; restore_modes() puts it back. */
+static void test_restore_modes()
+{
+    tp::Pty pty;
+    tp::WinSize ws = { 80, 24, 0, 0 };
+    CHECK(pty.open(ws));
+    int t = open(pty.slave_name(), O_RDWR | O_NOCTTY | O_NONBLOCK);
+    CHECK(t >= 0);
+    if (t < 0)
+        return;
+    struct termios m;
+    CHECK(tcgetattr(t, &m) == 0);
+    m.c_lflag &= ~(ICANON | ECHO | ISIG);
+    m.c_iflag &= ~ICRNL;
+    CHECK(tcsetattr(t, TCSANOW, &m) == 0);
+    CHECK(pty.restore_modes(tp::SpawnOptions()));
+    CHECK(tcgetattr(t, &m) == 0);
+    CHECK((m.c_lflag & (ICANON | ECHO | ISIG)) == (ICANON | ECHO | ISIG));
+    CHECK((m.c_iflag & ICRNL) != 0);
+    CHECK(m.c_cc[VINTR] == 3);
+    close(t);
+}
+
 static void test_environment()
 {
     /* TP_GONE is in our environment and must not reach the child. */
@@ -385,6 +408,7 @@ int main(int argc, char** argv)
     test_basics();
     test_controlling_tty();
     test_modes();
+    test_restore_modes();
     test_environment();
     test_descriptors();
     test_resize();
