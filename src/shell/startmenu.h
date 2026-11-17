@@ -33,6 +33,8 @@ public:
     void on_unpost(void (*fn)(void*), void* closure);
     /* Mark the current desktop in the Desktops submenu. */
     void set_desktop(int desktop);
+    /* Start > Run...: the prompt for a command line. */
+    void run_dialog();
 
 private:
     enum Command {
@@ -55,7 +57,6 @@ private:
     void defer(Command cmd, AppNode* app, int desktop = 0);
     static void desktop_cb(Widget w, XtPointer closure, XtPointer call);
     static void deferred_cb(XtPointer closure, XtIntervalId* id);
-    void run_dialog();
     void exit_dialog();
 
     static void app_cb(Widget w, XtPointer closure, XtPointer call);
@@ -86,6 +87,7 @@ private:
     Widget exit_dialog_;
     SettingsDialog* settings_;
     int desktops_;
+    int current_desktop_;
     DeskItem* desk_items_;
     AppFolder* apps_;
     XPainter* painter_;

@@ -80,7 +80,8 @@ static Rgb pixel_rgb(Display* dpy, Pixel p)
 
 StartMenu::StartMenu(Widget parent, WmLink* wm, const Config& cfg)
     : parent_(parent), wm_(wm), run_dialog_(0), exit_dialog_(0),
-      settings_(0), desktops_(cfg.desktops), desk_items_(0), unpost_(0),
+      settings_(0), desktops_(cfg.desktops), current_desktop_(0),
+      desk_items_(0), unpost_(0),
       unpost_closure_(0)
 {
     Display* dpy = XtDisplay(parent);
@@ -312,6 +313,7 @@ void StartMenu::unmap_cb(Widget w, XtPointer closure, XtPointer call)
 void StartMenu::set_desktop(int desktop)
 {
     int i;
+    current_desktop_ = desktop;
     for (i = 0; desk_items_ && i < desktops_; i++)
         XmToggleButtonGadgetSetState(desk_items_[i].button, i == desktop,
                                      False);
@@ -385,6 +387,14 @@ void StartMenu::run_cb(Widget w, XtPointer closure, XtPointer call)
 
 void StartMenu::run_dialog()
 {
+    if (run_dialog_ && XtIsManaged(run_dialog_) && XtIsRealized(run_dialog_)) {
+        /* Already up, perhaps on another desktop or under windows:
+         * bring it here and to the front. */
+        ToplevelId id = (ToplevelId)XtWindow(XtParent(run_dialog_));
+        wm_->move_to_desktop(id, current_desktop_);
+        wm_->request(id, ACT_ACTIVATE);
+        return;
+    }
     if (!run_dialog_) {
         XmString title = xmstr("Run");
         XmString label = xmstr("Type the name of a program to run:");

@@ -64,6 +64,7 @@ enum KeyCommand {
     KC_PREV,
     KC_MENU,        /* window menu */
     KC_START,       /* start menu */
+    KC_RUN,         /* Run dialog */
     KC_DESK_PREV,   /* switch desktop */
     KC_DESK_NEXT,
     KC_TAKE_PREV,   /* move the active window along, and follow it */
@@ -98,6 +99,7 @@ static const KeyBinding k_keys[] = {
     { "Escape", ControlMask, KC_START, ACT_COUNT },
     { "Super_L", 0, KC_START, ACT_COUNT },
     { "Super_R", 0, KC_START, ACT_COUNT },
+    { "r", Mod4Mask, KC_RUN, ACT_COUNT },
     { "Left", ControlMask | Mod1Mask, KC_DESK_PREV, ACT_COUNT },
     { "Right", ControlMask | Mod1Mask, KC_DESK_NEXT, ACT_COUNT },
     { "Left", Mod1Mask | ShiftMask, KC_TAKE_PREV, ACT_COUNT },
@@ -1115,6 +1117,10 @@ bool Wm::on_key_press(XKeyEvent* ev)
                 super_pending_ = true;      /* opens on release */
             else if (shell_)
                 shell_->show_start_menu(ev->time);
+            break;
+        case KC_RUN:
+            if (shell_)
+                shell_->show_run();
             break;
         case KC_DESK_PREV:
             switch_desktop(current_ - 1);

@@ -314,6 +314,7 @@ window. Pressing OK in Settings does the same.
 | Alt+Esc, Alt+Shift+Esc | circulate the window stack |
 | Alt+Space, Shift+Esc | window menu |
 | Ctrl+Esc, Windows key | Start menu |
+| Super+R | Run: type a command to start (Start > Run...) |
 | Alt+F3 / F4 | lower / close the window |
 | Alt+F5 | restore (and undock) |
 | Alt+F7 / F8 | move / resize with the keyboard |

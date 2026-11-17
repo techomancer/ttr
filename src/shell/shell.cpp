@@ -95,6 +95,11 @@ void Shell::show_start_menu(unsigned long time)
     taskbar_->post_start_menu(time);
 }
 
+void Shell::show_run()
+{
+    start_->run_dialog();
+}
+
 void Shell::shutdown()
 {
     taskbar_->release();
