@@ -5,7 +5,7 @@
  *   xtype [-d display] [-delay ms] ARG...
  *
  * Each ARG is text to type, a key spec starting with '+' (+Return,
- * +ctrl+c, +shift+Prior, +alt+x; keysym names as in <X11/keysymdef.h>),
+ * +ctrl+c, +shift+Prior, +alt+x, +super+r; keysym names as in <X11/keysymdef.h>),
  * a click at root coordinates "@x,y" (button 1; "@x,y,b" for button b;
  * "@@x,y" double and "@@@x,y" triple click; "^@x,y,b" with Ctrl held),
  * a button 1 drag "~x1,y1,x2,y2", a move without a click "=x,y", or
@@ -37,6 +37,9 @@ static KeyCode code_of(KeySym ks)
     return XKeysymToKeycode(dpy, ks);
 }
 
+/* Super (the Windows key) for the next press, set by "+super+". */
+static int with_super;
+
 /* Press the modifiers, the key, release in reverse order. */
 static void press(KeySym ks, int shift, int ctrl, int alt)
 {
@@ -49,6 +52,7 @@ static void press(KeySym ks, int shift, int ctrl, int alt)
     /* A keysym only on the shifted level of its key needs Shift. */
     if (XKeycodeToKeysym(dpy, k, 0) != ks && XKeycodeToKeysym(dpy, k, 1) == ks)
         shift = 1;
+    if (with_super) XTestFakeKeyEvent(dpy, code_of(XK_Super_L), True, 0);
     if (ctrl) XTestFakeKeyEvent(dpy, ks_ctrl, True, 0);
     if (alt) XTestFakeKeyEvent(dpy, ks_alt, True, 0);
     if (shift) XTestFakeKeyEvent(dpy, ks_shift, True, 0);
@@ -57,6 +61,7 @@ static void press(KeySym ks, int shift, int ctrl, int alt)
     if (shift) XTestFakeKeyEvent(dpy, ks_shift, False, 0);
     if (alt) XTestFakeKeyEvent(dpy, ks_alt, False, 0);
     if (ctrl) XTestFakeKeyEvent(dpy, ks_ctrl, False, 0);
+    if (with_super) XTestFakeKeyEvent(dpy, code_of(XK_Super_L), False, 0);
     pause_ms(delay_ms);
 }
 
@@ -125,6 +130,7 @@ static void type_key(const char* spec)
     char buf[128];
     char* p;
     char* name;
+    with_super = 0;
     strncpy(buf, spec + 1, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = 0;
     name = buf;
@@ -133,6 +139,7 @@ static void type_key(const char* spec)
         if (strcmp(name, "shift") == 0) shift = 1;
         else if (strcmp(name, "ctrl") == 0) ctrl = 1;
         else if (strcmp(name, "alt") == 0) alt = 1;
+        else if (strcmp(name, "super") == 0) with_super = 1;
         name = p + 1;
     }
     {
@@ -144,6 +151,7 @@ static void type_key(const char* spec)
             return;
         }
         press(ks, shift, ctrl, alt);
+        with_super = 0;
     }
 }
 

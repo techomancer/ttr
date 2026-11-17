@@ -1363,6 +1363,10 @@ void Wm::unmanage(Client* c, bool destroyed)
         XRemoveFromSaveSet(dpy_, c->win);
         XDeleteProperty(dpy_, c->win, atoms_.net_wm_state);
         XDeleteProperty(dpy_, c->win, atoms_.net_frame_extents);
+        /* Withdrawn, a window has no desktop (EWMH); left in place, a
+         * window shown again (the Run dialog, any reused dialog) would
+         * go back to the desktop it was first shown on. */
+        XDeleteProperty(dpy_, c->win, atoms_.net_wm_desktop);
         set_wm_state(c->win, WithdrawnState);
     }
     XDestroyWindow(dpy_, c->frame);
