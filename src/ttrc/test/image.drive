@@ -1,5 +1,6 @@
 # F3 on an image: shown as one, F4 its bytes, F6 back; a damaged one
 # shows its bytes with the reason.
+# With images set to Off, F6 shows one anyway.
 expect Menu
 send \x13pic
 send \r
@@ -24,6 +25,35 @@ send \r
 send \e[13~
 expect Showing the bytes
 expect 4Ascii
+send q
+expect Menu
+# Images in the viewer: Off. An image opens as bytes, F6 still shows it.
+send \e[20~
+send \eOC
+send \eOC
+send \eOC
+send a
+expect Images in the viewer:
+send \t\tf\r
+wait 300
+send \x13pic
+send \r
+send \e[13~
+expect [hex]
+expect 6Image
+send \e[17~
+expect [image]
+expect PNG 7 x 5
+send q
+expect Menu
+send \x13broken
+send \r
+send \e[13~
+expect [hex]
+expect 6Image
+send \e[17~
+expect Showing the bytes
+absent [image]
 send q
 expect Menu
 send \e0

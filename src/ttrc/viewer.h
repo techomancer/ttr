@@ -79,8 +79,9 @@ class Viewer : public FullScreen {
 public:
     Viewer();
     ~Viewer();
-    /* How to show images (PROTO_OFF: as bytes) on this terminal; before
-     * load(). */
+    /* How to show images on this terminal; before load(). With PROTO_OFF
+     * an image opens as bytes, and F6 still shows it as the terminal
+     * can. */
     void set_images(ti::Protocol p, const tu::Term* term);
     /* Read the file (up to 64 MB). 0 or an errno value. An image is
      * decoded and shown as one; F4 shows its bytes. */
@@ -115,6 +116,8 @@ private:
     void draw_image(tu::Screen& s, const Theme& t);
     /* Leave the image for the bytes (search, go to). */
     void image_to_hex();
+    bool decode_image(bool opening);
+    void to_image();
 
     char* data_;
     size_t len_;
@@ -136,6 +139,7 @@ private:
     ti::Protocol proto_;
     const tu::Term* term_;
     ti::Image img_;             /* decoded; empty if not an image */
+    bool maybe_image_;          /* image bytes, not decoded yet */
     ti::Info img_info_;
     bool image_;                /* showing it */
     ti::Image shown_;           /* scaled for the last layout */

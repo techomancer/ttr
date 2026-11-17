@@ -167,8 +167,9 @@ void FullScreen::set_note(const char* n)
 Viewer::Viewer()
     : data_(0), len_(0), truncated_(false), hex_(false), wrap_(true), top_line_(0), top_sub_(0),
       left_(0), hex_top_(0), rows_(20), width_(80), bpr_(16), hit_(0), hit_len_(0), pat_len_(0),
-      proto_(ti::PROTO_OFF), term_(0), image_(false), img_x_(0), img_y_(0), img_cols_(0),
-      img_rows_(0), img_bg_(0), cell_known_(false), over_dirty_(true), over_shown_(false)
+      proto_(ti::PROTO_OFF), term_(0), maybe_image_(false), image_(false), img_x_(0), img_y_(0),
+      img_cols_(0), img_rows_(0), img_bg_(0), cell_known_(false), over_dirty_(true),
+      over_shown_(false)
 {
     name_[0] = 0;
 }
@@ -231,20 +232,10 @@ int Viewer::load(tf::Fs* fs, const char* path)
             bad++;
     }
     hex_ = look > 0 && bad > look / 20;
-    if (proto_ != ti::PROTO_OFF && !truncated_ &&
-        ti::sniff((const unsigned char*)data_, len_) != ti::FMT_UNKNOWN) {
-        char err[200];
-        ti::DecodeOptions o;
-        /* No terminal shows more; JPEG decodes this much faster. */
-        o.reduce_to = 2048;
-        if (ti::decode((const unsigned char*)data_, len_, &img_, &img_info_, err, sizeof(err), o)) {
+    if (!truncated_ && ti::sniff((const unsigned char*)data_, len_) != ti::FMT_UNKNOWN) {
+        maybe_image_ = true;
+        if (proto_ != ti::PROTO_OFF && decode_image(true))
             image_ = true;
-        } else {
-            char n[260];
-            snprintf(n, sizeof(n), "%.200s Showing the bytes.", err);
-            set_note(n);
-            hex_ = true;
-        }
     }
     return 0;
 }
@@ -477,7 +468,7 @@ void Viewer::draw(tu::Screen& s, const Theme& t)
     }
     const char* const keys[10] = {
         "Help", image_ ? "" : wrap_ ? "UnWrap" : "Wrap", "Quit", hex_ && !image_ ? "Ascii" : "Hex",
-        "Goto", img_.empty() ? "" : image_ ? "Text" : "Image", "Search", "", "", "Quit"
+        "Goto", img_.empty() && !maybe_image_ ? "" : image_ ? "Text" : "Image", "Search", "", "", "Quit"
     };
     key_bar(s, t, keys);
     s.set_cursor(0, 0, false);
@@ -576,10 +567,7 @@ ToolRequest Viewer::handle(const tu::Event& ev)
         }
         case 5: return REQ_GOTO;
         case 6:
-            if (!img_.empty()) {
-                image_ = true;
-                over_dirty_ = true;
-            }
+            to_image();
             return REQ_NONE;
         case 7:
             if (ev.mods & tu::MOD_SHIFT) {
@@ -607,15 +595,47 @@ ToolRequest Viewer::handle(const tu::Event& ev)
         case 'w': wrap_ = !wrap_; top_sub_ = 0; left_ = 0; return REQ_NONE;
         case 'g': return REQ_GOTO;
         case 'i':
-            if (!img_.empty()) {
-                image_ = true;
-                over_dirty_ = true;
-            }
+            to_image();
             return REQ_NONE;
         default: return REQ_NONE;
         }
     }
     return REQ_NONE;
+}
+
+/* Decode the file as an image. A damaged one is bytes from then on;
+ * opening, it starts in hex with the reason. */
+bool Viewer::decode_image(bool opening)
+{
+    if (!img_.empty())
+        return true;
+    if (!maybe_image_)
+        return false;
+    maybe_image_ = false;
+    char err[200];
+    ti::DecodeOptions o;
+    /* No terminal shows more; JPEG decodes this much faster. */
+    o.reduce_to = 2048;
+    if (ti::decode((const unsigned char*)data_, len_, &img_, &img_info_, err, sizeof(err), o))
+        return true;
+    char n[260];
+    snprintf(n, sizeof(n), "%.200s Showing the bytes.", err);
+    set_note(n);
+    if (opening)
+        hex_ = true;
+    return false;
+}
+
+/* F6: the image, on the terminal's own terms when the setting said to
+ * show images as bytes. */
+void Viewer::to_image()
+{
+    if (!decode_image(false))
+        return;
+    if (proto_ == ti::PROTO_OFF)
+        proto_ = ti::detect_protocol();
+    image_ = true;
+    over_dirty_ = true;
 }
 
 void Viewer::image_to_hex()

@@ -669,7 +669,8 @@ ghostty and ttrt, iTerm2's in iTerm2 and WezTerm, sixels in foot, mlterm, konsol
 and Windows Terminal, and in half blocks (two coloured pixels a cell)
 everywhere else, including inside tmux. F4 or `h` shows the bytes and F6
 or `i` the picture again. Options > Appearance > "Images in the viewer"
-picks the way, or Off to always see the bytes; ttrc's settings call it
+picks the way, or Off to open them as bytes (F6 still shows the
+picture, in the way the terminal supports); ttrc's settings call it
 `viewerImages` (`auto`, `blocks`, `kitty`, `sixel`, `iterm`, `off`).
 
 F4 edits the file in ttre, ttr's editor
