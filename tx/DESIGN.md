@@ -60,6 +60,17 @@ Each program still owns its settings and what they mean. Appearance
 (the UI scale and fonts) and colours have pages of those names in all
 three, so they are where users expect them.
 
+## Dock panes (`tx/dock.h`)
+
+Panes in groups of tabs, the groups tiled in three areas (left, bottom,
+right) around a centre the program fills, with sashes between them, a
+right-click menu on each tab to move or close its pane, and the whole
+layout as one line of text to save. Written for ttrcode (its design,
+section 4.1, has the details and the layout syntax) and moved here for
+ttrv, whose folders, preview and information are panes around the file
+list. Xt cannot reparent a widget, so a program builds a pane's widgets
+when the docks ask (`PaneBuilder`) and drops them when it is closed.
+
 ## The UI scale (`tx/scale.h`)
 
 ttr scaled itself for high-resolution screens (`uiScale`,

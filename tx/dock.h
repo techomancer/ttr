@@ -1,6 +1,6 @@
 /*
- * ttrcode's dock areas (ttrcode/DESIGN.md section 4.1): tool panes in
- * groups of tabs, the groups tiled in three areas around the documents
+ * Dock areas (ttrcode/DESIGN.md section 4.1), used by ttrcode and ttrv:
+ * panes in groups of tabs, the groups tiled in three areas around the documents
  * (left, bottom, right), sashes between them all, a right-click menu on
  * each tab to move or close its pane, and the layout as a line of text.
  *
@@ -8,15 +8,15 @@
  * pane's widgets: they ask the PaneBuilder to make them in a group, and
  * to let them go when the pane is closed.
  */
-#ifndef TTRCODE_DOCK_H
-#define TTRCODE_DOCK_H
+#ifndef TX_DOCK_H
+#define TX_DOCK_H
 
 #include "core/str.h"
 #include "core/vector.h"
 
 #include <Xm/Xm.h>
 
-namespace ttrcode {
+namespace tx {
 
 enum Side { SIDE_LEFT, SIDE_BOTTOM, SIDE_RIGHT, SIDE_COUNT };
 
@@ -36,8 +36,8 @@ public:
     virtual void layout_changed() {}
 };
 
-/* A tool window: the workspace, the terminal, Find Results, the
- * debugger's. */
+/* A tool window: ttrcode's workspace, terminal, Find Results and the
+ * debugger's; ttrv's folders, preview and information. */
 class Pane {
 public:
     Pane(const char* id, const char* title, Side home)
@@ -150,6 +150,6 @@ private:
     ttr::Vector<int> menu_actions_;
 };
 
-} /* namespace ttrcode */
+} /* namespace tx */
 
 #endif

@@ -7,7 +7,6 @@
 #define TTRCODE_APP_H
 
 #include "celllist.h"
-#include "dock.h"
 #include "editsource.h"
 #include "valuetree.h"
 
@@ -18,6 +17,7 @@
 #include "../../th/scheme.h"
 #include "../../th/theme.h"
 #include "../../tt/pane.h"
+#include "../../tx/dock.h"
 #include "../../tx/pages.h"
 #include "../../tx/ttr.h"
 #include "core/scale.h"
@@ -35,6 +35,16 @@ class SettingsFile;
 }
 
 namespace ttrcode {
+
+/* The docks are tx's (tx/dock.h). */
+using tx::Docks;
+using tx::Pane;
+using tx::PaneBuilder;
+using tx::Side;
+using tx::SIDE_LEFT;
+using tx::SIDE_BOTTOM;
+using tx::SIDE_RIGHT;
+using tx::SIDE_COUNT;
 
 /* Pixel sizes at the UI scale (core/scale.h). */
 using ttr::scaled;

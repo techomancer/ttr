@@ -196,9 +196,10 @@ interrupted (ti has no way to stop one), but its result is only cached.
   that is 64 MB, about five screens). Read-ahead counts against it.
 - **Previews and thumbnails:** a separate, smaller budget, so stepping
   through big images never pushes the visible thumbnails out.
-- **Thumbnails on disk:** the freedesktop thumbnail spec on Linux
-  (`~/.cache/thumbnails/normal` and `large`, PNG with `Thumb::URI` and
-  `Thumb::MTime`), so ttrv shares them with other programs. The same
+- **Thumbnails on disk** (decided 2026-11-19): the freedesktop
+  thumbnail spec on Linux (`~/.cache/thumbnails/normal` and `large`, PNG
+  with `Thumb::URI` and `Thumb::MTime`), so ttrv shares them with other
+  programs. The same
   layout under `~/.ttrv/thumbnails` on IRIX. Archive members are not
   written to disk (their URIs are not stable).
 - Keys are the path plus size and mtime, so an edited file is decoded
@@ -244,10 +245,10 @@ shared place (section 6).
 
 ## 6. What is reused, and what moves
 
-**Dock panes.** ttrcode's `Docks` (`src/ttrcode/dock.h`, 750 lines)
+**Dock panes.** ttrcode's `Docks` (`tx/dock.h`, moved from ttrcode, 750 lines)
 depends only on `core/` and Motif: areas on three sides, groups of
 tabs, sashes, the tab menu to move a pane, and the layout as a line of
-text. It is not ttrcode-specific. It moves to `tx/dock.{h,cpp}`
+text. It is not ttrcode-specific. It moved to `tx/dock.{h,cpp}`
 (namespace `tx`) unchanged, ttrcode uses it from there, and ttrv uses
 it as is: Files in the centre, Folders on the left, Preview and
 Information as two groups in the bottom area.
@@ -317,9 +318,9 @@ for the threads and GL.
 
 ## 9. Open questions
 
-- File operations: ttrv's own (Ctrl+C/X/V, Del, F2), or hand them to
-  ttrc? ACDSee had its own; this design assumes ttrv does too, through
-  `tf/ops`.
+- File operations (decided 2026-11-19): ttrv's own and basic: rename,
+  delete, copy and move, new folder, through `tf/ops`. Archives are read
+  only; nothing is copied into one.
 - Animated GIF playback: in the viewer only, later.
 - Editing (rotate and save, crop): out of scope for now; lossless JPEG
   rotation would need jpegtran's code.

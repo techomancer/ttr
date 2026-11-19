@@ -13,7 +13,7 @@
 #include <Xm/Separator.h>
 #include <Xm/ToggleB.h>
 
-namespace ttrcode {
+namespace tx {
 
 using ttr::scaled;
 using ttr::scaled_line;
@@ -750,4 +750,4 @@ void Docks::apply(const char* text)
     in_apply_ = false;
 }
 
-} /* namespace ttrcode */
+} /* namespace tx */

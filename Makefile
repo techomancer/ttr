@@ -362,18 +362,21 @@ $(B)/te_test_te.o: $(B)/.dir te/test/test_te.cpp $(TE_H)
 	$(COMPILE) -c te/test/test_te.cpp -o $@
 
 # tx, Motif pieces every ttr program shares (tx/DESIGN.md): the font
-# chooser.
+# chooser, Settings pages, dock panes.
 TX_OBJS = $(B)/tx_appicon.o \
+	$(B)/tx_dock.o \
 	$(B)/tx_fontchooser.o \
 	$(B)/tx_pages.o \
 	$(B)/tx_scale.o \
 	$(B)/tx_ttr.o
-TX_H = tx/appicon.h tx/fontchooser.h tx/dialog.h tx/pages.h tx/scale.h tx/ttr.h src/core/str.h src/core/vector.h
+TX_H = tx/appicon.h tx/dock.h tx/fontchooser.h tx/dialog.h tx/pages.h tx/scale.h tx/ttr.h src/core/str.h src/core/vector.h
 
 $(B)/libtx.a: $(TX_OBJS)
 	rm -f $@
 	$(AR) rc $@ $(TX_OBJS)
 
+$(B)/tx_dock.o: $(B)/.dir tx/dock.cpp $(TX_H) src/core/scale.h
+	$(COMPILE) -c tx/dock.cpp -o $@
 $(B)/tx_fontchooser.o: $(B)/.dir tx/fontchooser.cpp $(TX_H)
 	$(COMPILE) -c tx/fontchooser.cpp -o $@
 $(B)/tx_pages.o: $(B)/.dir tx/pages.cpp $(TX_H) src/core/scale.h
@@ -890,7 +893,6 @@ TTRCODE_OBJS = $(B)/ttrcode_main.o \
 	$(B)/ttrcode_disassembly.o \
 	$(B)/ttrcode_debug.o \
 	$(B)/ttrcode_debugpanes.o \
-	$(B)/ttrcode_dock.o \
 	$(B)/ttrcode_editsource.o \
 	$(B)/ttrcode_findfiles.o \
 	$(B)/ttrcode_settings.o \
@@ -899,7 +901,7 @@ TTRCODE_OBJS = $(B)/ttrcode_main.o \
 	$(B)/core_scale.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
-TTRCODE_H = src/ttrcode/app.h src/ttrcode/celllist.h src/ttrcode/dock.h \
+TTRCODE_H = src/ttrcode/app.h src/ttrcode/celllist.h \
 	src/ttrcode/editsource.h src/ttrcode/valuetree.h $(TE_H) $(TT_H) $(TW_H) \
 	$(TH_H) $(TX_H) $(TD_H) \
 	src/core/settings.h src/core/str.h src/core/vector.h
@@ -916,8 +918,6 @@ $(B)/ttrcode_main.o: $(B)/.dir src/ttrcode/main.cpp $(TTRCODE_H) $(B)/icon_ttrco
 	$(COMPILE) -I$(B) -DTTR_DATADIR=\"$(DATADIR)\" -c src/ttrcode/main.cpp -o $@
 $(B)/ttrcode_app.o: $(B)/.dir src/ttrcode/app.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/app.cpp -o $@
-$(B)/ttrcode_dock.o: $(B)/.dir src/ttrcode/dock.cpp $(TTRCODE_H)
-	$(COMPILE) -c src/ttrcode/dock.cpp -o $@
 $(B)/ttrcode_debug.o: $(B)/.dir src/ttrcode/debug.cpp $(TTRCODE_H)
 	$(COMPILE) -c src/ttrcode/debug.cpp -o $@
 $(B)/ttrcode_debugpanes.o: $(B)/.dir src/ttrcode/debugpanes.cpp $(TTRCODE_H)
