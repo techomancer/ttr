@@ -2,8 +2,11 @@
  * fitted to a size, wants replaced while work is running. Run from the
  * source tree's top. */
 #include "../loader.h"
+#include "../thumbs.h"
 
+#include <errno.h>
 #include <poll.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,8 +75,29 @@ int main()
     sprintf(gif, "%strip/pal.gif", inzip);
     sprintf(xpm, "%strip/pal.xpm", inzip);
 
+    /* Thumbnails in a cache of the test's own. */
+    char cache[300];
+    sprintf(cache, "/tmp/ttrv-test-cache.%ld", (long)getpid());
+    static char env[400], home[400];
+    sprintf(env, "XDG_CACHE_HOME=%s", cache);
+    sprintf(home, "HOME=%s", cache);
+    putenv(env);
+    putenv(home);
+    mkdir(cache, 0700);
+    CHECK(ttrv::thumbs_init());
+    /* The spec's file names: MD5 of the URI. */
+    char md5[33];
+    ttrv::md5_hex((const unsigned char*)"", 0, md5);
+    CHECK(strcmp(md5, "d41d8cd98f00b204e9800998ecf8427e") == 0);
+    ttrv::md5_hex((const unsigned char*)"file:///home/jens/photos/me.png", 31, md5);
+    CHECK(strcmp(md5, "c6ee772d9e49320e97ec29a7eb5b1697") == 0);
+    char uri[300];
+    ttrv::file_uri("/a b/c%.png", uri, sizeof(uri));
+    CHECK(strcmp(uri, "file:///a%20b/c%25.png") == 0);
+
     Collect c;
     ttrv::Loader l;
+    l.set_disk_thumbs(true);
     CHECK(l.start(&c, 2));
     CHECK(l.decoders() == 2);
 
@@ -107,6 +131,32 @@ int main()
     r = c.find(ttrv::JOB_HEADER, xpm);
     CHECK(r && r->info.format == ti::FMT_XPM && r->info.colors == 35);
 
+    /* A thumbnail: made and saved, then read back from the disk cache
+     * (no format: not decoded from the file). */
+    ttrv::Want t(ttrv::JOB_THUMB, png, 4, 4);
+    l.set_wants(&t, 1);
+    wait_for(l, c, 7);
+    r = c.find(ttrv::JOB_THUMB, png);
+    CHECK(r && r->msg[0] == 0 && r->image.w == 4 && r->image.h == 3 &&
+          r->info.format == ti::FMT_PNG && r->info.width == 7);
+    char tp[1300];
+    struct stat ts;
+    CHECK(ttrv::thumb_path(png, 128, tp, sizeof(tp)) && stat(tp, &ts) == 0);
+    if (r)
+        r->kind = ttrv::JOB_LIST;   /* so find() sees the next one */
+    l.set_wants(&t, 1);
+    wait_for(l, c, 8);
+    r = c.find(ttrv::JOB_THUMB, png);
+    CHECK(r && r->image.w == 4 && r->info.format == ti::FMT_UNKNOWN && r->info.width == 7 &&
+          r->info.height == 5);
+    /* Inside a zip: made, never saved. */
+    ttrv::Want tz(ttrv::JOB_THUMB, gif, 4, 4);
+    l.set_wants(&tz, 1);
+    wait_for(l, c, 9);
+    r = c.find(ttrv::JOB_THUMB, gif);
+    CHECK(r && r->image.w == 4);
+    CHECK(ttrv::thumb_path(gif, 128, tp, sizeof(tp)) && stat(tp, &ts) != 0);
+
     /* Errors come back as results. */
     char missing[2200];
     sprintf(missing, "%s/no-such-file.png", dir);
@@ -116,7 +166,7 @@ int main()
     e[0] = ttrv::Want(ttrv::JOB_IMAGE, missing);
     e[1] = ttrv::Want(ttrv::JOB_IMAGE, broken);
     l.set_wants(e, 2);
-    wait_for(l, c, 8);
+    wait_for(l, c, 11);
     r = c.find(ttrv::JOB_IMAGE, missing);
     CHECK(r && r->err != 0);
     r = c.find(ttrv::JOB_IMAGE, broken);
@@ -141,6 +191,10 @@ int main()
     CHECK(arrived);
     CHECK(c.got.size() - before < 41);
     l.stop();
+    char cmd[400];
+    sprintf(cmd, "rm -rf %s", cache);
+    if (system(cmd) != 0)
+        CHECK(false);
 
     printf("ttrv loader: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

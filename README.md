@@ -1085,7 +1085,7 @@ The plan is in [ttrcode/DESIGN.md](ttrcode/DESIGN.md).
 ### The image viewer (ttrv)
 
 ttrv browses folders of images the way ACDSee 3 did on Windows 95. It is
-early: the browser and the viewer work; thumbnails, EXIF and the OpenGL
+early: the browser, thumbnails and the viewer work; EXIF and the OpenGL
 renderer come next (the plan is in [ttrv/DESIGN.md](ttrv/DESIGN.md)).
 
 ```sh
@@ -1115,6 +1115,7 @@ JPEG, GIF, TIFF, BMP, PNM, SGI and XPM.
 | Ctrl+A | mark all files |
 | F5 | read the folder again |
 | Ctrl+L | type a folder in the location bar |
+| Ctrl+1 / Ctrl+2 | details / thumbnails (View has the thumbnail sizes, 64 to 192) |
 | Enter on an image | the viewer, in the window |
 | Alt+Enter on an image | the viewer, full screen |
 
@@ -1141,6 +1142,16 @@ Space shows the next one at once.
 In the folder tree, moving the selection opens that folder after a
 moment; Right or Enter opens a branch, Left closes it or goes up.
 
+Thumbnails are ACDSee's grid: each picture in a square with its size and
+depth under it and its name below; the arrows move by cell and by row.
+The ones in sight are made first, then the next screen's, so paging
+down shows them at once. They are kept on disk where other programs
+look for them too (the freedesktop.org thumbnail spec): in
+`~/.cache/thumbnails` on Linux (`$XDG_CACHE_HOME/thumbnails` if set),
+and in `~/.ttrv/thumbnails` on IRIX. One that is older than its picture
+is made again. Pictures inside archives get thumbnails only for as long
+as ttrv runs.
+
 Images are read and decoded in threads (one per processor, less one, and
 at least one), so the window answers while a big JPEG decodes; the
 previews of the files next to the cursor are decoded ahead. The preview
@@ -1150,7 +1161,9 @@ default` uses the desktop's own visual instead, dithered to a colour
 cube on an 8-bit screen.
 
 ttrv's settings are in `~/.config/ttrv/settings` (layout, sorting,
-`showHidden`, `cacheMegabytes` for the decoded previews, `listFont`).
+`viewMode`, `thumbnailSize`, `showHidden`, `listFont`, and
+`cacheMegabytes` for the decoded pictures, by default a quarter of the
+memory, at most 512).
 
 ### High-resolution screens
 

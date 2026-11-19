@@ -1,6 +1,8 @@
 /* ttrv's window (app.h). */
 #include "app.h"
 
+#include "thumbs.h"
+
 #include "../../tf/path.h"
 #include "../../tf/vfs.h"
 #include "../../th/theme.h"
@@ -188,7 +190,7 @@ ttr::Str settings_path()
 App::App(Widget top, const Options& o)
     : top_(top), info_(0), docks_(0), list_(0), viewer_box_(0), viewer_(0), step_dir_(0),
       view_first_(false), view_start_(false), tree_(0), preview_(0), input_(0),
-      wants_timer_(0), opt_(o), list_err_(0), cache_bytes_(0), use_clock_(0),
+      wants_timer_(0), opt_(o), list_err_(0), thumb_bytes_(0), cache_bytes_(0), use_clock_(0),
       show_hidden_(o.show_hidden), vis_first_(-1), vis_last_(-1)
 {
     g_app = this;
@@ -222,6 +224,7 @@ App::App(Widget top, const Options& o)
                   XmNrightAttachment, XmATTACH_FORM, (char*)0);
     list_->sort_by((SortKey)(opt_.sort_key >= 0 && opt_.sort_key < SORT_COUNT ? opt_.sort_key : 0),
                    opt_.sort_reverse);
+    list_->set_mode(opt_.thumbnails ? VIEW_THUMBS : VIEW_DETAILS, opt_.thumb_size);
     pane_folders_ = new tx::Pane("folders", "Folders", tx::SIDE_LEFT);
     pane_preview_ = new tx::Pane("preview", "Preview", tx::SIDE_BOTTOM);
     pane_info_ = new tx::Pane("info", "Information", tx::SIDE_BOTTOM);
@@ -249,6 +252,7 @@ App::App(Widget top, const Options& o)
     }
     XtVaSetValues(form_, XmNinitialFocus, body_, (char*)0);
 
+    loader_.set_disk_thumbs(thumbs_init());
     if (!loader_.start(this))
         fprintf(stderr, "ttrv: cannot start the loader threads\n");
     else
@@ -288,6 +292,10 @@ App::~App()
         delete cache_[i]->r;
         delete cache_[i];
     }
+    for (int i = 0; i < thumbs_.size(); i++) {
+        delete thumbs_[i]->r;
+        delete thumbs_[i];
+    }
     for (int i = 0; i < back_.size(); i++)
         delete back_[i];
     for (int i = 0; i < forward_.size(); i++)
@@ -314,6 +322,7 @@ ListColors App::list_colors()
     c.sel_bg = alloc_rgb(dpy, cm, t.get(th::ROLE_ACTIVE));
     c.sel_fg = alloc_rgb(dpy, cm, t.get(th::ROLE_ACTIVE_TEXT));
     c.header_bg = alloc_rgb(dpy, cm, hdr.bg);
+    c.cell_rgb = hdr.bg;
     c.header_fg = alloc_rgb(dpy, cm, hdr.fg);
     c.header_top = alloc_rgb(dpy, cm, hdr.top);
     c.header_bottom = alloc_rgb(dpy, cm, hdr.bottom);
@@ -340,6 +349,13 @@ void App::build_menus()
     menu_toggle(m, "Folders", 'F', true, CMD_PANE_FOLDERS);
     menu_toggle(m, "Preview", 'P', true, CMD_PANE_PREVIEW);
     menu_toggle(m, "Information", 'I', true, CMD_PANE_INFO);
+    separator(m);
+    menu_item(m, "Details", 'e', "Ctrl<Key>1", "Ctrl+1", CMD_DETAILS);
+    menu_item(m, "Thumbnails", 'u', "Ctrl<Key>2", "Ctrl+2", CMD_THUMBNAILS);
+    menu_item(m, "Small Thumbnails (64)", '6', 0, 0, CMD_THUMB_64);
+    menu_item(m, "Medium Thumbnails (96)", '9', 0, 0, CMD_THUMB_96);
+    menu_item(m, "Large Thumbnails (128)", '1', 0, 0, CMD_THUMB_128);
+    menu_item(m, "Huge Thumbnails (192)", 'g', 0, 0, CMD_THUMB_192);
     separator(m);
     menu_toggle(m, "Hidden Files", 'H', show_hidden_, CMD_HIDDEN);
     separator(m);
@@ -674,6 +690,26 @@ void App::loaded(Result* r)
                 fill_list(r);
             }
         }
+    } else if (r->kind == JOB_THUMB) {
+        size_t dl = strlen(dir_.c_str());
+        const char* p = r->path.c_str();
+        thumb_put(r);
+        keep = true;
+        if (strncmp(p, dir_.c_str(), dl) == 0) {
+            const char* name = p + dl;
+            if (*name == '/')
+                name++;
+            int i = list_->find(name);
+            Row* row = list_->row(i);
+            if (row) {
+                /* Decoded from the file: its header too. */
+                if (!row->probed && r->info.format) {
+                    row->probed = true;
+                    row->info = r->info;
+                }
+                list_->row_changed(i);
+            }
+        }
     } else if (r->kind == JOB_HEADER) {
         size_t dl = strlen(dir_.c_str());
         const char* p = r->path.c_str();
@@ -753,11 +789,37 @@ void App::update_wants()
                 w.push_back(new Want(JOB_IMAGE, p.c_str(), pw, ph));
         }
     }
+    bool grid = list_->mode() == VIEW_THUMBS && !viewer_->active();
+    int ts = list_->thumb_size();
+    if (listing_.empty() && grid) {
+        /* The thumbnails in sight, top to bottom. */
+        int f = vis_first_ >= 0 ? vis_first_ : 0;
+        int l = vis_last_ >= 0 ? vis_last_ : -1;
+        for (int i = f; i <= l; i++) {
+            Row* r = list_->row(i);
+            if (r && r->image && !thumb_of(path_of(r).c_str(), ts))
+                w.push_back(new Want(JOB_THUMB, path_of(r).c_str(), ts, ts));
+        }
+    }
     for (int i = 0; i < tree_wants_.size(); i++)
         w.push_back(new Want(JOB_LIST, tree_wants_[i]->c_str()));
     if (listing_.empty()) {
         int f = vis_first_ >= 0 ? vis_first_ : 0;
         int l = vis_last_ >= 0 ? vis_last_ : -1;
+        if (grid) {
+            /* The next screen's thumbnails, then the one before. */
+            int n = l - f + 1;
+            for (int i = l + 1; i <= l + n; i++) {
+                Row* r = list_->row(i);
+                if (r && r->image && !thumb_of(path_of(r).c_str(), ts))
+                    w.push_back(new Want(JOB_THUMB, path_of(r).c_str(), ts, ts));
+            }
+            for (int i = f - 1; i >= f - n && i >= 0; i--) {
+                Row* r = list_->row(i);
+                if (r && r->image && !thumb_of(path_of(r).c_str(), ts))
+                    w.push_back(new Want(JOB_THUMB, path_of(r).c_str(), ts, ts));
+            }
+        }
         for (int i = f; i <= l; i++) {
             Row* r = list_->row(i);
             if (r && r->image && !r->probed)
@@ -786,6 +848,67 @@ void App::update_wants()
 
 /* ------------------------------------------------------------------ */
 /* The cache                                                           */
+
+App::Cached* App::thumb_of(const char* path, int size)
+{
+    for (int i = 0; i < thumbs_.size(); i++) {
+        Cached* c = thumbs_[i];
+        if (c->w == size && strcmp(c->path.c_str(), path) == 0) {
+            c->used = ++use_clock_;
+            return c;
+        }
+    }
+    return 0;
+}
+
+void App::thumb_put(Result* r)
+{
+    Cached* c = thumb_of(r->path.c_str(), r->w);
+    if (c) {
+        list_->forget_thumbs();
+        thumb_bytes_ -= (unsigned long)c->r->image.w * c->r->image.h * 4;
+        delete c->r;
+        c->r = r;
+    } else {
+        c = new Cached;
+        c->path = r->path;
+        c->w = r->w;
+        c->h = r->h;
+        c->r = r;
+        thumbs_.push_back(c);
+    }
+    c->used = ++use_clock_;
+    thumb_bytes_ += (unsigned long)r->image.w * r->image.h * 4;
+    /* A quarter of the cache, at least 16 MB (128-pixel thumbnails: 250). */
+    unsigned long budget = (unsigned long)(opt_.cache_mb / 4 > 16 ? opt_.cache_mb / 4 : 16) << 20;
+    bool dropped = false;
+    while (thumb_bytes_ > budget && thumbs_.size() > 1) {
+        int lru = -1;
+        for (int i = 0; i < thumbs_.size(); i++)
+            if (thumbs_[i] != c && (lru < 0 || thumbs_[i]->used < thumbs_[lru]->used))
+                lru = i;
+        if (lru < 0)
+            break;
+        Cached* o = thumbs_[lru];
+        thumb_bytes_ -= (unsigned long)o->r->image.w * o->r->image.h * 4;
+        delete o->r;
+        delete o;
+        thumbs_.remove_at(lru);
+        dropped = true;
+    }
+    /* The list's pixmaps may name the ones that went. */
+    if (dropped)
+        list_->forget_thumbs();
+}
+
+const ti::Image* App::list_thumb(FileList*, int i)
+{
+    Row* r = list_->row(i);
+    if (!r || !r->image)
+        return 0;
+    Cached* c = thumb_of(path_of(r).c_str(), list_->thumb_size());
+    return c && !c->r->image.empty() ? &c->r->image : 0;
+}
 
 App::Cached* App::cached(const char* path, int w, int h)
 {
@@ -1111,6 +1234,19 @@ void App::command(Command c)
     case CMD_PANE_INFO:
         set_pane(pane_info_, !docks_->open(pane_info_));
         break;
+    case CMD_DETAILS:
+    case CMD_THUMBNAILS:
+        list_->set_mode(c == CMD_THUMBNAILS ? VIEW_THUMBS : VIEW_DETAILS, list_->thumb_size());
+        save_settings();
+        schedule_wants();
+        break;
+    case CMD_THUMB_64: case CMD_THUMB_96: case CMD_THUMB_128: case CMD_THUMB_192: {
+        static const int sizes[] = { 64, 96, 128, 192 };
+        list_->set_mode(VIEW_THUMBS, sizes[c - CMD_THUMB_64]);
+        save_settings();
+        schedule_wants();
+        break;
+    }
     case CMD_MARK_ALL: case CMD_UNMARK_ALL:
         for (int i = 0; i < list_->count(); i++)
             if (!list_->row(i)->up && !list_->row(i)->dir)
@@ -1301,6 +1437,9 @@ void App::save_settings()
     f.set("sortKey", v);
     f.set("sortReverse", list_->sort_reverse() ? "true" : "false");
     f.set("showHidden", show_hidden_ ? "true" : "false");
+    f.set("viewMode", list_->mode() == VIEW_THUMBS ? "thumbnails" : "details");
+    sprintf(v, "%d", list_->thumb_size());
+    f.set("thumbnailSize", v);
     f.save(path.c_str());
 }
 

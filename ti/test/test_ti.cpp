@@ -338,6 +338,32 @@ static void test_xpm()
     CHECK(strstr(err, "row 2") != 0);
 }
 
+/* encode_png: what it writes decodes to the same pixels, with its text. */
+static void test_encode()
+{
+    size_t n = 0;
+    unsigned char* d = read_file("rgba.png", &n);
+    ti::Image im, back;
+    char err[200];
+    CHECK(d && ti::decode(d, n, &im, 0, err, sizeof(err)));
+    free(d);
+    static const char* const text[] = { "Thumb::URI", "file:///tmp/a%20b.png", "Thumb::MTime",
+                                        "1234567890", 0 };
+    unsigned char* png = 0;
+    size_t len = 0;
+    CHECK(ti::encode_png(im, text, &png, &len));
+    char v[100];
+    CHECK(png && ti::png_text(png, len, "Thumb::URI", v, sizeof(v)) &&
+          strcmp(v, "file:///tmp/a%20b.png") == 0);
+    CHECK(ti::png_text(png, len, "Thumb::MTime", v, sizeof(v)) && strcmp(v, "1234567890") == 0);
+    CHECK(!ti::png_text(png, len, "Thumb::Size", v, sizeof(v)));
+    ti::Info in;
+    CHECK(ti::decode(png, len, &back, &in, err, sizeof(err)));
+    CHECK(back.w == im.w && back.h == im.h &&
+          memcmp(back.rgba, im.rgba, (size_t)im.w * im.h * 4) == 0);
+    free(png);
+}
+
 /* Decoding in several threads at once gives what one thread gives. */
 struct ThreadRun {
     int failures;
@@ -565,6 +591,7 @@ int main()
     test_decoders();
     test_probe();
     test_xpm();
+    test_encode();
     test_threads();
     test_damage();
     test_robust();

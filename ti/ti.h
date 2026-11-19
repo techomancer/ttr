@@ -105,6 +105,14 @@ bool decode(const unsigned char* d, size_t n, Image* out, Info* info, char* err,
  * header is not there or not sane; *info then has what was found. */
 bool probe(const unsigned char* d, size_t n, Info* info);
 
+/* RGBA as a PNG in memory (malloc'd, the caller frees), with tEXt
+ * chunks from 'text': key, value, key, value, ..., 0. */
+bool encode_png(const Image& im, const char* const* text, unsigned char** out, size_t* len);
+/* A tEXt chunk's value from a PNG in memory (before its image data). */
+bool png_text(const unsigned char* d, size_t n, const char* key, char* value, size_t len);
+/* Makes encode_png's tables; set_lock() calls it, before threads start. */
+void encode_init();
+
 /* For programs that decode in several threads: a lock ti holds around
  * the decoders that keep global state (libtiff's error handlers, the XPM
  * colour names' first load). Call it once, before the threads start; it

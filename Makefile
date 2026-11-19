@@ -461,6 +461,8 @@ TI_OBJS = $(B)/ti_image.o \
 	$(B)/ti_xpm.o \
 	$(B)/ti_builtin.o \
 	$(B)/ti_stb_image.o \
+	$(B)/ti_stb_image_write.o \
+	$(B)/ti_encode.o \
 	$(B)/ti_term.o
 TI_H = ti/ti.h ti/term.h ti/internal.h
 
@@ -488,6 +490,10 @@ $(B)/ti_builtin.o: $(B)/.dir ti/builtin.cpp $(TI_H)
 	$(COMPILE) -c ti/builtin.cpp -o $@
 $(B)/ti_stb_image.o: $(B)/.dir ti/third/stb_image.c third_party/stb/stb_image.h
 	$(CC) $(CFLAGS) $(STB_CFLAGS) -c ti/third/stb_image.c -o $@
+$(B)/ti_stb_image_write.o: $(B)/.dir ti/third/stb_image_write.c third_party/stb/stb_image_write.h
+	$(CC) $(CFLAGS) $(STB_CFLAGS) -c ti/third/stb_image_write.c -o $@
+$(B)/ti_encode.o: $(B)/.dir ti/encode.cpp $(TI_H)
+	$(COMPILE) -c ti/encode.cpp -o $@
 $(B)/ti_term.o: $(B)/.dir ti/term.cpp $(TI_H)
 	$(COMPILE) -c ti/term.cpp -o $@
 
@@ -903,13 +909,15 @@ TTRV_OBJS = $(B)/ttrv_main.o \
 	$(B)/ttrv_loader.o \
 	$(B)/ttrv_pixels.o \
 	$(B)/ttrv_render.o \
+	$(B)/ttrv_thumbs.o \
 	$(B)/ttrv_viewer.o \
 	$(B)/x11_svg.o \
 	$(B)/core_scale.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
 TTRV_H = src/ttrv/app.h src/ttrv/filelist.h src/ttrv/folders.h src/ttrv/imageview.h \
-	src/ttrv/loader.h src/ttrv/pixels.h src/ttrv/render.h src/ttrv/viewer.h $(TF_H) $(TI_H) $(TW_H) $(TX_H) $(TH_H) \
+	src/ttrv/loader.h src/ttrv/pixels.h src/ttrv/render.h src/ttrv/thumbs.h src/ttrv/viewer.h \
+	$(TF_H) $(TI_H) $(TW_H) $(TX_H) $(TH_H) \
 	src/core/settings.h src/core/str.h src/core/vector.h
 
 ttrv: $(B)/ttrv
@@ -934,12 +942,14 @@ $(B)/ttrv_pixels.o: $(B)/.dir src/ttrv/pixels.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/pixels.cpp -o $@
 $(B)/ttrv_render.o: $(B)/.dir src/ttrv/render.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/render.cpp -o $@
+$(B)/ttrv_thumbs.o: $(B)/.dir src/ttrv/thumbs.cpp $(TTRV_H)
+	$(COMPILE) -c src/ttrv/thumbs.cpp -o $@
 $(B)/ttrv_viewer.o: $(B)/.dir src/ttrv/viewer.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/viewer.cpp -o $@
 
-$(B)/ttrv_test_loader: $(B)/ttrv_test_loader.o $(B)/ttrv_loader.o $(B)/core_str.o $(B)/libtf.a \
-		$(B)/libti.a
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/ttrv_test_loader.o $(B)/ttrv_loader.o \
+$(B)/ttrv_test_loader: $(B)/ttrv_test_loader.o $(B)/ttrv_loader.o $(B)/ttrv_thumbs.o \
+		$(B)/core_str.o $(B)/libtf.a $(B)/libti.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/ttrv_test_loader.o $(B)/ttrv_loader.o $(B)/ttrv_thumbs.o \
 		$(B)/core_str.o $(B)/libtf.a $(B)/libti.a $(TI_LIBS) $(THREAD_LIBS) -lm
 $(B)/ttrv_test_loader.o: $(B)/.dir src/ttrv/test/test_loader.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/test/test_loader.cpp -o $@

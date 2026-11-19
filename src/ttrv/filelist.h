@@ -11,6 +11,8 @@
 #ifndef TTRV_FILELIST_H
 #define TTRV_FILELIST_H
 
+#include "pixels.h"
+
 #include "../../tf/tf.h"
 #include "../../ti/ti.h"
 #include "core/str.h"
@@ -35,9 +37,13 @@ struct Row {
 
 enum SortKey { SORT_NAME, SORT_SIZE, SORT_IMAGE, SORT_TYPE, SORT_TIME, SORT_COUNT };
 
+/* Details (rows and columns) or thumbnails (ACDSee's grid of cells). */
+enum ViewMode { VIEW_DETAILS, VIEW_THUMBS };
+
 struct ListColors {
     unsigned long bg, fg, sel_bg, sel_fg, header_bg, header_fg, header_top, header_bottom,
         dim, folder, image, archive;
+    unsigned long cell_rgb;     /* header_bg as 0xRRGGBB: under transparent thumbnails */
 };
 
 class FileList;
@@ -54,6 +60,9 @@ public:
     virtual void list_visible(FileList* l, int first, int last) = 0;
     /* A key the list does not use (for the window's shortcuts). */
     virtual bool list_key(FileList* l, XKeyEvent* ev) { (void)l; (void)ev; return false; }
+    /* Row i's thumbnail at the cell size, or 0 (then a placeholder). It
+     * must stay until forget_thumbs() or the next call for that row. */
+    virtual const ti::Image* list_thumb(FileList* l, int row) { (void)l; (void)row; return 0; }
 };
 
 class FileList {
@@ -86,6 +95,12 @@ public:
     int marked_count() const;
 
     void set_colors(const ListColors& c);
+    /* Details or thumbnails of 'size' pixels (64 to 256). */
+    void set_mode(ViewMode m, int size);
+    ViewMode mode() const { return mode_; }
+    int thumb_size() const { return thumb_; }
+    /* The host's thumbnails changed or went: draw them afresh. */
+    void forget_thumbs();
 
     /* Callbacks (public for the C trampolines). */
     void exposed();
@@ -109,6 +124,13 @@ private:
     void sort_rows();
     bool ensure_gc();
     void tell_visible();
+    int per_line() const;
+    int line_h() const;
+    int body_top() const;
+    int page_lines() const;
+    int lines() const;
+    void paint_cell(Drawable d, int i, int x, int y);
+    Pixmap thumb_pixmap(int i, int* w, int* h);
 
     Widget form_, da_, sb_;
     FileListHost* host_;
@@ -129,6 +151,22 @@ private:
     Time click_at_;
     int click_row_;
     int vis_first_, vis_last_;
+
+    /* Thumbnails */
+    ViewMode mode_;
+    int thumb_, cols_, cell_w_, cell_h_, gap_;
+    PixelFormat fmt_;
+    bool fmt_ready_;
+    tw::ClientImage conv_;          /* a thumbnail on its way to a pixmap */
+    struct ThumbPix {
+        const ti::Image* im;
+        const unsigned char* rgba;
+        Pixmap pm;
+        int w, h;
+        unsigned long used;
+    };
+    ttr::Vector<ThumbPix*> pix_;
+    unsigned long pix_clock_;
 };
 
 /* Names in the order people expect: case ignored, numbers by value

@@ -23,8 +23,8 @@
 namespace {
 
 struct Resources {
-    String layout, list_font, ui_scale, ui_theme, image_visual;
-    int sort_key, cache_mb;
+    String layout, list_font, ui_scale, ui_theme, image_visual, view_mode;
+    int sort_key, cache_mb, thumb_size;
     Boolean sort_reverse, show_hidden, fullscreen;
 };
 
@@ -49,7 +49,9 @@ XtResource k_resources[] = {
     RSTR("uiTheme", "UiTheme", ui_theme, ""),
     RSTR("imageVisual", "ImageVisual", image_visual, "auto"),
     RINT("sortKey", "SortKey", sort_key, "0"),
-    RINT("cacheMegabytes", "CacheMegabytes", cache_mb, "48"),
+    RSTR("viewMode", "ViewMode", view_mode, "details"),
+    RINT("thumbnailSize", "ThumbnailSize", thumb_size, "128"),
+    RINT("cacheMegabytes", "CacheMegabytes", cache_mb, "0"),
     RBOOL("sortReverse", "SortReverse", sort_reverse, "false"),
     RBOOL("showHidden", "ShowHidden", show_hidden, "false"),
     RBOOL("fullScreen", "FullScreen", fullscreen, "false")
@@ -143,6 +145,8 @@ int main(int argc, char** argv)
     o.show_hidden = res.show_hidden != False;
     o.cache_mb = res.cache_mb;
     o.fullscreen = res.fullscreen != False;
+    o.thumbnails = res.view_mode && strcmp(res.view_mode, "thumbnails") == 0;
+    o.thumb_size = res.thumb_size;
     XtVaSetValues(top, XmNtitle, "ttrv", XmNiconName, "ttrv", (char*)0);
     ttrv::App* app = new ttrv::App(top, o);
     XtRealizeWidget(top);

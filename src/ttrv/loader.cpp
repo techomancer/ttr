@@ -1,6 +1,8 @@
 /* ttrv's loader (loader.h, ttrv/DESIGN.md section 4). */
 #include "loader.h"
 
+#include "thumbs.h"
+
 #include "../../tf/vfs.h"
 
 #include <errno.h>
@@ -18,7 +20,12 @@ struct Job {
     Result* r;
     unsigned char* data;    /* JOB_IMAGE: the file, between reader and decoder */
     size_t len;
-    Job(const Want& w) : want(w), r(0), data(0), len(0) {}
+    bool cached_thumb;      /* JOB_THUMB: data is the disk cache's thumbnail */
+    int image_w, image_h;   /* its image's size, as the thumbnail says */
+    Job(const Want& w)
+        : want(w), r(0), data(0), len(0), cached_thumb(false), image_w(0), image_h(0)
+    {
+    }
     ~Job()
     {
         free(data);
@@ -103,7 +110,8 @@ Result::~Result()
         delete entries[i];
 }
 
-Loader::Loader() : client_(0), ndec_(0), started_(false), stopping_(false), sync_(0)
+Loader::Loader()
+    : client_(0), ndec_(0), started_(false), stopping_(false), disk_thumbs_(false), sync_(0)
 {
     pipe_[0] = pipe_[1] = -1;
 }
@@ -277,7 +285,8 @@ void Loader::reader_loop()
         Job* j = 0;
         while (!stopping_) {
             for (int i = 0; i < pending_.size(); i++) {
-                if (pending_[i]->want.kind == JOB_IMAGE && read_.size() > ndec_)
+                JobKind k = pending_[i]->want.kind;
+                if ((k == JOB_IMAGE || k == JOB_THUMB) && read_.size() > ndec_)
                     continue;
                 j = pending_[i];
                 pending_.remove_at(i);
@@ -302,6 +311,8 @@ void Loader::reader_loop()
             run_list(j);
         else if (j->want.kind == JOB_HEADER)
             run_header(j);
+        else if (j->want.kind == JOB_THUMB)
+            to_decode = run_thumb_read(j);
         else
             to_decode = run_read(j);
 
@@ -335,7 +346,10 @@ void Loader::decoder_loop()
         /* A decoder freed: the reader may read the next image. */
         pthread_cond_signal(&sync_->reader);
         pthread_mutex_unlock(&sync_->m);
-        run_decode(j);
+        if (j->want.kind == JOB_THUMB)
+            run_thumb_decode(j);
+        else
+            run_decode(j);
         pthread_mutex_lock(&sync_->m);
         finish(j);
     }
@@ -463,6 +477,67 @@ bool Loader::run_read(Job* j)
     if (!j->data && !r->err)
         snprintf(r->msg, sizeof(r->msg), "Out of memory.");
     return j->data && !r->err && !r->msg[0];
+}
+
+/* A thumbnail: the disk cache's when it is there and fresh, else the
+ * file itself. */
+bool Loader::run_thumb_read(Job* j)
+{
+    Result* r = j->r;
+    const char* p = j->want.path.c_str();
+    if (disk_thumbs_ && tf::is_local_path(p)) {
+        r->err = tf::vfs()->stat(p, &r->st, true);
+        if (r->err)
+            return false;
+        int cls = thumb_class(j->want.w > j->want.h ? j->want.w : j->want.h);
+        j->data = thumb_read(p, r->st.mtime, cls, &j->len, &j->image_w, &j->image_h);
+        if (j->data) {
+            j->cached_thumb = true;
+            return true;
+        }
+    }
+    return run_read(j);
+}
+
+void Loader::run_thumb_decode(Job* j)
+{
+    Result* r = j->r;
+    int w = j->want.w, h = j->want.h;
+    int cls = thumb_class(w > h ? w : h);
+    ti::DecodeOptions o;
+    o.reduce_to = j->cached_thumb ? 0 : cls;
+    ti::Image im;
+    ti::Info info;
+    bool ok = ti::decode(j->data, j->len, &im, &info, r->msg, sizeof(r->msg), o);
+    free(j->data);
+    j->data = 0;
+    if (!ok)
+        return;
+    if (j->cached_thumb) {
+        /* The image's size from the thumbnail; its format is unknown. */
+        r->info = ti::Info();
+        r->info.width = j->image_w;
+        r->info.height = j->image_h;
+    } else {
+        r->info = info;
+        /* The size class's thumbnail, saved for next time. */
+        int tw = im.w, th = im.h;
+        ti::fit(im.w, im.h, cls, cls, 1.0, false, &tw, &th);
+        ti::Image t;
+        if (tw != im.w || th != im.h) {
+            if (ti::scale(im, tw, th, &t))
+                im.take(t);
+        }
+        const char* p = j->want.path.c_str();
+        if (disk_thumbs_ && tf::is_local_path(p))
+            thumb_write(p, r->st.mtime, cls, im, info.width, info.height);
+    }
+    int fw = im.w, fh = im.h;
+    ti::fit(im.w, im.h, w, h, 1.0, false, &fw, &fh);
+    if (fw == im.w && fh == im.h)
+        r->image.take(im);
+    else if (!ti::scale(im, fw, fh, &r->image))
+        snprintf(r->msg, sizeof(r->msg), "Not enough memory to scale the image.");
 }
 
 void Loader::run_decode(Job* j)

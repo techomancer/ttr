@@ -22,7 +22,8 @@ namespace ttrv {
 enum JobKind {
     JOB_LIST,       /* a folder's entries (archives are folders) */
     JOB_HEADER,     /* an image's format, size, depth: ti::probe */
-    JOB_IMAGE       /* decoded, fitted in w x h (0 x 0: full size) */
+    JOB_IMAGE,      /* decoded, fitted in w x h (0 x 0: full size) */
+    JOB_THUMB       /* a thumbnail fitted in w x h, through the disk cache */
 };
 
 struct Entry {
@@ -52,7 +53,8 @@ public:
     int err;                /* errno from tf, or 0 */
     char msg[200];          /* why decoding failed, or "" */
     tf::Stat st;            /* the file's (or folder's) */
-    ti::Info info;          /* JOB_HEADER and JOB_IMAGE */
+    ti::Info info;          /* JOB_HEADER and JOB_IMAGE; JOB_THUMB: the
+                             * image's size, its format only if decoded */
     ti::Image image;        /* JOB_IMAGE: fitted (or the whole image) */
     ttr::Vector<Entry*> entries;    /* JOB_LIST, unsorted */
 
@@ -88,6 +90,10 @@ public:
     int notify_fd() const { return pipe_[0]; }
     void dispatch();
 
+    /* Thumbnails go to and come from the disk cache (thumbs.h), which
+     * thumbs_init() made. Before start(). */
+    void set_disk_thumbs(bool on) { disk_thumbs_ = on; }
+
     /* Bytes read for one image at most (bigger files fail). */
     static const unsigned long k_max_file = 256UL << 20;
 
@@ -102,6 +108,8 @@ private:
     void run_list(Job* j);
     void run_header(Job* j);
     bool run_read(Job* j);
+    bool run_thumb_read(Job* j);
+    void run_thumb_decode(Job* j);
     void run_decode(Job* j);
     void finish(Job* j);
     bool coming(const Want& w) const;
@@ -109,7 +117,7 @@ private:
     LoaderClient* client_;
     int pipe_[2];
     int ndec_;
-    bool started_, stopping_;
+    bool started_, stopping_, disk_thumbs_;
     struct Sync* sync_;             /* the mutex, conditions and threads */
     ttr::Vector<Job*> pending_;     /* wanted, not started */
     ttr::Vector<Job*> read_;        /* read, waiting for a decoder */

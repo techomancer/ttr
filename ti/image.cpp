@@ -137,6 +137,7 @@ void* g_lock_ctx = 0;
 
 void set_lock(void (*lk)(void* ctx), void (*unlk)(void* ctx), void* ctx)
 {
+    encode_init();
     /* Fill the names now, while there is one thread. */
     for (int f = FMT_PNG; f < FMT_COUNT; f++) {
         decoder_name((Format)f, BACKEND_SYSTEM);

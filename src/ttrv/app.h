@@ -27,12 +27,15 @@ struct Options {
     const char* layout;         /* the docks; "" for the default */
     const char* list_font;
     int sort_key;
+    bool thumbnails;            /* the thumbnail grid, not the details */
+    int thumb_size;
     bool sort_reverse;
     bool show_hidden;
     int cache_mb;               /* decoded images; 0: a quarter of memory */
     bool fullscreen;            /* an image to start with: full screen */
     Options()
-        : start(""), layout(""), list_font(""), sort_key(0), sort_reverse(false),
+        : start(""), layout(""), list_font(""), sort_key(0), thumbnails(false), thumb_size(128),
+          sort_reverse(false),
           show_hidden(false), cache_mb(0), fullscreen(false)
     {
     }
@@ -56,6 +59,12 @@ enum Command {
     CMD_PANE_INFO,
     CMD_MARK_ALL,
     CMD_UNMARK_ALL,
+    CMD_DETAILS,
+    CMD_THUMBNAILS,
+    CMD_THUMB_64,
+    CMD_THUMB_96,
+    CMD_THUMB_128,
+    CMD_THUMB_192,
     CMD_ABOUT,
     CMD_EXIT
 };
@@ -90,6 +99,7 @@ public:
     /* ImageViewHost */
     void view_resized(ImageView* v);
     bool list_key(FileList* l, XKeyEvent* ev);
+    const ti::Image* list_thumb(FileList* l, int row);
     /* ViewerHost */
     int viewer_count();
     const Row* viewer_row(int i);
@@ -138,6 +148,8 @@ private:
     Cached* cached(const char* path, int w, int h);
     Cached* cached_any(const char* path);
     void cache_put(Result* r);
+    void thumb_put(Result* r);
+    Cached* thumb_of(const char* path, int size);
     ttr::Str path_of(const Row* r) const;
     void save_settings();
     ListColors list_colors();
@@ -175,6 +187,8 @@ private:
     ttr::Vector<Place*> back_, forward_;
     ttr::Vector<ttr::Str*> tree_wants_;
     ttr::Vector<Cached*> cache_;
+    ttr::Vector<Cached*> thumbs_;   /* their own budget: stepping never pushes them out */
+    unsigned long thumb_bytes_;
     unsigned long cache_bytes_, use_clock_;
     bool show_hidden_;
     int vis_first_, vis_last_;
