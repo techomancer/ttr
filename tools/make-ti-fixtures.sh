@@ -68,6 +68,22 @@ f.close()
 # Rows over 8 KB in one uncompressed strip: libtiff 3.4 divides by zero
 # chopping it unless told not to.
 Image.new('RGB', (3000, 2), (10, 20, 30)).save(out + '/wide.tif')
+# XPM by hand: one colour a pixel, two characters each, pixel (0,0)
+# transparent, the colours in #RRGGBB and the keys in mixed order.
+chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJ'
+lines = ['"%d %d %d 2",' % (W, H, W * H)]
+for y in range(H):
+    for x in range(W):
+        k = chars[y * W + x] + '.'
+        if x == 0 and y == 0:
+            lines.append('"%s s background c None",' % k)
+        else:
+            lines.append('"%s m black c #%02X%02X%02X",' % ((k,) + col(x, y)))
+for y in range(H):
+    lines.append('"' + ''.join(chars[y * W + x] + '.' for x in range(W)) + '",')
+lines[-1] = lines[-1][:-1]
+open(out + '/pal.xpm', 'w').write('/* XPM */\nstatic char *pal[] = {\n/* columns rows colors chars */\n' +
+                                  '\n'.join(lines) + '\n};\n')
 # Cut short.
 d = open(out + '/rgb.png', 'rb').read()
 open(out + '/short.png', 'wb').write(d[:len(d) // 2])

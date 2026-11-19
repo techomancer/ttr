@@ -5,6 +5,7 @@
 #include "../term.h"
 #include "../ti.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,30 +58,34 @@ struct Fixture {
     ti::Format format;
     Kind kind;
     int tolerance;
+    int bits;           /* probe(): bits a pixel; colours > 0 if indexed */
+    bool indexed;
 };
 
 static const Fixture k_fixtures[] = {
-    { "rgb.png", ti::FMT_PNG, K_RGB, 0 },
-    { "rgba.png", ti::FMT_PNG, K_RGBA, 0 },
-    { "grey.png", ti::FMT_PNG, K_GREY, 0 },
-    { "pal.png", ti::FMT_PNG, K_PAL, 8 },
-    { "blank16.png", ti::FMT_PNG, K_BLACK, 0 },
-    { "rgb_interlaced.png", ti::FMT_PNG, K_RGB, 0 },
-    { "rgb.jpg", ti::FMT_JPEG, K_RGB, 16 },
-    { "rgb_progressive.jpg", ti::FMT_JPEG, K_RGB, 16 },
-    { "grey.jpg", ti::FMT_JPEG, K_GREY, 12 },
-    { "cmyk.jpg", ti::FMT_JPEG, K_RGB, 24 },
-    { "pal.gif", ti::FMT_GIF, K_PAL, 8 },
-    { "pal_interlaced.gif", ti::FMT_GIF, K_PAL, 8 },
-    { "rgb.tif", ti::FMT_TIFF, K_RGB, 0 },
-    { "rgb_msb.tif", ti::FMT_TIFF, K_RGB, 0 },
-    { "rgba_lzw.tif", ti::FMT_TIFF, K_RGBA, 4 },  /* premultiplied by libtiff */
-    { "rgb.bmp", ti::FMT_BMP, K_RGB, 0 },
-    { "rgb.ppm", ti::FMT_PNM, K_RGB, 0 },
-    { "grey.pgm", ti::FMT_PNM, K_GREY, 0 },
-    { "rgb.sgi", ti::FMT_SGI, K_RGB, 0 },
-    { "rgba_rle.sgi", ti::FMT_SGI, K_RGBA, 0 },
+    { "rgb.png", ti::FMT_PNG, K_RGB, 0, 24, false },
+    { "rgba.png", ti::FMT_PNG, K_RGBA, 0, 32, false },
+    { "grey.png", ti::FMT_PNG, K_GREY, 0, 8, false },
+    { "pal.png", ti::FMT_PNG, K_PAL, 8, 8, true },
+    { "blank16.png", ti::FMT_PNG, K_BLACK, 0, 16, false },
+    { "rgb_interlaced.png", ti::FMT_PNG, K_RGB, 0, 8, true },     /* magick wrote a palette */
+    { "rgb.jpg", ti::FMT_JPEG, K_RGB, 16, 24, false },
+    { "rgb_progressive.jpg", ti::FMT_JPEG, K_RGB, 16, 24, false },
+    { "grey.jpg", ti::FMT_JPEG, K_GREY, 12, 8, false },
+    { "cmyk.jpg", ti::FMT_JPEG, K_RGB, 24, 32, false },
+    { "pal.gif", ti::FMT_GIF, K_PAL, 8, 0, true },
+    { "pal_interlaced.gif", ti::FMT_GIF, K_PAL, 8, 0, true },
+    { "rgb.tif", ti::FMT_TIFF, K_RGB, 0, 24, false },
+    { "rgb_msb.tif", ti::FMT_TIFF, K_RGB, 0, 24, false },
+    { "rgba_lzw.tif", ti::FMT_TIFF, K_RGBA, 4, 32, false },  /* premultiplied by libtiff */
+    { "rgb.bmp", ti::FMT_BMP, K_RGB, 0, 24, false },
+    { "rgb.ppm", ti::FMT_PNM, K_RGB, 0, 24, false },
+    { "grey.pgm", ti::FMT_PNM, K_GREY, 0, 8, false },
+    { "rgb.sgi", ti::FMT_SGI, K_RGB, 0, 24, false },
+    { "rgba_rle.sgi", ti::FMT_SGI, K_RGBA, 0, 32, false },
+    { "pal.xpm", ti::FMT_XPM, K_PAL, 0, 6, true },
 };
+static const int k_nfixtures = (int)(sizeof(k_fixtures) / sizeof(k_fixtures[0]));
 
 static int g_decoded;
 
@@ -259,6 +264,160 @@ static void test_robust()
     CHECK(decoded >= 0);
 }
 
+/* probe() gives what decode() gives, from the header alone; the start
+ * of a file is enough, and a cut header is no crash. */
+static void test_probe()
+{
+    for (int i = 0; i < k_nfixtures; i++) {
+        const Fixture& f = k_fixtures[i];
+        size_t n = 0;
+        unsigned char* d = read_file(f.file, &n);
+        if (!d)
+            continue;
+        ti::Info in;
+        bool ok = ti::probe(d, n, &in);
+        if (!ok || in.width != 7 || in.height != 5 || (f.bits && in.bits != f.bits) ||
+            (in.colors > 0) != f.indexed)
+            printf("probe %s: ok %d, %d x %d, %d bits, %d colours\n", f.file, ok, in.width,
+                   in.height, in.bits, in.colors);
+        CHECK(ok && in.format == f.format && in.width == 7 && in.height == 5);
+        CHECK(f.bits ? in.bits == f.bits : in.bits > 0 && in.bits <= 8);
+        CHECK((in.colors > 0) == f.indexed);
+        if (f.format == ti::FMT_XPM)
+            CHECK(in.colors == 35);
+        /* decode() reports the same. */
+        ti::Image im;
+        ti::Info di;
+        char err[200];
+        if (ti::decode(d, n, &im, &di, err, sizeof(err)))
+            CHECK(di.bits == in.bits && di.colors == in.colors);
+        for (size_t len = 0; len < n && len < 600; len++) {
+            unsigned char* cut = (unsigned char*)malloc(len ? len : 1);
+            memcpy(cut, d, len);
+            ti::probe(cut, len, &in);
+            free(cut);
+        }
+        free(d);
+    }
+}
+
+/* XPM colours: names (from rgb.txt or the built-in ones), grayN, None,
+ * the best visual key, a value of two words. */
+static void test_xpm()
+{
+    static const char x[] =
+        "/* XPM */\n"
+        "static char * t[] = {\n"
+        "\"5 1 5 1\",\n"
+        "\"r c red\",\n"
+        "\"g m white g4 #000 c gray50\",\n"
+        "\"l s face c light gray m black\",\n"
+        "\"n c None\",\n"
+        "\"h c #fFf\",\n"
+        "/* a comment between the strings */\n"
+        "\"rglnh\"};\n";
+    ti::Image im;
+    ti::Info in;
+    char err[200];
+    CHECK(ti::sniff((const unsigned char*)x, sizeof(x) - 1) == ti::FMT_XPM);
+    bool ok = ti::decode((const unsigned char*)x, sizeof(x) - 1, &im, &in, err, sizeof(err));
+    if (!ok)
+        printf("xpm: %s\n", err);
+    CHECK(ok && im.w == 5 && im.h == 1);
+    if (!ok)
+        return;
+    const unsigned char* p = im.rgba;
+    CHECK(p[0] == 255 && p[1] == 0 && p[2] == 0 && p[3] == 255);
+    CHECK(p[4] == 127 && p[5] == 127 && p[6] == 127);
+    CHECK(p[8] == 211 && p[9] == 211 && p[10] == 211);
+    CHECK(p[15] == 0);
+    CHECK(p[16] == 255 && p[17] == 255 && p[18] == 255 && p[19] == 255);
+    /* A row short of pixels. */
+    static const char bad[] = "/* XPM */ \"2 2 1 1\", \"a c red\", \"aa\", \"a\"";
+    CHECK(!ti::decode((const unsigned char*)bad, sizeof(bad) - 1, &im, 0, err, sizeof(err)));
+    CHECK(strstr(err, "row 2") != 0);
+}
+
+/* Decoding in several threads at once gives what one thread gives. */
+struct ThreadRun {
+    int failures;
+};
+
+static unsigned char* g_files[64];
+static size_t g_sizes[64];
+static ti::Image g_single[2][64];  /* [0] the default decoder, [1] the built-in one */
+
+static void* decode_all(void* arg)
+{
+    ThreadRun* r = (ThreadRun*)arg;
+    for (int round = 0; round < 10; round++)
+        for (int i = 0; i < k_nfixtures; i++) {
+            int b = round & 1;
+            const ti::Image& want = g_single[b][i];
+            if (want.empty())
+                continue;
+            ti::DecodeOptions o;
+            o.backend = b ? ti::BACKEND_BUILTIN : ti::BACKEND_ANY;
+            ti::Image im;
+            ti::Info in;
+            char err[200];
+            bool ok = ti::decode(g_files[i], g_sizes[i], &im, &in, err, sizeof(err), o);
+            if (!ok || im.w != want.w || im.h != want.h ||
+                memcmp(im.rgba, want.rgba, (size_t)im.w * im.h * 4) != 0)
+                r->failures++;
+            ti::probe(g_files[i], g_sizes[i], &in);
+        }
+    return 0;
+}
+
+static pthread_mutex_t g_ti_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void lock_fn(void*)
+{
+    pthread_mutex_lock(&g_ti_lock);
+}
+
+static void unlock_fn(void*)
+{
+    pthread_mutex_unlock(&g_ti_lock);
+}
+
+static void test_threads()
+{
+    ti::set_lock(lock_fn, unlock_fn, 0);
+    for (int i = 0; i < k_nfixtures; i++) {
+        g_files[i] = read_file(k_fixtures[i].file, &g_sizes[i]);
+        for (int b = 0; g_files[i] && b < 2; b++) {
+            ti::DecodeOptions o;
+            o.backend = b ? ti::BACKEND_BUILTIN : ti::BACKEND_ANY;
+            char err[200];
+            if (ti::decoder_name(k_fixtures[i].format, o.backend))
+                ti::decode(g_files[i], g_sizes[i], &g_single[b][i], 0, err, sizeof(err), o);
+        }
+    }
+    enum { N = 4 };
+    pthread_t t[N];
+    ThreadRun run[N];
+    int started = 0;
+    for (int i = 0; i < N; i++) {
+        run[i].failures = 0;
+        if (pthread_create(&t[i], 0, decode_all, &run[i]) == 0)
+            started++;
+        else
+            break;
+    }
+    CHECK(started == N);
+    int failures = 0;
+    for (int i = 0; i < started; i++) {
+        pthread_join(t[i], 0);
+        failures += run[i].failures;
+    }
+    CHECK(failures == 0);
+    for (int i = 0; i < k_nfixtures; i++)
+        free(g_files[i]);
+    ti::set_lock(0, 0, 0);
+}
+
 static void test_scale()
 {
     ti::Image a;
@@ -404,6 +563,9 @@ static void test_protocols()
 int main()
 {
     test_decoders();
+    test_probe();
+    test_xpm();
+    test_threads();
     test_damage();
     test_robust();
     test_scale();

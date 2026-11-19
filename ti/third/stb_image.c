@@ -12,7 +12,15 @@
 #define STB_IMAGE_STATIC
 #define STBI_NO_STDIO
 #define STBI_NO_SIMD
+/* stb's failure reason is one global: per thread where the compiler has
+ * thread-local storage (GCC, Clang), so decoders in several threads keep
+ * their own messages. MIPSpro has none; there two threads failing at
+ * once may report each other's reason (a static string either way). */
+#if defined(__GNUC__)
+#define STBI_THREAD_LOCAL __thread
+#else
 #define STBI_NO_THREAD_LOCALS
+#endif
 #define STBI_NO_LINEAR
 #define STBI_NO_HDR
 #define STBI_ONLY_PNG

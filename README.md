@@ -664,7 +664,7 @@ line, or in hex to a file offset such as `0x1f40`, `1f40h` or `8000`;
 `q` quits); it also reads files inside archives. Its top line shows the
 file's full path, shortened from the left when it does not fit.
 
-Images (PNG, JPEG, GIF, TIFF, BMP, PNM and SGI `.rgb`) show as pictures,
+Images (PNG, JPEG, GIF, TIFF, BMP, PNM, SGI `.rgb` and XPM) show as pictures,
 fitted to the screen: through kitty's graphics protocol in kitty,
 ghostty and ttrt, iTerm2's in iTerm2 and WezTerm, sixels in foot, mlterm, konsole
 and Windows Terminal, and in half blocks (two coloured pixels a cell)

@@ -446,12 +446,16 @@ $(B)/th_test_th.o: $(B)/.dir th/test/test_th.cpp $(TH_H)
 TI_CPPFLAGS = -DTTR_HAVE_PNG -DTTR_HAVE_JPEG -DTTR_HAVE_GIF -DTTR_HAVE_TIFF
 TI_LIBS = -lpng -ljpeg -lgif -ltiff
 STB_CFLAGS = -fwrapv
+# Threads, for the programs that decode in several (ttrv) and ti's test.
+THREAD_LIBS = -lpthread
 TI_OBJS = $(B)/ti_image.o \
 	$(B)/ti_png.o \
 	$(B)/ti_jpeg.o \
 	$(B)/ti_gif.o \
 	$(B)/ti_tiff.o \
 	$(B)/ti_sgi.o \
+	$(B)/ti_probe.o \
+	$(B)/ti_xpm.o \
 	$(B)/ti_builtin.o \
 	$(B)/ti_stb_image.o \
 	$(B)/ti_term.o
@@ -473,6 +477,10 @@ $(B)/ti_tiff.o: $(B)/.dir ti/tiff.cpp $(TI_H)
 	$(COMPILE) $(TI_CPPFLAGS) -c ti/tiff.cpp -o $@
 $(B)/ti_sgi.o: $(B)/.dir ti/sgi.cpp $(TI_H)
 	$(COMPILE) -c ti/sgi.cpp -o $@
+$(B)/ti_probe.o: $(B)/.dir ti/probe.cpp $(TI_H)
+	$(COMPILE) -c ti/probe.cpp -o $@
+$(B)/ti_xpm.o: $(B)/.dir ti/xpm.cpp $(TI_H)
+	$(COMPILE) -c ti/xpm.cpp -o $@
 $(B)/ti_builtin.o: $(B)/.dir ti/builtin.cpp $(TI_H)
 	$(COMPILE) -c ti/builtin.cpp -o $@
 $(B)/ti_stb_image.o: $(B)/.dir ti/third/stb_image.c third_party/stb/stb_image.h
@@ -481,7 +489,7 @@ $(B)/ti_term.o: $(B)/.dir ti/term.cpp $(TI_H)
 	$(COMPILE) -c ti/term.cpp -o $@
 
 $(B)/ti_test: $(B)/ti_test_ti.o $(B)/libti.a
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/ti_test_ti.o $(B)/libti.a $(TI_LIBS) -lm
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/ti_test_ti.o $(B)/libti.a $(TI_LIBS) -lm $(THREAD_LIBS)
 
 ti-test: $(B)/ti_test
 	$(B)/ti_test

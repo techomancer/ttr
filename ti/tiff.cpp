@@ -163,7 +163,8 @@ const char* tiff_system_name()
     return name;
 }
 
-bool tiff_system(Ctx& c)
+/* Under ti's lock: libtiff's handlers and g_msg are process-wide. */
+static bool tiff_locked(Ctx& c)
 {
     if (!sane(c.d, c.n))
         return fail(c, "TIFF: the image's size or layout is damaged.");
@@ -231,6 +232,14 @@ bool tiff_system(Ctx& c)
     }
     TIFFSetErrorHandler(old_err);
     TIFFSetWarningHandler(old_warn);
+    return ok;
+}
+
+bool tiff_system(Ctx& c)
+{
+    lock();
+    bool ok = tiff_locked(c);
+    unlock();
     return ok;
 }
 

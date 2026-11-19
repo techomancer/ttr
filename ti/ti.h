@@ -1,6 +1,6 @@
 /*
  * ti: ttr's images (ti/DESIGN.md). Decodes PNG, JPEG, GIF, TIFF, BMP,
- * PNM and SGI images from memory into 8-bit RGBA, scales them, and
+ * PNM, SGI and XPM images from memory into 8-bit RGBA, scales them, and
  * encodes them for terminals (ti/term.h).
  *
  * Each format has two decoders. The system library, when the build has
@@ -9,9 +9,11 @@
  * to 4), written against the API every one of those versions has; and
  * the built-in one (stb_image, third_party/stb), used where the library
  * is missing, as IRIX has no giflib. TIFF has no built-in decoder, SGI
- * no library: ti reads SGI images itself.
+ * and XPM no library: ti reads them itself.
  *
  * C++98, no STL, no exceptions. Errors are messages, never aborts.
+ * Threads: decode() and probe() may run in several threads at once once
+ * set_lock() has been called (ti/DESIGN.md, "Threads").
  */
 #ifndef TI_TI_H
 #define TI_TI_H
@@ -29,12 +31,14 @@ enum Format {
     FMT_BMP,
     FMT_PNM,
     FMT_SGI,
+    FMT_XPM,
     FMT_COUNT
 };
 
 /* "PNG", "JPEG", ... */
 const char* format_name(Format f);
-/* The format from the first bytes (16 are enough). */
+/* The format from the first bytes (16 are enough; XPM's comment may come
+ * after leading white space, up to 64 bytes). */
 Format sniff(const unsigned char* d, size_t n);
 
 /* Which decoder to use: the library if there is one (else the built-in
@@ -74,8 +78,11 @@ const long k_max_pixels = 1L << 25;
 struct Info {
     Format format;
     int width, height;          /* of the file; the image may be reduced */
+    /* Bits a pixel in the file (1, 4, 8, 24, 32, 48, ...), all channels;
+     * colors: the palette's entries for an indexed image, else 0. */
+    int bits, colors;
     const char* decoder;
-    Info() : format(FMT_UNKNOWN), width(0), height(0), decoder(0) {}
+    Info() : format(FMT_UNKNOWN), width(0), height(0), bits(0), colors(0), decoder(0) {}
 };
 
 struct DecodeOptions {
@@ -90,6 +97,19 @@ struct DecodeOptions {
 /* Decode a whole file held in memory. On failure 'err' says why. */
 bool decode(const unsigned char* d, size_t n, Image* out, Info* info, char* err,
             size_t errlen, const DecodeOptions& opt = DecodeOptions());
+
+/* The format, size, bits and colours from the file's header, without
+ * decoding it (a file browser's image properties). 'n' may be just the
+ * start of the file: 64 KB is enough for every format but a JPEG with a
+ * large preview or a TIFF whose directory is at its end. False if the
+ * header is not there or not sane; *info then has what was found. */
+bool probe(const unsigned char* d, size_t n, Info* info);
+
+/* For programs that decode in several threads: a lock ti holds around
+ * the decoders that keep global state (libtiff's error handlers, the XPM
+ * colour names' first load). Call it once, before the threads start; it
+ * also fills ti's lazily made strings (the decoder names). */
+void set_lock(void (*lock)(void* ctx), void (*unlock)(void* ctx), void* ctx);
 
 /* zlib data (RFC 1950) into out, which it must fill exactly. */
 bool inflate(const unsigned char* in, size_t n, unsigned char* out, size_t out_n);

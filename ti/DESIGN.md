@@ -1,8 +1,9 @@
 # ti: ttr's images
 
 ti decodes image files into 8-bit RGBA, scales them, and encodes them
-for terminals. ttrc's viewer (F3) shows images with it, and ttr's icon
-loader reads PNG icons through it. C++98, no STL, no exceptions; it
+for terminals. ttrc's viewer (F3) shows images with it, ttr's icon
+loader reads PNG icons through it, and ttrv (ttrv/DESIGN.md) decodes
+with it in several threads. C++98, no STL, no exceptions; it
 needs only the C library and the image libraries the build names.
 
 ## 1. Two decoders a format
@@ -19,6 +20,7 @@ giflib 5 and libtiff 4. Each format therefore has two decoders:
 | TIFF | libtiff 3.4 to 4 (`TTR_HAVE_TIFF`) | none |
 | BMP, PNM (P5, P6) | none | stb_image |
 | SGI (.rgb, .bw) | none | ti's own |
+| XPM 3 | none (libXpm needs a display for names) | ti's own |
 
 The library is used when the build has it, as it is the better
 maintained decoder on Linux; the built-in one is used where it is
@@ -94,7 +96,50 @@ the screen is flushed (`FullScreen::paint_over`), again after anything
 covered them. Sixel and iTerm2 pixels are replaced by text written over
 them, so leaving the image redraws the whole screen.
 
-## 4. Not done
+## 4. Headers: probe()
+
+`probe()` reads a file's format, size, bits a pixel and palette size from
+its header alone, for a file browser's image properties column, where
+decoding every file would take minutes on an Indy. Each format's header
+is read by ti's own code (`ti/probe.cpp`), bounds-checked against the
+bytes it was given, so the first 64 KB of a file are enough for nearly
+all of them. `decode()` fills the same `Info::bits` and `Info::colors`.
+`bits` counts all channels: 24 for RGB, 32 for RGBA or CMYK, 8 for a
+palette or grey image; `colors` is the palette's size for indexed images
+(PNG's PLTE, GIF's table, BMP's colours used, an XPM's colours) and 0
+otherwise.
+
+## 5. XPM
+
+ti reads XPM 3 itself (`ti/xpm.cpp`), from memory, so files inside
+archives and decoder threads need no X connection. Colours are the
+visual key's value in the order c, g, g4, m; `None` is transparent;
+`#RGB` to `#RRRRGGGGBBBB`; X colour names come from the system's
+`rgb.txt` (`/usr/share/X11` on Linux, `/usr/lib/X11` on IRIX), read
+once, with a few names and `grayN` built in when it is missing. A colour
+ti does not know is black, where libXpm would refuse the file.
+
+## 6. Threads
+
+`decode()` and `probe()` can run in several threads at once once the
+program has called `set_lock()` with a mutex (ttr's code stays free of
+pthreads; the program brings them). ti holds it only where a decoder
+keeps global state:
+
+- libtiff: its error and warning handlers are process-wide, so a TIFF
+  decode holds the lock throughout.
+- The XPM colour names, loaded on first use.
+
+`set_lock()` also fills the decoder names, which are made on first use,
+before any thread can race for them. libpng, libjpeg and giflib keep
+their state in the decoder's own structures. stb_image's failure reason
+is a global: thread-local where the compiler has `__thread` (GCC,
+Clang); with MIPSpro two threads failing at once may get each other's
+message. The tests decode every fixture in four threads with both
+decoder sets and compare the pixels with a single thread's; the
+ThreadSanitizer build reports no races.
+
+## 7. Not done
 
 Animation (GIF shows its first frame), colour profiles, EXIF rotation,
 16-bit output, WebP and AVIF, and zooming in the viewer.

@@ -51,7 +51,7 @@ void Image::take(Image& o)
 const char* format_name(Format f)
 {
     static const char* const names[FMT_COUNT] = {
-        "unknown", "PNG", "JPEG", "GIF", "TIFF", "BMP", "PNM", "SGI"
+        "unknown", "PNG", "JPEG", "GIF", "TIFF", "BMP", "PNM", "SGI", "XPM"
     };
     return f >= 0 && f < FMT_COUNT ? names[f] : names[0];
 }
@@ -78,6 +78,14 @@ Format sniff(const unsigned char* d, size_t n)
         return FMT_PNM;
     if (n >= 4 && d[0] == 0x01 && d[1] == 0xda && d[2] <= 1 && (d[3] == 1 || d[3] == 2))
         return FMT_SGI;
+    {
+        /* XPM 3: the comment that starts the file. */
+        size_t i = 0;
+        while (i < n && i < 64 && (d[i] == ' ' || d[i] == '\t' || d[i] == '\r' || d[i] == '\n'))
+            i++;
+        if (n - i >= 9 && memcmp(d + i, "/* XPM */", 9) == 0)
+            return FMT_XPM;
+    }
     return FMT_UNKNOWN;
 }
 
@@ -109,7 +117,7 @@ bool system_decode(Ctx& c, Format f)
 
 const char* decoder_name(Format f, Backend b)
 {
-    if (f == FMT_SGI)
+    if (f == FMT_SGI || f == FMT_XPM)
         return b == BACKEND_SYSTEM ? 0 : "ti";
     const char* s = system_name(f);
     if (b == BACKEND_SYSTEM)
@@ -119,7 +127,39 @@ const char* decoder_name(Format f, Backend b)
     return builtin_name(f);
 }
 
+namespace {
+
+void (*g_lock)(void*) = 0;
+void (*g_unlock)(void*) = 0;
+void* g_lock_ctx = 0;
+
+} /* namespace */
+
+void set_lock(void (*lk)(void* ctx), void (*unlk)(void* ctx), void* ctx)
+{
+    /* Fill the names now, while there is one thread. */
+    for (int f = FMT_PNG; f < FMT_COUNT; f++) {
+        decoder_name((Format)f, BACKEND_SYSTEM);
+        decoder_name((Format)f, BACKEND_BUILTIN);
+    }
+    g_lock = lk;
+    g_unlock = unlk;
+    g_lock_ctx = ctx;
+}
+
 namespace internal {
+
+void lock()
+{
+    if (g_lock)
+        g_lock(g_lock_ctx);
+}
+
+void unlock()
+{
+    if (g_unlock)
+        g_unlock(g_lock_ctx);
+}
 
 bool fail(Ctx& c, const char* fmt, ...)
 {
@@ -174,6 +214,8 @@ bool decode(const unsigned char* d, size_t n, Image* out, Info* info, char* err,
     bool ok;
     if (f == FMT_SGI)
         ok = sgi_decode(c);
+    else if (f == FMT_XPM)
+        ok = xpm_decode(c);
     else if (opt.backend != BACKEND_BUILTIN && system_name(f))
         ok = system_decode(c, f);
     else
@@ -182,6 +224,13 @@ bool decode(const unsigned char* d, size_t n, Image* out, Info* info, char* err,
         out->clear();
         if (err && errlen && !err[0])
             fail(c, "The %s file is damaged.", format_name(f));
+    } else {
+        /* Bits and colours, from the header. */
+        Info h;
+        if (probe(d, n, &h)) {
+            info->bits = h.bits;
+            info->colors = h.colors;
+        }
     }
     return ok;
 }

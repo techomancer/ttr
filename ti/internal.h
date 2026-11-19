@@ -36,8 +36,17 @@ bool gif_system(Ctx& c);
 const char* tiff_system_name();
 bool tiff_system(Ctx& c);
 
-/* ti's own SGI reader. */
+/* ti's own SGI and XPM readers. */
 bool sgi_decode(Ctx& c);
+bool xpm_decode(Ctx& c);
+/* An X colour name ("light gray", "Gray50"; case and spaces ignored) as
+ * 0xRRGGBB, from the system's rgb.txt or a few built-in ones; -1 if
+ * unknown. */
+long xpm_color_name(const char* name, size_t len);
+
+/* set_lock()'s lock; no-ops without one. */
+void lock();
+void unlock();
 
 /* stb_image: PNG, JPEG, GIF, BMP and PNM; the name is 0 for the rest. */
 const char* builtin_name(Format f);
