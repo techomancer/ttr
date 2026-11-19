@@ -463,6 +463,7 @@ TI_OBJS = $(B)/ti_image.o \
 	$(B)/ti_stb_image.o \
 	$(B)/ti_stb_image_write.o \
 	$(B)/ti_encode.o \
+	$(B)/ti_exif.o \
 	$(B)/ti_term.o
 TI_H = ti/ti.h ti/term.h ti/internal.h
 
@@ -492,6 +493,8 @@ $(B)/ti_stb_image.o: $(B)/.dir ti/third/stb_image.c third_party/stb/stb_image.h
 	$(CC) $(CFLAGS) $(STB_CFLAGS) -c ti/third/stb_image.c -o $@
 $(B)/ti_stb_image_write.o: $(B)/.dir ti/third/stb_image_write.c third_party/stb/stb_image_write.h
 	$(CC) $(CFLAGS) $(STB_CFLAGS) -c ti/third/stb_image_write.c -o $@
+$(B)/ti_exif.o: $(B)/.dir ti/exif.cpp $(TI_H)
+	$(COMPILE) -c ti/exif.cpp -o $@
 $(B)/ti_encode.o: $(B)/.dir ti/encode.cpp $(TI_H)
 	$(COMPILE) -c ti/encode.cpp -o $@
 $(B)/ti_term.o: $(B)/.dir ti/term.cpp $(TI_H)

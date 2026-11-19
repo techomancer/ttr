@@ -84,6 +84,17 @@ for y in range(H):
 lines[-1] = lines[-1][:-1]
 open(out + '/pal.xpm', 'w').write('/* XPM */\nstatic char *pal[] = {\n/* columns rows colors chars */\n' +
                                   '\n'.join(lines) + '\n};\n')
+# A camera's JPEG: EXIF with orientation 6, exposure and GPS.
+from PIL.TiffImagePlugin import IFDRational as R
+ex = Image.Exif()
+ex[0x010f] = 'TestCam'; ex[0x0110] = 'Model 7  '; ex[0x0112] = 6; ex[0x0131] = 'ttrv test'
+e = ex.get_ifd(0x8769)
+e[0x829a] = R(1, 125); e[0x829d] = R(56, 10); e[0x8827] = 200
+e[0x9003] = '2001:07:04 12:31:05'; e[0x920a] = R(35, 1); e[0xa405] = 52; e[0x9209] = 1
+e[0x9204] = R(-1, 3); e[0xa434] = 'Lens 35mm'
+g = ex.get_ifd(0x8825)
+g[1] = 'N'; g[2] = (R(60, 1), R(10, 1), R(30, 1)); g[3] = 'W'; g[4] = (R(24, 1), R(56, 1), R(0, 1))
+rgb.save(out + '/exif.jpg', quality=98, subsampling=0, exif=ex)
 # Cut short.
 d = open(out + '/rgb.png', 'rb').read()
 open(out + '/short.png', 'wb').write(d[:len(d) // 2])

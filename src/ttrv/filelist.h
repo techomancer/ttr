@@ -32,7 +32,17 @@ struct Row {
     bool probed;            /* info is the header's (or failed: info.format 0) */
     ti::Info info;
     bool marked;
-    Row() : up(false), dir(false), archive(false), image(false), probed(false), marked(false) {}
+    ti::Exif* exif;         /* when the file has EXIF and it has been read */
+    Row()
+        : up(false), dir(false), archive(false), image(false), probed(false), marked(false),
+          exif(0)
+    {
+    }
+    ~Row() { delete exif; }
+
+private:
+    Row(const Row&);
+    Row& operator=(const Row&);
 };
 
 enum SortKey { SORT_NAME, SORT_SIZE, SORT_IMAGE, SORT_TYPE, SORT_TIME, SORT_COUNT };

@@ -253,6 +253,7 @@ App::App(Widget top, const Options& o)
     XtVaSetValues(form_, XmNinitialFocus, body_, (char*)0);
 
     loader_.set_disk_thumbs(thumbs_init());
+    loader_.set_auto_rotate(opt_.auto_rotate);
     if (!loader_.start(this))
         fprintf(stderr, "ttrv: cannot start the loader threads\n");
     else
@@ -565,6 +566,12 @@ void App::go(const char* path, const char* select, bool remember)
     update_wants();
 }
 
+void App::take_exif(Row* row, const Result* r)
+{
+    if (!row->exif && r->exif.present)
+        row->exif = new ti::Exif(r->exif);
+}
+
 App::Place* App::here() const
 {
     Place* p = new Place;
@@ -707,6 +714,7 @@ void App::loaded(Result* r)
                     row->probed = true;
                     row->info = r->info;
                 }
+                take_exif(row, r);
                 list_->row_changed(i);
             }
         }
@@ -722,6 +730,7 @@ void App::loaded(Result* r)
             if (row && !row->probed) {
                 row->probed = true;
                 row->info = r->info;
+                take_exif(row, r);
                 list_->row_changed(i);
                 if (i == list_->cursor()) {
                     show_info();
@@ -740,6 +749,7 @@ void App::loaded(Result* r)
                 cur->info = r->info;
                 list_->row_changed(list_->cursor());
             }
+            take_exif(cur, r);
             show_preview();
             show_info();
             show_status();
@@ -1039,7 +1049,65 @@ void App::show_info()
         }
         Cached* c = r->image ? cached_any(path_of(r).c_str()) : 0;
         if (c && c->r->info.decoder)
-            snprintf(t + n, sizeof(t) - (size_t)n, "Decoder: %s\n", c->r->info.decoder);
+            n += snprintf(t + n, sizeof(t) - (size_t)n, "Decoder: %s\n", c->r->info.decoder);
+        const ti::Exif* x = r->exif;
+        if (x && (int)sizeof(t) - n > 200) {
+            /* The camera's, as ACDSee's EXIF tab listed it. */
+            n += snprintf(t + n, sizeof(t) - (size_t)n, "\n");
+            struct Line { const char* name; const char* value; };
+            char date[40] = "", exp[40] = "", fnum[20] = "", iso[20] = "", focal[40] = "",
+                 bias[20] = "", flash[20] = "", gps[80] = "", orient[20] = "";
+            if (x->date[0]) {
+                /* "2001:07:04 12:31:05" -> "2001-07-04 12:31:05" */
+                snprintf(date, sizeof(date), "%s", x->date);
+                if (strlen(date) >= 10 && date[4] == ':' && date[7] == ':')
+                    date[4] = date[7] = '-';
+            }
+            if (x->exposure > 0) {
+                if (x->exposure < 0.5)
+                    snprintf(exp, sizeof(exp), "1/%.0f s", 1.0 / x->exposure);
+                else
+                    snprintf(exp, sizeof(exp), "%.1f s", x->exposure);
+            }
+            if (x->fnumber > 0)
+                snprintf(fnum, sizeof(fnum), "f/%.1f", x->fnumber);
+            if (x->iso > 0)
+                snprintf(iso, sizeof(iso), "%d", x->iso);
+            if (x->focal > 0) {
+                if (x->focal35 > 0)
+                    snprintf(focal, sizeof(focal), "%.0f mm (%d mm in 35 mm)", x->focal,
+                             x->focal35);
+                else
+                    snprintf(focal, sizeof(focal), "%.0f mm", x->focal);
+            }
+            if (x->has_bias)
+                snprintf(bias, sizeof(bias), "%+.1f EV", x->bias);
+            if (x->flash >= 0)
+                snprintf(flash, sizeof(flash), "%s", x->flash & 1 ? "fired" : "did not fire");
+            if (x->has_gps)
+                snprintf(gps, sizeof(gps), "%.5f %s, %.5f %s", x->latitude < 0 ? -x->latitude
+                                                                              : x->latitude,
+                         x->latitude < 0 ? "S" : "N",
+                         x->longitude < 0 ? -x->longitude : x->longitude,
+                         x->longitude < 0 ? "W" : "E");
+            static const char* const k_orient[9] = { "", "normal", "mirrored", "turned 180",
+                                                     "flipped", "transposed", "turned right",
+                                                     "transversed", "turned left" };
+            if (x->orientation > 1)
+                snprintf(orient, sizeof(orient), "%s", k_orient[x->orientation]);
+            const Line lines[] = {
+                { "Camera", x->make }, { "Model", x->model }, { "Lens", x->lens },
+                { "Taken", date }, { "Exposure", exp }, { "Aperture", fnum }, { "ISO", iso },
+                { "Focal length", focal }, { "Exposure bias", bias }, { "Flash", flash },
+                { "Orientation", orient }, { "GPS", gps }, { "Software", x->software },
+                { "Artist", x->artist }, { "Copyright", x->copyright },
+                { "Description", x->description }, { 0, 0 }
+            };
+            for (int k = 0; lines[k].name && n < (int)sizeof(t) - 1; k++)
+                if (lines[k].value[0])
+                    n += snprintf(t + n, sizeof(t) - (size_t)n, "%s: %s\n", lines[k].name,
+                                  lines[k].value);
+        }
     }
     XmTextSetString(info_, t);
 }

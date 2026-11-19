@@ -43,6 +43,24 @@ struct Sync {
 
 namespace {
 
+/* EXIF orientations 5 to 8 turn the image a quarter: width for height. */
+void upright_size(ti::Info* in, const ti::Exif& x)
+{
+    if (x.orientation >= 5) {
+        int t = in->width;
+        in->width = in->height;
+        in->height = t;
+    }
+}
+
+/* The image upright, in place. */
+void upright(ti::Image* im, const ti::Exif& x)
+{
+    ti::Image t;
+    if (x.orientation >= 2 && ti::orient(*im, x.orientation, &t))
+        im->take(t);
+}
+
 bool same(const Want& a, const Want& b)
 {
     return a.kind == b.kind && a.w == b.w && a.h == b.h && strcmp(a.path.c_str(), b.path.c_str()) == 0;
@@ -111,7 +129,8 @@ Result::~Result()
 }
 
 Loader::Loader()
-    : client_(0), ndec_(0), started_(false), stopping_(false), disk_thumbs_(false), sync_(0)
+    : client_(0), ndec_(0), started_(false), stopping_(false), disk_thumbs_(false), rotate_(true),
+      sync_(0)
 {
     pipe_[0] = pipe_[1] = -1;
 }
@@ -414,8 +433,11 @@ void Loader::run_header(Job* j)
                 break;
             len += (size_t)got;
         }
-        if (ti::probe(buf, len, &r->info) || len < cap || r->info.format == ti::FMT_UNKNOWN)
+        if (ti::probe(buf, len, &r->info) || len < cap || r->info.format == ti::FMT_UNKNOWN) {
+            if (ti::read_exif(buf, len, &r->exif) && rotate_)
+                upright_size(&r->info, r->exif);
             break;
+        }
         size_t more = r->st.size < (uint64_t)(16UL << 20) ? (size_t)r->st.size : (size_t)16 << 20;
         if (more <= cap)
             break;
@@ -509,10 +531,17 @@ void Loader::run_thumb_decode(Job* j)
     ti::Image im;
     ti::Info info;
     bool ok = ti::decode(j->data, j->len, &im, &info, r->msg, sizeof(r->msg), o);
+    if (!j->cached_thumb)
+        ti::read_exif(j->data, j->len, &r->exif);
     free(j->data);
     j->data = 0;
     if (!ok)
         return;
+    /* Thumbnails are saved upright, as other programs save them. */
+    if (!j->cached_thumb && rotate_) {
+        upright(&im, r->exif);
+        upright_size(&info, r->exif);
+    }
     if (j->cached_thumb) {
         /* The image's size from the thumbnail; its format is unknown. */
         r->info = ti::Info();
@@ -547,11 +576,18 @@ void Loader::run_decode(Job* j)
     int w = j->want.w, h = j->want.h;
     o.reduce_to = w > h ? w : h;
     ti::Image im;
+    /* The box is upright; the decoder's reduction is by the longer side,
+     * the same either way. */
     bool ok = ti::decode(j->data, j->len, &im, &r->info, r->msg, sizeof(r->msg), o);
+    ti::read_exif(j->data, j->len, &r->exif);
     free(j->data);
     j->data = 0;
     if (!ok)
         return;
+    if (rotate_) {
+        upright(&im, r->exif);
+        upright_size(&r->info, r->exif);
+    }
     int fw = im.w, fh = im.h;
     if (w > 0 && h > 0)
         ti::fit(im.w, im.h, w, h, 1.0, false, &fw, &fh);

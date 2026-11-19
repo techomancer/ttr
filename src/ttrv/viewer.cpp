@@ -371,9 +371,12 @@ void Viewer::redraw()
                  (int)(z * 100 + 0.5), *note ? "   " : "", note);
     else
         snprintf(status, sizeof(status), "%d of %d%s%.150s", pos, count, *note ? "   " : "", note);
+    char shot[100] = "";
+    if (row->exif)
+        ti::exif_summary(*row->exif, shot, sizeof(shot));
     if (overlay_ && known)
-        snprintf(text, sizeof(text), "%.300s   %d x %d   %.200s", row->name.c_str(),
-                 rot_ & 1 ? rh : rw, rot_ & 1 ? rw : rh, status);
+        snprintf(text, sizeof(text), "%.300s   %d x %d   %.200s%s%.90s", row->name.c_str(),
+                 rot_ & 1 ? rh : rw, rot_ & 1 ? rw : rh, status, shot[0] ? "   " : "", shot);
     else if (overlay_)
         snprintf(text, sizeof(text), "%.300s   %.200s", row->name.c_str(), status);
     else

@@ -1085,8 +1085,8 @@ The plan is in [ttrcode/DESIGN.md](ttrcode/DESIGN.md).
 ### The image viewer (ttrv)
 
 ttrv browses folders of images the way ACDSee 3 did on Windows 95. It is
-early: the browser, thumbnails and the viewer work; EXIF and the OpenGL
-renderer come next (the plan is in [ttrv/DESIGN.md](ttrv/DESIGN.md)).
+early: the browser, thumbnails, the viewer and EXIF work; the OpenGL
+renderer comes next (the plan is in [ttrv/DESIGN.md](ttrv/DESIGN.md)).
 
 ```sh
 ttrv                    # the current folder
@@ -1141,6 +1141,12 @@ Space shows the next one at once.
 
 In the folder tree, moving the selection opens that folder after a
 moment; Right or Enter opens a branch, Left closes it or goes up.
+
+Photographs are shown upright by their EXIF orientation (in the
+thumbnails, the preview and the viewer; `autoRotate: false` shows them as
+stored), and the Information pane lists what the camera wrote: camera
+and lens, when it was taken, exposure, aperture, ISO, focal length,
+flash, GPS position. The viewer's I line adds the exposure.
 
 Thumbnails are ACDSee's grid: each picture in a square with its size and
 depth under it and its name below; the arrows move by cell and by row.

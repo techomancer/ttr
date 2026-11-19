@@ -56,6 +56,7 @@ public:
     ti::Info info;          /* JOB_HEADER and JOB_IMAGE; JOB_THUMB: the
                              * image's size, its format only if decoded */
     ti::Image image;        /* JOB_IMAGE: fitted (or the whole image) */
+    ti::Exif exif;          /* JOB_HEADER, JOB_IMAGE, JOB_THUMB from the file */
     ttr::Vector<Entry*> entries;    /* JOB_LIST, unsorted */
 
 private:
@@ -93,6 +94,9 @@ public:
     /* Thumbnails go to and come from the disk cache (thumbs.h), which
      * thumbs_init() made. Before start(). */
     void set_disk_thumbs(bool on) { disk_thumbs_ = on; }
+    /* Images and thumbnails turned upright by their EXIF orientation,
+     * and sizes given upright (default on). Before start(). */
+    void set_auto_rotate(bool on) { rotate_ = on; }
 
     /* Bytes read for one image at most (bigger files fail). */
     static const unsigned long k_max_file = 256UL << 20;
@@ -117,7 +121,7 @@ private:
     LoaderClient* client_;
     int pipe_[2];
     int ndec_;
-    bool started_, stopping_, disk_thumbs_;
+    bool started_, stopping_, disk_thumbs_, rotate_;
     struct Sync* sync_;             /* the mutex, conditions and threads */
     ttr::Vector<Job*> pending_;     /* wanted, not started */
     ttr::Vector<Job*> read_;        /* read, waiting for a decoder */

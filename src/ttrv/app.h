@@ -33,10 +33,11 @@ struct Options {
     bool show_hidden;
     int cache_mb;               /* decoded images; 0: a quarter of memory */
     bool fullscreen;            /* an image to start with: full screen */
+    bool auto_rotate;           /* EXIF orientation */
     Options()
         : start(""), layout(""), list_font(""), sort_key(0), thumbnails(false), thumb_size(128),
           sort_reverse(false),
-          show_hidden(false), cache_mb(0), fullscreen(false)
+          show_hidden(false), cache_mb(0), fullscreen(false), auto_rotate(true)
     {
     }
 };
@@ -155,6 +156,7 @@ private:
     ListColors list_colors();
     void set_pane(tx::Pane* p, bool on);
     Place* here() const;
+    void take_exif(Row* row, const Result* r);
     void view(int row, bool fullscreen);
     void folder_listed(const Result* r);
 

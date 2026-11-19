@@ -157,6 +157,21 @@ int main()
     CHECK(r && r->image.w == 4);
     CHECK(ttrv::thumb_path(gif, 128, tp, sizeof(tp)) && stat(tp, &ts) != 0);
 
+    /* EXIF orientation 6: the header's size and the image upright. */
+    char ex[2200];
+    sprintf(ex, "%s/exif.jpg", dir);
+    ttrv::Want o[2];
+    o[0] = ttrv::Want(ttrv::JOB_HEADER, ex);
+    o[1] = ttrv::Want(ttrv::JOB_IMAGE, ex);
+    l.set_wants(o, 2);
+    int had = c.got.size();
+    wait_for(l, c, had + 2);
+    r = c.find(ttrv::JOB_HEADER, ex);
+    CHECK(r && r->exif.orientation == 6 && r->info.width == 5 && r->info.height == 7 &&
+          strcmp(r->exif.make, "TestCam") == 0);
+    r = c.find(ttrv::JOB_IMAGE, ex);
+    CHECK(r && r->image.w == 5 && r->image.h == 7 && r->info.width == 5);
+
     /* Errors come back as results. */
     char missing[2200];
     sprintf(missing, "%s/no-such-file.png", dir);
@@ -166,7 +181,7 @@ int main()
     e[0] = ttrv::Want(ttrv::JOB_IMAGE, missing);
     e[1] = ttrv::Want(ttrv::JOB_IMAGE, broken);
     l.set_wants(e, 2);
-    wait_for(l, c, 11);
+    wait_for(l, c, 13);
     r = c.find(ttrv::JOB_IMAGE, missing);
     CHECK(r && r->err != 0);
     r = c.find(ttrv::JOB_IMAGE, broken);

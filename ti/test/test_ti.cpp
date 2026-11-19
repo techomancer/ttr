@@ -84,6 +84,7 @@ static const Fixture k_fixtures[] = {
     { "rgb.sgi", ti::FMT_SGI, K_RGB, 0, 24, false },
     { "rgba_rle.sgi", ti::FMT_SGI, K_RGBA, 0, 32, false },
     { "pal.xpm", ti::FMT_XPM, K_PAL, 0, 6, true },
+    { "exif.jpg", ti::FMT_JPEG, K_RGB, 16, 24, false },
 };
 static const int k_nfixtures = (int)(sizeof(k_fixtures) / sizeof(k_fixtures[0]));
 
@@ -336,6 +337,48 @@ static void test_xpm()
     static const char bad[] = "/* XPM */ \"2 2 1 1\", \"a c red\", \"aa\", \"a\"";
     CHECK(!ti::decode((const unsigned char*)bad, sizeof(bad) - 1, &im, 0, err, sizeof(err)));
     CHECK(strstr(err, "row 2") != 0);
+}
+
+/* EXIF from a camera-like JPEG (tools/make-ti-fixtures.sh), orientation,
+ * and files without it. */
+static void test_exif()
+{
+    size_t n = 0;
+    unsigned char* d = read_file("exif.jpg", &n);
+    ti::Exif x;
+    CHECK(d && ti::read_exif(d, n, &x));
+    CHECK(x.present && strcmp(x.make, "TestCam") == 0 && strcmp(x.model, "Model 7") == 0);
+    CHECK(x.orientation == 6 && x.iso == 200 && x.focal35 == 52 && x.flash == 1);
+    CHECK(x.exposure > 0.0079 && x.exposure < 0.0081 && x.fnumber > 5.59 && x.fnumber < 5.61);
+    CHECK(x.focal > 34.9 && x.focal < 35.1 && x.has_bias && x.bias < -0.33 && x.bias > -0.34);
+    CHECK(strcmp(x.date, "2001:07:04 12:31:05") == 0 && strcmp(x.lens, "Lens 35mm") == 0);
+    CHECK(x.has_gps && x.latitude > 60.17 && x.latitude < 60.18 && x.longitude < -24.93 &&
+          x.longitude > -24.94);
+    char sum[100];
+    ti::exif_summary(x, sum, sizeof(sum));
+    CHECK(strcmp(sum, "1/125s f/5.6 ISO 200 35mm (52mm)") == 0);
+    /* Cut anywhere: no crash, maybe less. */
+    for (size_t len = 0; d && len < n && len < 700; len++)
+        ti::read_exif(d, len, &x);
+    ti::Image im, up;
+    char err[200];
+    CHECK(d && ti::decode(d, n, &im, 0, err, sizeof(err)));
+    /* 6: turned clockwise; the top left goes to the top right. */
+    CHECK(ti::orient(im, 6, &up) && up.w == 5 && up.h == 7);
+    CHECK(memcmp(up.row(0) + 4 * 4, im.row(0), 4) == 0);
+    CHECK(memcmp(up.row(6) + 0 * 4, im.row(4) + 6 * 4, 4) == 0);
+    /* 3 twice is the image again; 1 is nothing to do. */
+    ti::Image back;
+    CHECK(ti::orient(im, 3, &up) && ti::orient(up, 3, &back));
+    CHECK(memcmp(back.rgba, im.rgba, (size_t)im.w * im.h * 4) == 0);
+    CHECK(!ti::orient(im, 1, &up));
+    free(d);
+    d = read_file("rgb.png", &n);
+    CHECK(d && !ti::read_exif(d, n, &x) && !x.present && x.orientation == 0);
+    free(d);
+    d = read_file("rgb.tif", &n);
+    CHECK(d && ti::read_exif(d, n, &x) && x.orientation <= 1);
+    free(d);
 }
 
 /* encode_png: what it writes decodes to the same pixels, with its text. */
@@ -592,6 +635,7 @@ int main()
     test_probe();
     test_xpm();
     test_encode();
+    test_exif();
     test_threads();
     test_damage();
     test_robust();

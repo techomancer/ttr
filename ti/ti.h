@@ -105,6 +105,32 @@ bool decode(const unsigned char* d, size_t n, Image* out, Info* info, char* err,
  * header is not there or not sane; *info then has what was found. */
 bool probe(const unsigned char* d, size_t n, Info* info);
 
+/* EXIF: what a camera wrote. Strings are "" and numbers 0 when absent. */
+struct Exif {
+    bool present;
+    char make[64], model[64], lens[96], software[64], artist[64], copyright[96];
+    char description[128];
+    char date[24];          /* "2001:07:04 12:31:05", the original's if there */
+    int orientation;        /* 1 to 8 (TIFF's), 0 if none */
+    double exposure;        /* seconds */
+    double fnumber, focal, bias;
+    bool has_bias;
+    int focal35, iso;
+    int flash;              /* the Flash tag, -1 if none; bit 0: it fired */
+    bool has_gps, has_altitude;
+    double latitude, longitude, altitude;   /* degrees (south, west negative), metres */
+    Exif();
+};
+
+/* EXIF from a JPEG's APP1, a PNG's eXIf chunk or a TIFF's directory, in
+ * the bytes given (a JPEG's first 64 KB nearly always hold it). */
+bool read_exif(const unsigned char* d, size_t n, Exif* out);
+/* The image turned upright for EXIF orientation o (2 to 8); false for 1,
+ * 0 or out of memory (then use the image as it is). */
+bool orient(const Image& in, int o, Image* out);
+/* "1/125s f/5.6 ISO 200 35mm (52mm)", or "". */
+void exif_summary(const Exif& x, char* out, size_t len);
+
 /* RGBA as a PNG in memory (malloc'd, the caller frees), with tEXt
  * chunks from 'text': key, value, key, value, ..., 0. */
 bool encode_png(const Image& im, const char* const* text, unsigned char** out, size_t* len);
