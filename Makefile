@@ -1210,7 +1210,7 @@ asan:
 # A running ttr cannot be overwritten ("Text file busy"), but it can be
 # renamed: the old one becomes ttr.old and keeps running, and Restart ttr
 # starts the new one.
-install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode
+install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode $(B)/ttrv
 	mkdir -p $(DESTDIR)$(BINDIR) $(DESTDIR)$(XSESSIONDIR)
 	if [ -f $(DESTDIR)$(BINDIR)/ttr ]; then \
 		mv -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old; fi
@@ -1222,6 +1222,9 @@ install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode
 	rm -f $(DESTDIR)$(BINDIR)/ttrc
 	cp $(B)/ttrc $(DESTDIR)$(BINDIR)/ttrc
 	chmod 755 $(DESTDIR)$(BINDIR)/ttrc
+	rm -f $(DESTDIR)$(BINDIR)/ttrv
+	cp $(B)/ttrv $(DESTDIR)$(BINDIR)/ttrv
+	chmod 755 $(DESTDIR)$(BINDIR)/ttrv
 	rm -f $(DESTDIR)$(BINDIR)/ttrcode
 	cp $(B)/ttrcode $(DESTDIR)$(BINDIR)/ttrcode
 	chmod 755 $(DESTDIR)$(BINDIR)/ttrcode
@@ -1266,7 +1269,7 @@ install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old \
 		$(DESTDIR)$(BINDIR)/ttrt $(DESTDIR)$(BINDIR)/ttr-session \
-		$(DESTDIR)$(BINDIR)/ttrc $(DESTDIR)$(BINDIR)/ttrcode $(DESTDIR)$(BINDIR)/ttre \
+		$(DESTDIR)$(BINDIR)/ttrc $(DESTDIR)$(BINDIR)/ttrcode $(DESTDIR)$(BINDIR)/ttrv $(DESTDIR)$(BINDIR)/ttre \
 		$(DESTDIR)$(TERMINFO_DIR)/t/ttrt $(DESTDIR)$(TERMINFO_DIR)/x/xterm-ttrt \
 		$(DESTDIR)/usr/share/terminfo/t/ttrt $(DESTDIR)/usr/share/terminfo/x/xterm-ttrt \
 		$(DESTDIR)/usr/share/lib/terminfo/t/ttrt \

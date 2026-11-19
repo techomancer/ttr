@@ -60,7 +60,14 @@ void add_colormap_window(Widget w, Window win)
         XFree(old);
 }
 
+bool g_default_visual = false;
+
 } /* namespace */
+
+void ImageView::set_visual_choice(const char* choice)
+{
+    g_default_visual = choice && strcmp(choice, "default") == 0;
+}
 
 ImageView::ImageView(Widget parent, const char* name, ImageViewHost* host)
     : host_(host), dpy_(XtDisplay(parent)), win_(0), own_window_(false), visual_(0), depth_(0),
@@ -123,7 +130,7 @@ bool ImageView::ensure_window()
     /* The deepest TrueColor visual (tw's choice for its soft renderer),
      * else Motif's own through a colour cube. */
     XVisualInfo vi;
-    bool tc = tw::choose_visual("soft", dpy_, screen, &vi);
+    bool tc = !g_default_visual && tw::choose_visual("soft", dpy_, screen, &vi);
     if (tc && vi.visual != parent_visual) {
         visual_ = vi.visual;
         depth_ = vi.depth;

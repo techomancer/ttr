@@ -31,6 +31,10 @@ public:
 
 class ImageView {
 public:
+    /* "auto": the deepest TrueColor visual; "default": Motif's own
+     * (on an 8-bit screen, the colour cube). Before the first view. */
+    static void set_visual_choice(const char* choice);
+
     ImageView(Widget parent, const char* name, ImageViewHost* host);
     ~ImageView();
 

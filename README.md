@@ -60,6 +60,9 @@ run as a window manager there yet. A Wayland mode is planned for later
 - **ttrcode**, a Motif code editor in the spirit of Visual Studio 6:
   a workspace tree, tabs, dockable panes, a terminal, and a debugger with
   VC6's keys (early; see "The code editor" below).
+- **ttrv**, an image browser and viewer in the style of ACDSee 3: a folder
+  tree, a file list with image sizes, a preview, zip files as folders
+  (early; see "The image viewer" below).
 
 ## Building
 
@@ -96,7 +99,8 @@ In a checkout made without `--recursive`, run
 ttrt's Unicode fonts, stb_image, ttr's built-in image decoder, and the
 debugger's DWARF reader and x86-64 disassembler). The programs are `build/ttr`,
 `build/ttrt` (the terminal), `build/ttrc` (the file manager), `build/ttre`
-(the text editor) and `build/ttrcode` (the code editor).
+(the text editor), `build/ttrcode` (the code editor) and `build/ttrv` (the
+image viewer).
 
 Other build options:
 
@@ -170,6 +174,7 @@ This installs:
 | `/usr/bin/ttrc` | the file manager |
 | `/usr/bin/ttre` | the text editor (ttrc's F4) |
 | `/usr/bin/ttrcode` | the code editor |
+| `/usr/bin/ttrv` | the image viewer |
 | `/usr/share/ttrc/tc.sh`, `tc.csh` | the `tc` command for your shell (see "The file manager") |
 | `/usr/share/ttr/fonts/` | ttrt's Unicode fonts (public domain misc-fixed BDF) |
 | `/usr/share/terminfo/x/xterm-ttrt` | ttrt's terminfo entry, also named `ttrt` (`/usr/share/lib/terminfo` on IRIX; with `DESTDIR` it goes under `DESTDIR`, never into the system directory; `TERMINFO_DIR` names another place) |
@@ -1076,6 +1081,54 @@ the file wins over them:
 | `terminalBackground` | an animated background for the terminal pane, as ttrt's (`-dynbg`) | none |
 
 The plan is in [ttrcode/DESIGN.md](ttrcode/DESIGN.md).
+
+### The image viewer (ttrv)
+
+ttrv browses folders of images the way ACDSee 3 did on Windows 95. It is
+early: the browser works; the full-screen viewer, thumbnails, EXIF and
+the OpenGL renderer come next (the plan is in
+[ttrv/DESIGN.md](ttrv/DESIGN.md)).
+
+```sh
+ttrv                    # the current folder
+ttrv ~/pictures         # a folder
+ttrv photo.jpg          # its folder, with the cursor on it
+ttrv album.zip          # a zip (or tar.gz, ...) as a folder
+```
+
+The window has the folder tree on the left, the files in the middle (name,
+size, image size and depth, type, date; click a column title to sort,
+again to reverse), and the preview and the file's information at the
+bottom. They are panes: right-click a pane's tab to move or close it, and
+View brings it back; ttrv remembers the layout. Zip files and the other
+archives ttrc opens are folders. The formats are ttrc's viewer's: PNG,
+JPEG, GIF, TIFF, BMP, PNM, SGI and XPM.
+
+| Key | Does |
+|---|---|
+| Arrows, PgUp/PgDn, Home/End | move the cursor |
+| Typing | the next name that starts with what was typed |
+| Enter | open the folder or archive |
+| Backspace, Alt+Up | the folder above, the cursor on the one you left |
+| Alt+Left / Alt+Right | back / forward |
+| Space, Ctrl+click | mark a file |
+| Ctrl+A | mark all files |
+| F5 | read the folder again |
+| Ctrl+L | type a folder in the location bar |
+
+In the folder tree, moving the selection opens that folder after a
+moment; Right or Enter opens a branch, Left closes it or goes up.
+
+Images are read and decoded in threads (one per processor, less one, and
+at least one), so the window answers while a big JPEG decodes; the
+previews of the files next to the cursor are decoded ahead. The preview
+uses the screen's deepest TrueColor visual: on an Indy with a 24-bit
+board that is 24 bits beside the 8-bit desktop. `TTRv*imageVisual:
+default` uses the desktop's own visual instead, dithered to a colour
+cube on an 8-bit screen.
+
+ttrv's settings are in `~/.config/ttrv/settings` (layout, sorting,
+`showHidden`, `cacheMegabytes` for the decoded previews, `listFont`).
 
 ### High-resolution screens
 

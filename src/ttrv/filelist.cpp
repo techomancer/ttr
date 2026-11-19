@@ -306,13 +306,9 @@ void FileList::sort_by(SortKey k, bool reverse)
 
 void FileList::visible(int* first, int* last) const
 {
-    int w = 0, h = 0;
-    Dimension dw = 0, dh = 0;
-    XtVaGetValues(da_, XmNwidth, &dw, XmNheight, &dh, (char*)0);
-    w = dw;
-    h = dh;
-    (void)w;
-    int n = (h - header_h_) / row_h_ + 1;
+    Dimension dh = 0;
+    XtVaGetValues(da_, XmNheight, &dh, (char*)0);
+    int n = ((int)dh - header_h_) / row_h_ + 1;
     *first = top_;
     *last = top_ + n - 1;
     if (*last >= rows_.size())

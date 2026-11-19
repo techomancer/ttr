@@ -23,7 +23,7 @@
 namespace {
 
 struct Resources {
-    String layout, list_font, ui_scale, ui_theme;
+    String layout, list_font, ui_scale, ui_theme, image_visual;
     int sort_key, cache_mb;
     Boolean sort_reverse, show_hidden;
 };
@@ -43,6 +43,7 @@ XtResource k_resources[] = {
     RSTR("listFont", "ListFont", list_font, ""),
     RSTR("uiScale", "UiScale", ui_scale, ""),
     RSTR("uiTheme", "UiTheme", ui_theme, ""),
+    RSTR("imageVisual", "ImageVisual", image_visual, "auto"),
     RINT("sortKey", "SortKey", sort_key, "0"),
     RINT("cacheMegabytes", "CacheMegabytes", cache_mb, "48"),
     RBOOL("sortReverse", "SortReverse", sort_reverse, "false"),
@@ -126,6 +127,7 @@ int main(int argc, char** argv)
             start[--l] = 0;
     }
 
+    ttrv::ImageView::set_visual_choice(res.image_visual);
     ttrv::Options o;
     o.start = start;
     o.layout = res.layout ? res.layout : "";
