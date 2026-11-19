@@ -42,9 +42,9 @@ void event_cb(Widget, XtPointer closure, XEvent* ev, Boolean*)
         l->button(&ev->xbutton);
 }
 
-/* Names in the order people expect: case ignored, numbers by value
- * ("img2" before "img10"). */
-int natural_cmp(const char* a, const char* b)
+} /* namespace */
+
+int natural_compare(const char* a, const char* b)
 {
     while (*a && *b) {
         if (isdigit((unsigned char)*a) && isdigit((unsigned char)*b)) {
@@ -74,6 +74,13 @@ int natural_cmp(const char* a, const char* b)
         b++;
     }
     return (unsigned char)*a - (unsigned char)*b;
+}
+
+namespace {
+
+int natural_cmp(const char* a, const char* b)
+{
+    return natural_compare(a, b);
 }
 
 const char* extension(const char* name)

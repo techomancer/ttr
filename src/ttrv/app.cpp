@@ -186,7 +186,8 @@ ttr::Str settings_path()
 }
 
 App::App(Widget top, const Options& o)
-    : top_(top), info_(0), docks_(0), list_(0), tree_(0), preview_(0), input_(0),
+    : top_(top), info_(0), docks_(0), list_(0), viewer_box_(0), viewer_(0), step_dir_(0),
+      view_first_(false), view_start_(false), tree_(0), preview_(0), input_(0),
       wants_timer_(0), opt_(o), list_err_(0), cache_bytes_(0), use_clock_(0),
       show_hidden_(o.show_hidden), vis_first_(-1), vis_last_(-1)
 {
@@ -197,6 +198,14 @@ App::App(Widget top, const Options& o)
     build_menus();
     build_toolbar();
     build_status();
+    /* The viewer in the window: in the body's place while it is up. */
+    viewer_box_ = XtVaCreateWidget("viewerBox", xmFormWidgetClass, form_,
+                                   XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget, locbar_,
+                                   XmNbottomAttachment, XmATTACH_WIDGET,
+                                   XmNbottomWidget, XtParent(status_[0]),
+                                   XmNleftAttachment, XmATTACH_FORM,
+                                   XmNrightAttachment, XmATTACH_FORM, (char*)0);
+    viewer_ = new Viewer(viewer_box_, top_, this);
     body_ = XtVaCreateWidget("body", xmFormWidgetClass, form_,
                              XmNtopAttachment, XmATTACH_WIDGET, XmNtopWidget, locbar_,
                              XmNbottomAttachment, XmATTACH_WIDGET,
@@ -223,6 +232,21 @@ App::App(Widget top, const Options& o)
                                           : "left:240=folders;bottom:240=info@300|preview;right:200=";
     docks_->apply(layout_.c_str());
     XtManageChild(body_);
+    if (opt_.cache_mb <= 0) {
+        /* A quarter of the memory, at most 512 MB (64 MB without a way to
+         * ask). */
+        long mb = 64;
+#if defined(_SC_PHYS_PAGES) && defined(_SC_PAGESIZE)
+        long pages = sysconf(_SC_PHYS_PAGES), size = sysconf(_SC_PAGESIZE);
+        if (pages > 0 && size > 0)
+            mb = (long)((double)pages * size / (4.0 * 1024 * 1024));
+#endif
+        if (mb > 512)
+            mb = 512;
+        if (mb < 16)
+            mb = 16;
+        opt_.cache_mb = (int)mb;
+    }
     XtVaSetValues(form_, XmNinitialFocus, body_, (char*)0);
 
     if (!loader_.start(this))
@@ -242,7 +266,11 @@ App::App(Widget top, const Options& o)
         !tf::archive_scheme(start.c_str())) {
         ttr::Str parent, name;
         if (parent_of(start.c_str(), &parent, &name))
+        {
+            /* An image: its folder, and the viewer on it (ACDSee's). */
+            view_start_ = image_name(name.c_str());
             go(parent.c_str(), name.c_str(), false);
+        }
         else
             go("/", 0, false);
     } else if (st.type == tf::FT_FILE && tf::archive_scheme(start.c_str())) {
@@ -266,6 +294,7 @@ App::~App()
         delete forward_[i];
     for (int i = 0; i < tree_wants_.size(); i++)
         delete tree_wants_[i];
+    delete viewer_;
     delete list_;
     delete preview_;
     delete docks_;
@@ -558,7 +587,8 @@ void App::fill_list(const Result* r)
         rows.push_back(row);
     }
     /* Back in the folder we came out of: the cursor on that one. */
-    const char* keep = select_.empty() ? 0 : select_.c_str();
+    ttr::Str keep_name(select_);
+    const char* keep = keep_name.empty() ? 0 : keep_name.c_str();
     list_->rows_changed(keep);
     if (!keep)
         list_->set_cursor(0);
@@ -568,6 +598,23 @@ void App::fill_list(const Result* r)
     list_->visible(&f, &l);
     list_visible(list_, f, l);
     show_status();
+    if (viewer_->active()) {
+        /* A folder step while viewing: its first image (or the one the
+         * cursor came back to). */
+        int at = -1;
+        for (int i = view_first_ ? 0 : list_->cursor(); i < list_->count() && at < 0; i++)
+            if (list_->row(i)->image)
+                at = i;
+        view_first_ = false;
+        if (at >= 0)
+            list_->set_cursor(at);
+        viewer_->reset(at);
+    } else if (view_start_) {
+        view_start_ = false;
+        Row* cur = list_->row(list_->cursor());
+        if (cur && cur->image && strcmp(cur->name.c_str(), keep ? keep : "") == 0)
+            view(list_->cursor(), opt_.fullscreen);
+    }
 }
 
 void App::tree_list(const char* path)
@@ -601,6 +648,9 @@ ttr::Str App::path_of(const Row* r) const
 void App::loaded(Result* r)
 {
     bool keep = false;
+    if (r->kind == JOB_LIST && !step_parent_.empty() &&
+        strcmp(r->path.c_str(), step_parent_.c_str()) == 0)
+        folder_listed(r);
     if (r->kind == JOB_LIST) {
         for (int i = 0; i < tree_wants_.size(); i++)
             if (strcmp(tree_wants_[i]->c_str(), r->path.c_str()) == 0) {
@@ -646,6 +696,7 @@ void App::loaded(Result* r)
     } else {
         cache_put(r);
         keep = true;
+        viewer_->loaded(r);
         Row* cur = list_->row(list_->cursor());
         if (cur && strcmp(path_of(cur).c_str(), r->path.c_str()) == 0) {
             if (!cur->probed && r->info.width) {
@@ -683,11 +734,15 @@ void App::update_wants()
     ttr::Vector<Want*> w;
     if (!listing_.empty())
         w.push_back(new Want(JOB_LIST, listing_.c_str()));
+    if (!step_parent_.empty())
+        w.push_back(new Want(JOB_LIST, step_parent_.c_str()));
+    if (listing_.empty())
+        viewer_->wants(&w);
     int pw = 0, ph = 0;
     if (preview_)
         preview_->size(&pw, &ph);
     int cur = list_->cursor();
-    if (listing_.empty() && preview_ && pw > 8 && ph > 8) {
+    if (listing_.empty() && preview_ && pw > 8 && ph > 8 && !viewer_->active()) {
         static const int order[] = { 0, 1, -1, 2 };
         for (int k = 0; k < 4; k++) {
             Row* r = list_->row(cur + order[k]);
@@ -777,11 +832,12 @@ void App::cache_put(Result* r)
     /* Over the budget: the least recently used go, never the one shown. */
     unsigned long budget = (unsigned long)(opt_.cache_mb > 4 ? opt_.cache_mb : 4) << 20;
     const ti::Image* shown = preview_ ? preview_->shown() : 0;
+    ttr::Str viewed = viewer_->current_path();
     while (cache_bytes_ > budget && cache_.size() > 1) {
         int lru = -1;
         for (int i = 0; i < cache_.size(); i++) {
             Cached* c = cache_[i];
-            if (c == old || &c->r->image == shown)
+            if (c == old || &c->r->image == shown || strcmp(c->path.c_str(), viewed.c_str()) == 0)
                 continue;
             if (lru < 0 || c->used < cache_[lru]->used)
                 lru = i;
@@ -884,7 +940,8 @@ void App::show_status()
         snprintf(b, sizeof(b), "Total %d files (%s), %d marked", files, sz, marked);
     else
         snprintf(b, sizeof(b), "Total %d files (%s)", files, sz);
-    set_label(status_[0], b);
+    if (!viewer_->active())     /* else the viewer's own line (viewer_status) */
+        set_label(status_[0], b);
     Row* r = list_->row(list_->cursor());
     if (r && !r->up) {
         char when[64] = "";
@@ -940,7 +997,7 @@ void App::list_activate(FileList*, int i)
         return;
     }
     if (r->image)
-        set_label(status_[0], "The viewer comes in the next milestone.");
+        view(i, false);
 }
 
 void App::list_back(FileList*)
@@ -983,6 +1040,10 @@ void App::location_entered()
 
 void App::command(Command c)
 {
+    /* The browser's moves mean nothing while the viewer is up. */
+    if (viewer_->active() && (c == CMD_BACK || c == CMD_FORWARD || c == CMD_UP ||
+                              c == CMD_HOME || c == CMD_LOCATION))
+        return;
     switch (c) {
     case CMD_BACK:
     case CMD_FORWARD: {
@@ -1075,6 +1136,154 @@ void App::command(Command c)
         save_settings();
         exit(0);
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* The viewer                                                          */
+
+void App::view(int row, bool fullscreen)
+{
+    if (!viewer_->active() && !fullscreen) {
+        XtUnmanageChild(body_);
+        XtManageChild(viewer_box_);
+    }
+    viewer_->open(row, fullscreen);
+}
+
+bool App::list_key(FileList*, XKeyEvent* ev)
+{
+    KeySym ks = XLookupKeysym(ev, 0);
+    if ((ks == XK_Return || ks == XK_KP_Enter) && (ev->state & Mod1Mask)) {
+        Row* r = list_->row(list_->cursor());
+        if (r && r->image)
+            view(list_->cursor(), true);
+        return true;
+    }
+    return false;
+}
+
+int App::viewer_count()
+{
+    return list_->count();
+}
+
+const Row* App::viewer_row(int i)
+{
+    return list_->row(i);
+}
+
+ttr::Str App::viewer_path(int i)
+{
+    Row* r = list_->row(i);
+    return r ? path_of(r) : ttr::Str("");
+}
+
+const Result* App::viewer_image(int i, int w, int h)
+{
+    Row* r = list_->row(i);
+    if (!r)
+        return 0;
+    Cached* c = cached(path_of(r).c_str(), w, h);
+    return c ? c->r : 0;
+}
+
+const Result* App::viewer_best(int i)
+{
+    Row* r = list_->row(i);
+    if (!r)
+        return 0;
+    ttr::Str p = path_of(r);
+    Cached* best = 0;
+    for (int k = 0; k < cache_.size(); k++) {
+        Cached* c = cache_[k];
+        if (c->r->image.empty() || strcmp(c->path.c_str(), p.c_str()) != 0)
+            continue;
+        if (!best || c->r->image.w * c->r->image.h > best->r->image.w * best->r->image.h)
+            best = c;
+    }
+    return best ? best->r : 0;
+}
+
+void App::viewer_changed()
+{
+    if (viewer_->index() >= 0 && viewer_->index() != list_->cursor())
+        list_->set_cursor(viewer_->index());
+    schedule_wants();
+}
+
+void App::viewer_closed(int i)
+{
+    if (XtIsManaged(viewer_box_)) {
+        XtUnmanageChild(viewer_box_);
+        XtManageChild(body_);
+    }
+    if (i >= 0)
+        list_->set_cursor(i);
+    XmProcessTraversal(list_->canvas(), XmTRAVERSE_CURRENT);
+    show_status();
+    show_preview();
+    schedule_wants();
+}
+
+void App::viewer_status(const char* text)
+{
+    set_label(status_[0], text);
+}
+
+/* Ctrl+Down / Ctrl+Up in the viewer: the parent is listed, and the next
+ * folder in its order opened at its first image. */
+void App::viewer_folder(int step)
+{
+    ttr::Str parent, name;
+    if (!parent_of(dir_.c_str(), &parent, &name))
+        return;
+    step_parent_ = parent;
+    step_from_ = name;
+    step_dir_ = step;
+    schedule_wants();
+}
+
+namespace {
+
+int folder_cmp(const void* a, const void* b)
+{
+    return natural_compare(((const Entry* const*)a)[0]->name.c_str(),
+                           ((const Entry* const*)b)[0]->name.c_str());
+}
+
+} /* namespace */
+
+void App::folder_listed(const Result* r)
+{
+    ttr::Str parent(step_parent_);
+    step_parent_ = "";
+    if (r->err)
+        return;
+    int n = 0;
+    const Entry** dirs = (const Entry**)malloc(sizeof(Entry*) * (size_t)(r->entries.size() + 1));
+    if (!dirs)
+        return;
+    for (int i = 0; i < r->entries.size(); i++) {
+        const Entry* e = r->entries[i];
+        if (!show_hidden_ && e->name.c_str()[0] == '.')
+            continue;
+        if (e->st.type == tf::FT_DIR || e->archive)
+            dirs[n++] = e;
+    }
+    qsort(dirs, (size_t)n, sizeof(Entry*), folder_cmp);
+    int at = -1;
+    for (int i = 0; i < n; i++)
+        if (strcmp(dirs[i]->name.c_str(), step_from_.c_str()) == 0)
+            at = i;
+    int to = at + step_dir_;
+    if (at >= 0 && to >= 0 && to < n) {
+        view_first_ = true;
+        go(child_path(parent.c_str(), dirs[to]->name.c_str(), dirs[to]->archive).c_str(), 0,
+           false);
+    } else {
+        viewer_status(step_dir_ > 0 ? "This is the last folder." : "This is the first folder.");
+    }
+    free(dirs);
 }
 
 void App::save_settings()

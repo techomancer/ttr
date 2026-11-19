@@ -12,6 +12,7 @@
 #include "folders.h"
 #include "imageview.h"
 #include "loader.h"
+#include "viewer.h"
 
 #include "../../tx/dock.h"
 #include "core/str.h"
@@ -28,10 +29,11 @@ struct Options {
     int sort_key;
     bool sort_reverse;
     bool show_hidden;
-    int cache_mb;               /* for previews */
+    int cache_mb;               /* decoded images; 0: a quarter of memory */
+    bool fullscreen;            /* an image to start with: full screen */
     Options()
         : start(""), layout(""), list_font(""), sort_key(0), sort_reverse(false),
-          show_hidden(false), cache_mb(48)
+          show_hidden(false), cache_mb(0), fullscreen(false)
     {
     }
 };
@@ -64,6 +66,7 @@ class App : public LoaderClient,
             public FileListHost,
             public FolderTreeHost,
             public ImageViewHost,
+            public ViewerHost,
             public tx::PaneBuilder {
 public:
     App(Widget top, const Options& o);
@@ -86,6 +89,17 @@ public:
     void tree_chosen(const char* path);
     /* ImageViewHost */
     void view_resized(ImageView* v);
+    bool list_key(FileList* l, XKeyEvent* ev);
+    /* ViewerHost */
+    int viewer_count();
+    const Row* viewer_row(int i);
+    ttr::Str viewer_path(int i);
+    const Result* viewer_image(int i, int w, int h);
+    const Result* viewer_best(int i);
+    void viewer_changed();
+    void viewer_closed(int i);
+    void viewer_folder(int step);
+    void viewer_status(const char* text);
     /* tx::PaneBuilder */
     Widget build_pane(tx::Pane* p, Widget parent);
     void drop_pane(tx::Pane* p);
@@ -129,6 +143,8 @@ private:
     ListColors list_colors();
     void set_pane(tx::Pane* p, bool on);
     Place* here() const;
+    void view(int row, bool fullscreen);
+    void folder_listed(const Result* r);
 
     Widget top_, form_, menubar_, toolbar_, locbar_, location_, body_;
     Widget status_[4];
@@ -138,6 +154,12 @@ private:
     tx::Pane* pane_preview_;
     tx::Pane* pane_info_;
     FileList* list_;
+    Widget viewer_box_;
+    Viewer* viewer_;
+    ttr::Str step_parent_, step_from_;  /* Ctrl+Up/Down: listing the parent */
+    int step_dir_;
+    bool view_first_;           /* view the first image of the folder listed */
+    bool view_start_;           /* view the image ttrv was started with */
     FolderTree* tree_;
     ImageView* preview_;
     Loader loader_;

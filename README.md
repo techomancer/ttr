@@ -1085,14 +1085,14 @@ The plan is in [ttrcode/DESIGN.md](ttrcode/DESIGN.md).
 ### The image viewer (ttrv)
 
 ttrv browses folders of images the way ACDSee 3 did on Windows 95. It is
-early: the browser works; the full-screen viewer, thumbnails, EXIF and
-the OpenGL renderer come next (the plan is in
-[ttrv/DESIGN.md](ttrv/DESIGN.md)).
+early: the browser and the viewer work; thumbnails, EXIF and the OpenGL
+renderer come next (the plan is in [ttrv/DESIGN.md](ttrv/DESIGN.md)).
 
 ```sh
 ttrv                    # the current folder
 ttrv ~/pictures         # a folder
-ttrv photo.jpg          # its folder, with the cursor on it
+ttrv photo.jpg          # the viewer on it, its folder behind it
+ttrv -fullscreen a.jpg  # the same, full screen
 ttrv album.zip          # a zip (or tar.gz, ...) as a folder
 ```
 
@@ -1115,6 +1115,28 @@ JPEG, GIF, TIFF, BMP, PNM, SGI and XPM.
 | Ctrl+A | mark all files |
 | F5 | read the folder again |
 | Ctrl+L | type a folder in the location bar |
+| Enter on an image | the viewer, in the window |
+| Alt+Enter on an image | the viewer, full screen |
+
+The viewer shows one image, fitted to the window (never enlarged), and
+steps through the folder in the browser's order. The next two images in
+the direction you are going, and the one behind, are decoded ahead, so
+Space shows the next one at once.
+
+| Key in the viewer | Does |
+|---|---|
+| Space, PgDn, Right | the next image (Right pans instead when zoomed in) |
+| Backspace, PgUp, Left | the previous image |
+| Home / End | the first / last image |
+| Ctrl+Down / Ctrl+Up | the first image of the next / previous folder |
+| Enter, Esc | back to the browser, on this image |
+| F, Alt+Enter, double click | full screen on / off |
+| `+` / `-`, the wheel | zoom in / out (the wheel zooms around the pointer) |
+| `*` or `/` | actual size |
+| `.` or Z | fit to the window |
+| Arrows, dragging | move a zoomed image |
+| `[` / `]` | turn left / right (not saved) |
+| I | the file's name, size, zoom and place in the folder over the image |
 
 In the folder tree, moving the selection opens that folder after a
 moment; Right or Enter opens a branch, Left closes it or goes up.

@@ -112,7 +112,7 @@ The browser keys are ACDSee's where it had one:
 | Ctrl+1 / Ctrl+2 | details / thumbnails |
 | F5 | read the folder again |
 | F2 | rename; Del delete (to the trash on Linux, asked first); Ctrl+C / Ctrl+X / Ctrl+V copy or move files |
-| Alt+Enter, F | the viewer, full screen |
+| Alt+Enter | the viewer, full screen (F is typing to find a name here) |
 | Ctrl+L | the location bar |
 
 Any key the files pane does not use, when another pane has focus, still

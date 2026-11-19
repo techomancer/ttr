@@ -131,6 +131,9 @@ private:
     int vis_first_, vis_last_;
 };
 
+/* Names in the order people expect: case ignored, numbers by value
+ * ("img2" before "img10"). */
+int natural_compare(const char* a, const char* b);
 /* "1.2 MB", "88 KB", "512 B". */
 void format_size(uint64_t n, char* buf, size_t len);
 /* "2048x1536x24" (indexed images: their colours, as ACDSee showed). */

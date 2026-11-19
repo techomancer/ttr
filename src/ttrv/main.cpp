@@ -1,10 +1,10 @@
 /*
  * ttrv, the To The Roots image viewer (ttrv/DESIGN.md).
  *
- *   ttrv [X toolkit options] [folder | image]
+ *   ttrv [-fullscreen] [X toolkit options] [folder | image]
  *
- * A folder opens in the browser; an image opens its folder with the
- * cursor on it. Archives are folders.
+ * A folder opens in the browser; an image opens in the viewer (full
+ * screen with -fullscreen), its folder behind it. Archives are folders.
  */
 #include "app.h"
 
@@ -25,7 +25,7 @@ namespace {
 struct Resources {
     String layout, list_font, ui_scale, ui_theme, image_visual;
     int sort_key, cache_mb;
-    Boolean sort_reverse, show_hidden;
+    Boolean sort_reverse, show_hidden, fullscreen;
 };
 
 #define ROFF(f) XtOffsetOf(Resources, f)
@@ -38,6 +38,10 @@ struct Resources {
 #define RBOOL(name, cls, f, dflt) \
     { (String)name, (String)cls, (String)XtRBoolean, sizeof(Boolean), ROFF(f), \
       (String)XtRString, (XtPointer)dflt }
+XrmOptionDescRec k_options[] = {
+    { (char*)"-fullscreen", (char*)".fullScreen", XrmoptionNoArg, (XPointer) "true" }
+};
+
 XtResource k_resources[] = {
     RSTR("layout", "Layout", layout, ""),
     RSTR("listFont", "ListFont", list_font, ""),
@@ -47,7 +51,8 @@ XtResource k_resources[] = {
     RINT("sortKey", "SortKey", sort_key, "0"),
     RINT("cacheMegabytes", "CacheMegabytes", cache_mb, "48"),
     RBOOL("sortReverse", "SortReverse", sort_reverse, "false"),
-    RBOOL("showHidden", "ShowHidden", show_hidden, "false")
+    RBOOL("showHidden", "ShowHidden", show_hidden, "false"),
+    RBOOL("fullScreen", "FullScreen", fullscreen, "false")
 };
 #undef RSTR
 #undef RINT
@@ -89,12 +94,13 @@ int main(int argc, char** argv)
         0
     };
     XtAppContext ctx;
-    Widget top = XtAppInitialize(&ctx, "TTRv", 0, 0, &argc, argv, fallbacks, 0, 0);
+    Widget top = XtAppInitialize(&ctx, "TTRv", k_options, XtNumber(k_options), &argc, argv,
+                                 fallbacks, 0, 0);
     merge_settings(top);
     Resources res;
     XtGetApplicationResources(top, &res, k_resources, XtNumber(k_resources), 0, 0);
     if (argc > 2 || (argc == 2 && argv[1][0] == '-')) {
-        fprintf(stderr, "usage: ttrv [X toolkit options] [folder | image]\n");
+        fprintf(stderr, "usage: ttrv [-fullscreen] [X toolkit options] [folder | image]\n");
         return 2;
     }
 
@@ -136,6 +142,7 @@ int main(int argc, char** argv)
     o.sort_reverse = res.sort_reverse != False;
     o.show_hidden = res.show_hidden != False;
     o.cache_mb = res.cache_mb;
+    o.fullscreen = res.fullscreen != False;
     XtVaSetValues(top, XmNtitle, "ttrv", XmNiconName, "ttrv", (char*)0);
     ttrv::App* app = new ttrv::App(top, o);
     XtRealizeWidget(top);

@@ -902,12 +902,14 @@ TTRV_OBJS = $(B)/ttrv_main.o \
 	$(B)/ttrv_imageview.o \
 	$(B)/ttrv_loader.o \
 	$(B)/ttrv_pixels.o \
+	$(B)/ttrv_render.o \
+	$(B)/ttrv_viewer.o \
 	$(B)/x11_svg.o \
 	$(B)/core_scale.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
 TTRV_H = src/ttrv/app.h src/ttrv/filelist.h src/ttrv/folders.h src/ttrv/imageview.h \
-	src/ttrv/loader.h src/ttrv/pixels.h $(TF_H) $(TI_H) $(TW_H) $(TX_H) $(TH_H) \
+	src/ttrv/loader.h src/ttrv/pixels.h src/ttrv/render.h src/ttrv/viewer.h $(TF_H) $(TI_H) $(TW_H) $(TX_H) $(TH_H) \
 	src/core/settings.h src/core/str.h src/core/vector.h
 
 ttrv: $(B)/ttrv
@@ -930,6 +932,10 @@ $(B)/ttrv_loader.o: $(B)/.dir src/ttrv/loader.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/loader.cpp -o $@
 $(B)/ttrv_pixels.o: $(B)/.dir src/ttrv/pixels.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/pixels.cpp -o $@
+$(B)/ttrv_render.o: $(B)/.dir src/ttrv/render.cpp $(TTRV_H)
+	$(COMPILE) -c src/ttrv/render.cpp -o $@
+$(B)/ttrv_viewer.o: $(B)/.dir src/ttrv/viewer.cpp $(TTRV_H)
+	$(COMPILE) -c src/ttrv/viewer.cpp -o $@
 
 $(B)/ttrv_test_loader: $(B)/ttrv_test_loader.o $(B)/ttrv_loader.o $(B)/core_str.o $(B)/libtf.a \
 		$(B)/libti.a
