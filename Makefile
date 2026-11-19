@@ -893,6 +893,23 @@ $(B)/ttrt_settingsdlg.o: $(B)/.dir src/ttrt/settingsdlg.cpp $(TTRT_H) \
 		src/shell/colorpicker.h $(CORE_H)
 	$(COMPILE) -c src/ttrt/settingsdlg.cpp -o $@
 
+# ttrv, the image viewer (ttrv/DESIGN.md): ti + tf in Motif, with
+# reader and decoder threads. "make ttrv-test" runs the loader's tests.
+TTRV_H = src/ttrv/loader.h $(TF_H) $(TI_H) src/core/str.h src/core/vector.h
+
+$(B)/ttrv_loader.o: $(B)/.dir src/ttrv/loader.cpp $(TTRV_H)
+	$(COMPILE) -c src/ttrv/loader.cpp -o $@
+
+$(B)/ttrv_test_loader: $(B)/ttrv_test_loader.o $(B)/ttrv_loader.o $(B)/core_str.o $(B)/libtf.a \
+		$(B)/libti.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/ttrv_test_loader.o $(B)/ttrv_loader.o \
+		$(B)/core_str.o $(B)/libtf.a $(B)/libti.a $(TI_LIBS) $(THREAD_LIBS) -lm
+$(B)/ttrv_test_loader.o: $(B)/.dir src/ttrv/test/test_loader.cpp $(TTRV_H)
+	$(COMPILE) -c src/ttrv/test/test_loader.cpp -o $@
+
+ttrv-test: $(B)/ttrv_test_loader
+	$(B)/ttrv_test_loader
+
 # ttrcode, the code editor (ttrcode/DESIGN.md): te + tw + tt in Motif.
 TTRCODE_OBJS = $(B)/ttrcode_main.o \
 	$(B)/ttrcode_about.o \
