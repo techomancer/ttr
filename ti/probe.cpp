@@ -40,7 +40,7 @@ bool sized(Info* in, long w, long h)
     return w > 0 && h > 0 && w <= 0x7fffffffL && h <= 0x7fffffffL;
 }
 
-bool png(const unsigned char* d, size_t n, Info* in)
+bool png_header(const unsigned char* d, size_t n, Info* in)
 {
     if (n < 33 || memcmp(d + 12, "IHDR", 4) != 0)
         return false;
@@ -72,7 +72,7 @@ bool png(const unsigned char* d, size_t n, Info* in)
     return sized(in, (long)be32(d + 16), (long)be32(d + 20));
 }
 
-bool jpeg(const unsigned char* d, size_t n, Info* in)
+bool jpeg_header(const unsigned char* d, size_t n, Info* in)
 {
     size_t at = 2;
     while (at + 4 <= n) {
@@ -104,7 +104,7 @@ bool jpeg(const unsigned char* d, size_t n, Info* in)
     return false;
 }
 
-bool gif(const unsigned char* d, size_t n, Info* in)
+bool gif_header(const unsigned char* d, size_t n, Info* in)
 {
     if (n < 13)
         return false;
@@ -138,7 +138,7 @@ bool gif(const unsigned char* d, size_t n, Info* in)
     return ok;
 }
 
-bool bmp(const unsigned char* d, size_t n, Info* in)
+bool bmp_header(const unsigned char* d, size_t n, Info* in)
 {
     if (n < 26)
         return false;
@@ -191,7 +191,7 @@ bool pnm_number(const unsigned char* d, size_t n, size_t* at, long* v)
     return true;
 }
 
-bool pnm(const unsigned char* d, size_t n, Info* in)
+bool pnm_header(const unsigned char* d, size_t n, Info* in)
 {
     size_t at = 2;
     long w, h, maxval;
@@ -203,7 +203,7 @@ bool pnm(const unsigned char* d, size_t n, Info* in)
     return sized(in, w, h);
 }
 
-bool sgi(const unsigned char* d, size_t n, Info* in)
+bool sgi_header(const unsigned char* d, size_t n, Info* in)
 {
     if (n < 12)
         return false;
@@ -216,7 +216,7 @@ bool sgi(const unsigned char* d, size_t n, Info* in)
     return sized(in, w, h);
 }
 
-bool tiff(const unsigned char* d, size_t n, Info* in)
+bool tiff_header(const unsigned char* d, size_t n, Info* in)
 {
     bool le = d[0] == 'I';
     unsigned long off = le ? le32(d + 4) : be32(d + 4);
@@ -260,7 +260,7 @@ bool tiff(const unsigned char* d, size_t n, Info* in)
 }
 
 /* XPM: the first string, "width height ncolors chars_per_pixel". */
-bool xpm(const unsigned char* d, size_t n, Info* in)
+bool xpm_header(const unsigned char* d, size_t n, Info* in)
 {
     size_t i = 9;
     bool comment = false;
@@ -307,14 +307,14 @@ bool probe(const unsigned char* d, size_t n, Info* info)
     Format f = sniff(d, n);
     info->format = f;
     switch (f) {
-    case FMT_PNG: return png(d, n, info);
-    case FMT_JPEG: return jpeg(d, n, info);
-    case FMT_GIF: return gif(d, n, info);
-    case FMT_TIFF: return tiff(d, n, info);
-    case FMT_BMP: return bmp(d, n, info);
-    case FMT_PNM: return pnm(d, n, info);
-    case FMT_SGI: return sgi(d, n, info);
-    case FMT_XPM: return xpm(d, n, info);
+    case FMT_PNG: return png_header(d, n, info);
+    case FMT_JPEG: return jpeg_header(d, n, info);
+    case FMT_GIF: return gif_header(d, n, info);
+    case FMT_TIFF: return tiff_header(d, n, info);
+    case FMT_BMP: return bmp_header(d, n, info);
+    case FMT_PNM: return pnm_header(d, n, info);
+    case FMT_SGI: return sgi_header(d, n, info);
+    case FMT_XPM: return xpm_header(d, n, info);
     default: return false;
     }
 }
