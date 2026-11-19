@@ -126,7 +126,7 @@ CORE_H = $(TH_H) src/core/port.h src/core/vector.h src/core/str.h src/core/geom.
 	src/core/theme.h \
 	src/core/audio.h src/core/net.h src/core/storage.h src/core/notify.h
 
-all: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode
+all: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode $(B)/ttrv
 
 $(B)/ttr: $(OBJS) $(B)/libth.a $(B)/libti.a $(B)/libtx.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(OBJS) $(B)/libth.a $(B)/libti.a $(B)/libtx.a $(TI_LIBS) \
@@ -895,10 +895,41 @@ $(B)/ttrt_settingsdlg.o: $(B)/.dir src/ttrt/settingsdlg.cpp $(TTRT_H) \
 
 # ttrv, the image viewer (ttrv/DESIGN.md): ti + tf in Motif, with
 # reader and decoder threads. "make ttrv-test" runs the loader's tests.
-TTRV_H = src/ttrv/loader.h $(TF_H) $(TI_H) src/core/str.h src/core/vector.h
+TTRV_OBJS = $(B)/ttrv_main.o \
+	$(B)/ttrv_app.o \
+	$(B)/ttrv_filelist.o \
+	$(B)/ttrv_folders.o \
+	$(B)/ttrv_imageview.o \
+	$(B)/ttrv_loader.o \
+	$(B)/ttrv_pixels.o \
+	$(B)/x11_svg.o \
+	$(B)/core_scale.o \
+	$(B)/core_settings.o \
+	$(B)/core_str.o
+TTRV_H = src/ttrv/app.h src/ttrv/filelist.h src/ttrv/folders.h src/ttrv/imageview.h \
+	src/ttrv/loader.h src/ttrv/pixels.h $(TF_H) $(TI_H) $(TW_H) $(TX_H) $(TH_H) \
+	src/core/settings.h src/core/str.h src/core/vector.h
 
+ttrv: $(B)/ttrv
+
+$(B)/ttrv: $(TTRV_OBJS) $(B)/libtx.a $(B)/libth.a $(B)/libtw.a $(B)/libtf.a $(B)/libti.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRV_OBJS) $(B)/libtx.a $(B)/libth.a $(B)/libtw.a \
+		$(B)/libtf.a $(B)/libti.a $(TI_LIBS) $(TW_LIBS) $(LIBS) $(THREAD_LIBS)
+
+$(B)/ttrv_main.o: $(B)/.dir src/ttrv/main.cpp $(TTRV_H)
+	$(COMPILE) -c src/ttrv/main.cpp -o $@
+$(B)/ttrv_app.o: $(B)/.dir src/ttrv/app.cpp $(TTRV_H)
+	$(COMPILE) -c src/ttrv/app.cpp -o $@
+$(B)/ttrv_filelist.o: $(B)/.dir src/ttrv/filelist.cpp $(TTRV_H)
+	$(COMPILE) -c src/ttrv/filelist.cpp -o $@
+$(B)/ttrv_folders.o: $(B)/.dir src/ttrv/folders.cpp $(TTRV_H)
+	$(COMPILE) -c src/ttrv/folders.cpp -o $@
+$(B)/ttrv_imageview.o: $(B)/.dir src/ttrv/imageview.cpp $(TTRV_H)
+	$(COMPILE) -c src/ttrv/imageview.cpp -o $@
 $(B)/ttrv_loader.o: $(B)/.dir src/ttrv/loader.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/loader.cpp -o $@
+$(B)/ttrv_pixels.o: $(B)/.dir src/ttrv/pixels.cpp $(TTRV_H)
+	$(COMPILE) -c src/ttrv/pixels.cpp -o $@
 
 $(B)/ttrv_test_loader: $(B)/ttrv_test_loader.o $(B)/ttrv_loader.o $(B)/core_str.o $(B)/libtf.a \
 		$(B)/libti.a
