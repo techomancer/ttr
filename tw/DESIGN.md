@@ -596,7 +596,8 @@ Implementation notes:
   byte order, so it goes out unconverted: Xlib's own swapping of 32-bit
   images to a big-endian server got the channels wrong. It uses MIT-SHM
   when the server can attach the segment (local displays) and
-  `XPutImage` otherwise. Damage goes out as at most eight merged
+  `XPutImage` otherwise, through `tw::ClientImage` (`tw/ximage.h`),
+  which ttrv's image views share. Damage goes out as at most eight merged
   rectangles per frame. Glyphs come from the glyph cache: the cache asks
   the server to rasterize the core font's glyph into a depth-1 pixmap
   once (`GlyphCache::set_display`), so text has exactly the core

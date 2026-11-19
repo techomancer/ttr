@@ -213,9 +213,10 @@ TW_OBJS = $(B)/tw_backgrounds.o \
 	$(B)/tw_palette.o \
 	$(B)/tw_sdf.o \
 	$(B)/tw_soft_render.o \
+	$(B)/tw_ximage.o \
 	$(B)/tw_surface.o \
 	$(B)/tw_visual.o
-TW_H = tw/tw.h tw/bdf.h tw/fonts.h tw/glyphs.h tw/renderer.h tw/palette.h tw/surface.h \
+TW_H = tw/tw.h tw/ximage.h tw/bdf.h tw/fonts.h tw/glyphs.h tw/renderer.h tw/palette.h tw/surface.h \
 	tw/backgrounds.h tw/sdf.h
 
 $(B)/libtw.a: $(TW_OBJS)
@@ -240,6 +241,8 @@ $(B)/tw_surface.o: $(B)/.dir tw/surface.cpp $(TW_H)
 	$(COMPILE) -c tw/surface.cpp -o $@
 $(B)/tw_soft_render.o: $(B)/.dir tw/soft_render.cpp $(TW_H)
 	$(COMPILE) -c tw/soft_render.cpp -o $@
+$(B)/tw_ximage.o: $(B)/.dir tw/ximage.cpp $(TW_H)
+	$(COMPILE) -c tw/ximage.cpp -o $@
 $(B)/tw_gl_render.o: $(B)/.dir tw/gl_render.cpp $(TW_H)
 	$(COMPILE) $(GL_CPPFLAGS) -c tw/gl_render.cpp -o $@
 $(B)/tw_backgrounds.o: $(B)/.dir tw/backgrounds.cpp $(TW_H)

@@ -11,14 +11,12 @@
 #include "glyphs.h"
 #include "palette.h"
 #include "renderer.h"
+#include "ximage.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
 #include <X11/Xutil.h>
-#include <X11/extensions/XShm.h>
 
 namespace tw {
 
@@ -32,13 +30,6 @@ uint32_t mix(uint32_t fg, uint32_t bg, int quarter)
         out |= (uint32_t)((f * quarter + b * (4 - quarter)) / 4) << s;
     }
     return out;
-}
-
-bool g_shm_failed;
-int shm_error(Display*, XErrorEvent*)
-{
-    g_shm_failed = true;
-    return 0;
 }
 
 bool native_lsb()
@@ -55,11 +46,10 @@ uint32_t swap32(uint32_t v)
 class SoftRender : public Renderer {
 public:
     SoftRender()
-        : dpy_(0), win_(0), gc_(0), visual_(0), depth_(0), fonts_(0), im_(0), shm_(false),
+        : dpy_(0), win_(0), gc_(0), visual_(0), depth_(0), fonts_(0), im_(0),
           swap_(false), bpp_(0), n_dirty_(0), font_serial_(-1), line_(0), line_cap_(0)
     {
         memset(&g_, 0, sizeof(g_));
-        memset(&shminfo_, 0, sizeof(shminfo_));
     }
     ~SoftRender()
     {
@@ -89,13 +79,7 @@ public:
         cache_.configure(fonts, fonts->cell_width(), fonts->cell_height(), fonts->ascent());
         font_serial_ = fonts->serial();
         /* Only 16 and 32 bits per pixel: what every TrueColor server has. */
-        int n = 0;
-        XPixmapFormatValues* f = XListPixmapFormats(dpy, &n);
-        for (int i = 0; f && i < n; i++)
-            if (f[i].depth == depth)
-                bpp_ = f[i].bits_per_pixel;
-        if (f)
-            XFree(f);
+        bpp_ = pixmap_bits_per_pixel(dpy, depth);
         swap_ = (ImageByteOrder(dpy) == LSBFirst) != native_lsb();
         return gc_ && (bpp_ == 16 || bpp_ == 32);
     }
@@ -273,19 +257,12 @@ public:
         }
         for (int i = 0; i < n_dirty_; i++) {
             const Rect& r = dirty_[i];
-            if (shm_)
-                XShmPutImage(dpy_, win_, gc_, im_, r.x, r.y, r.x, r.y, (unsigned)r.w,
-                             (unsigned)r.h, False);
-            else
-                XPutImage(dpy_, win_, gc_, im_, r.x, r.y, r.x, r.y, (unsigned)r.w, (unsigned)r.h);
+            img_.put(win_, gc_, r.x, r.y, r.x, r.y, r.w, r.h);
         }
         n_dirty_ = 0;
-        /* The server reads the shared image later: wait, so the next
-         * frame does not paint into what it is still reading. */
-        if (shm_)
-            XSync(dpy_, False);
-        else
-            XFlush(dpy_);
+        /* The server reads a shared image later: wait, so the next frame
+         * does not paint into what it is still reading. */
+        img_.wait();
     }
 
 private:
@@ -360,18 +337,7 @@ private:
 
     void drop_image()
     {
-        if (!im_)
-            return;
-        if (shm_) {
-            XShmDetach(dpy_, &shminfo_);
-            XSync(dpy_, False);
-            im_->data = 0;
-            XDestroyImage(im_);
-            shmdt(shminfo_.shmaddr);
-            shm_ = false;
-        } else {
-            XDestroyImage(im_);         /* frees data */
-        }
+        img_.destroy();
         im_ = 0;
         n_dirty_ = 0;
     }
@@ -380,46 +346,8 @@ private:
     {
         drop_image();
         int w = g_.width > 0 ? g_.width : 1, h = g_.height > 0 ? g_.height : 1;
-        /* MIT-SHM where the server shares our memory: a local display. */
-        int major, minor;
-        Bool pixmaps;
-        if (XShmQueryVersion(dpy_, &major, &minor, &pixmaps)) {
-            im_ = XShmCreateImage(dpy_, visual_, (unsigned)depth_, ZPixmap, 0, &shminfo_,
-                                  (unsigned)w, (unsigned)h);
-            if (im_) {
-                shminfo_.shmid = shmget(IPC_PRIVATE, (size_t)im_->bytes_per_line * (size_t)h,
-                                        IPC_CREAT | 0600);
-                shminfo_.shmaddr = shminfo_.shmid >= 0 ? (char*)shmat(shminfo_.shmid, 0, 0)
-                                                       : (char*)-1;
-                bool ok = shminfo_.shmaddr != (char*)-1;
-                if (ok) {
-                    im_->data = shminfo_.shmaddr;
-                    shminfo_.readOnly = False;
-                    g_shm_failed = false;
-                    XErrorHandler old = XSetErrorHandler(shm_error);
-                    XShmAttach(dpy_, &shminfo_);
-                    XSync(dpy_, False);
-                    XSetErrorHandler(old);
-                    ok = !g_shm_failed;
-                }
-                if (shminfo_.shmid >= 0)
-                    shmctl(shminfo_.shmid, IPC_RMID, 0);     /* gone when both detach */
-                if (ok) {
-                    shm_ = true;
-                    return;
-                }
-                if (shminfo_.shmaddr != (char*)-1)
-                    shmdt(shminfo_.shmaddr);
-                im_->data = 0;
-                XDestroyImage(im_);
-                im_ = 0;
-            }
-        }
-        im_ = XCreateImage(dpy_, visual_, (unsigned)depth_, ZPixmap, 0, 0, (unsigned)w,
-                           (unsigned)h, 32, 0);
-        if (!im_)
-            return;
-        im_->data = (char*)calloc((size_t)im_->bytes_per_line, (size_t)h);
+        if (img_.create(dpy_, visual_, depth_, w, h))
+            im_ = img_.image();
     }
 
     void blit(const CachedGlyph* gl, int x, int y, uint32_t rgb)
@@ -502,9 +430,8 @@ private:
     Palette palette_;
     Geometry g_;
     GlyphCache cache_;
-    XImage* im_;
-    XShmSegmentInfo shminfo_;
-    bool shm_;
+    ClientImage img_;
+    XImage* im_;                /* img_'s, while there is one */
     bool swap_;                 /* the server's byte order is not ours */
     int bpp_;
     Rect dirty_[MAX_DIRTY];
