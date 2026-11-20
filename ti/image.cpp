@@ -51,7 +51,7 @@ void Image::take(Image& o)
 const char* format_name(Format f)
 {
     static const char* const names[FMT_COUNT] = {
-        "unknown", "PNG", "JPEG", "GIF", "TIFF", "BMP", "PNM", "SGI", "XPM"
+        "unknown", "PNG", "JPEG", "GIF", "TIFF", "BMP", "PNM", "SGI", "XPM", "RAW"
     };
     return f >= 0 && f < FMT_COUNT ? names[f] : names[0];
 }
@@ -64,6 +64,18 @@ Format sniff(const unsigned char* d, size_t n)
         return FMT_JPEG;
     if (n >= 6 && (memcmp(d, "GIF87a", 6) == 0 || memcmp(d, "GIF89a", 6) == 0))
         return FMT_GIF;
+    /* Raw files with a mark of their own; the rest are TIFFs (NEF, ARW,
+     * DNG, PEF...), known by their names (DecodeOptions::raw). */
+    if (n >= 10 && memcmp(d, "II*\0", 4) == 0 && d[8] == 'C' && d[9] == 'R')
+        return FMT_RAW;     /* Canon CR2 */
+    if (n >= 4 && (memcmp(d, "IIRO", 4) == 0 || memcmp(d, "IIRS", 4) == 0 ||
+                   memcmp(d, "MMOR", 4) == 0 || memcmp(d, "IIU\0", 4) == 0 ||
+                   memcmp(d, "FOVb", 4) == 0 || memcmp(d, "\0MRM", 4) == 0))
+        return FMT_RAW;     /* Olympus ORF, Panasonic RW2, Sigma X3F, Minolta MRW */
+    if (n >= 15 && memcmp(d, "FUJIFILMCCD-RAW", 15) == 0)
+        return FMT_RAW;
+    if (n >= 12 && memcmp(d + 4, "ftypcrx ", 8) == 0)
+        return FMT_RAW;     /* Canon CR3 */
     if (n >= 4 && (memcmp(d, "II*\0", 4) == 0 || memcmp(d, "MM\0*", 4) == 0))
         return FMT_TIFF;
     if (n >= 18 && d[0] == 'B' && d[1] == 'M') {
@@ -98,6 +110,7 @@ const char* system_name(Format f)
     case FMT_JPEG: return jpeg_system_name();
     case FMT_GIF: return gif_system_name();
     case FMT_TIFF: return tiff_system_name();
+    case FMT_RAW: return g_raw ? g_raw->name() : 0;
     default: return 0;
     }
 }
@@ -109,6 +122,7 @@ bool system_decode(Ctx& c, Format f)
     case FMT_JPEG: return jpeg_system(c);
     case FMT_GIF: return gif_system(c);
     case FMT_TIFF: return tiff_system(c);
+    case FMT_RAW: return g_raw && g_raw->decode(c);
     default: return false;
     }
 }
@@ -117,6 +131,8 @@ bool system_decode(Ctx& c, Format f)
 
 const char* decoder_name(Format f, Backend b)
 {
+    if (f == FMT_RAW)
+        return b == BACKEND_BUILTIN || !g_raw ? 0 : g_raw->name();
     if (f == FMT_SGI || f == FMT_XPM)
         return b == BACKEND_SYSTEM ? 0 : "ti";
     const char* s = system_name(f);
@@ -125,6 +141,40 @@ const char* decoder_name(Format f, Backend b)
     if (b == BACKEND_ANY && s)
         return s;
     return builtin_name(f);
+}
+
+namespace internal {
+
+const RawDecoder* g_raw = 0;
+
+} /* namespace internal */
+
+bool raw_name(const char* name)
+{
+    static const char* const exts[] = {
+        "3fr", "ari", "arw", "cr2", "cr3", "crw", "dcr", "dng", "erf", "fff", "iiq", "k25",
+        "kdc", "mef", "mos", "mrw", "nef", "nrw", "orf", "ori", "pef", "raf", "raw", "rw2",
+        "rwl", "sr2", "srf", "srw", "x3f", 0
+    };
+    const char* dot = strrchr(name, '.');
+    if (!dot || strchr(dot, '/'))
+        return false;
+    for (int i = 0; exts[i]; i++) {
+        const char* a = dot + 1;
+        const char* b = exts[i];
+        while (*a && *b && (*a | 0x20) == *b) {
+            a++;
+            b++;
+        }
+        if (!*a && !*b)
+            return true;
+    }
+    return false;
+}
+
+const char* raw_decoder()
+{
+    return g_raw ? g_raw->name() : 0;
 }
 
 namespace {
@@ -205,6 +255,8 @@ bool decode(const unsigned char* d, size_t n, Image* out, Info* info, char* err,
     c.errlen = errlen;
     c.reduce_to = opt.reduce_to;
     Format f = sniff(d, n);
+    if (opt.raw && f == FMT_TIFF)
+        f = FMT_RAW;
     info->format = f;
     if (f == FMT_UNKNOWN)
         return fail(c, "Not an image ti knows.");
@@ -225,7 +277,7 @@ bool decode(const unsigned char* d, size_t n, Image* out, Info* info, char* err,
         out->clear();
         if (err && errlen && !err[0])
             fail(c, "The %s file is damaged.", format_name(f));
-    } else {
+    } else if (f != FMT_RAW) {
         /* Bits and colours, from the header. */
         Info h;
         if (probe(d, n, &h)) {

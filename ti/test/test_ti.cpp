@@ -629,6 +629,34 @@ static void test_protocols()
         CHECK(ti::detect_protocol() == ti::PROTO_KITTY);
 }
 
+/* Raw files: their marks and names. This test links no raw decoder
+ * (ti_raw.o), so they are known and refused. */
+static void test_raw()
+{
+    static const unsigned char cr2[16] = { 'I', 'I', '*', 0, 16, 0, 0, 0, 'C', 'R', 2, 0 };
+    static const unsigned char orf[16] = { 'I', 'I', 'R', 'O', 8, 0, 0, 0 };
+    static const unsigned char rw2[16] = { 'I', 'I', 'U', 0, 8, 0, 0, 0 };
+    static const unsigned char cr3[16] = { 0, 0, 0, 24, 'f', 't', 'y', 'p', 'c', 'r', 'x', ' ' };
+    static const unsigned char tif[16] = { 'M', 'M', 0, '*', 0, 0, 0, 8 };
+    CHECK(ti::sniff(cr2, 16) == ti::FMT_RAW);
+    CHECK(ti::sniff(orf, 16) == ti::FMT_RAW);
+    CHECK(ti::sniff(rw2, 16) == ti::FMT_RAW);
+    CHECK(ti::sniff(cr3, 16) == ti::FMT_RAW);
+    CHECK(ti::sniff((const unsigned char*)"FUJIFILMCCD-RAW 0201", 20) == ti::FMT_RAW);
+    CHECK(ti::sniff(tif, 16) == ti::FMT_TIFF);   /* a NEF looks like this too */
+    CHECK(ti::raw_name("/a/IMG_0001.CR2") && ti::raw_name("b.nef") && ti::raw_name("c.Dng"));
+    CHECK(!ti::raw_name("d.jpg") && !ti::raw_name("nef") && !ti::raw_name("/x.nef/y"));
+    CHECK(ti::raw_decoder() == 0 && ti::decoder_name(ti::FMT_RAW) == 0);
+    ti::Image im;
+    ti::Info info;
+    char err[200];
+    ti::DecodeOptions o;
+    o.raw = true;
+    CHECK(!ti::decode(tif, 16, &im, &info, err, sizeof(err), o) && info.format == ti::FMT_RAW &&
+          strstr(err, "RAW") != 0);
+    CHECK(strcmp(ti::format_name(ti::FMT_RAW), "RAW") == 0);
+}
+
 int main()
 {
     test_decoders();
@@ -642,6 +670,7 @@ int main()
     test_scale();
     test_encoders();
     test_protocols();
+    test_raw();
     printf("ti: %d checks, %d failures (decoders: PNG %s, JPEG %s, GIF %s, TIFF %s)\n", g_checks,
            g_failures, ti::decoder_name(ti::FMT_PNG), ti::decoder_name(ti::FMT_JPEG),
            ti::decoder_name(ti::FMT_GIF),

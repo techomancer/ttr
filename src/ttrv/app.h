@@ -8,6 +8,7 @@
 #ifndef TTRV_APP_H
 #define TTRV_APP_H
 
+#include "fileops.h"
 #include "filelist.h"
 #include "folders.h"
 #include "imageview.h"
@@ -66,6 +67,13 @@ enum Command {
     CMD_THUMB_96,
     CMD_THUMB_128,
     CMD_THUMB_192,
+    CMD_RENAME,
+    CMD_DELETE,
+    CMD_DELETE_NOW,     /* Shift+Del: not to the trash */
+    CMD_CUT,
+    CMD_COPY,
+    CMD_PASTE,
+    CMD_NEW_FOLDER,
     CMD_ABOUT,
     CMD_EXIT
 };
@@ -111,6 +119,7 @@ public:
     void viewer_closed(int i);
     void viewer_folder(int step);
     void viewer_status(const char* text);
+    bool viewer_key(XKeyEvent* ev);
     /* tx::PaneBuilder */
     Widget build_pane(tx::Pane* p, Widget parent);
     void drop_pane(tx::Pane* p);
@@ -159,6 +168,18 @@ private:
     void take_exif(Row* row, const Result* r);
     void view(int row, bool fullscreen);
     void folder_listed(const Result* r);
+    /* File operations (section 2.4). */
+    bool file_key(XKeyEvent* ev);
+    bool read_only(const char* what);
+    void selection(ttr::Vector<ttr::Str>* names, bool cursor_only);
+    ttr::Str neighbour(const ttr::Vector<ttr::Str>& going, bool images);
+    void forget(const char* path, bool dir);
+    void reload(const char* keep);
+    void cmd_rename();
+    void cmd_delete(bool permanent);
+    void cmd_clip(bool cut);
+    void cmd_paste();
+    void cmd_new_folder();
 
     Widget top_, form_, menubar_, toolbar_, locbar_, location_, body_;
     Widget status_[4];
@@ -194,6 +215,9 @@ private:
     unsigned long cache_bytes_, use_clock_;
     bool show_hidden_;
     int vis_first_, vis_last_;
+    Ops ops_;
+    ttr::Vector<ttr::Str> clip_;    /* Ctrl+C / Ctrl+X: the files, whole paths */
+    bool clip_move_;
 };
 
 } /* namespace ttrv */

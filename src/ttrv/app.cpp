@@ -4,11 +4,13 @@
 #include "thumbs.h"
 
 #include "../../tf/path.h"
+#include "../../tf/trash.h"
 #include "../../tf/vfs.h"
 #include "../../th/theme.h"
 #include "../../tx/ttr.h"
 #include "core/settings.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -191,7 +193,7 @@ App::App(Widget top, const Options& o)
     : top_(top), info_(0), docks_(0), list_(0), viewer_box_(0), viewer_(0), step_dir_(0),
       view_first_(false), view_start_(false), tree_(0), preview_(0), input_(0),
       wants_timer_(0), opt_(o), list_err_(0), thumb_bytes_(0), cache_bytes_(0), use_clock_(0),
-      show_hidden_(o.show_hidden), vis_first_(-1), vis_last_(-1)
+      show_hidden_(o.show_hidden), vis_first_(-1), vis_last_(-1), ops_(top), clip_move_(false)
 {
     g_app = this;
     tree_ = new FolderTree(this);
@@ -341,9 +343,24 @@ void App::build_menus()
                   XmNrightAttachment, XmATTACH_FORM, (char*)0);
     Widget m = pulldown(menubar_, "File", 'F');
     menu_item(m, "Open Location...", 'O', "Ctrl<Key>l", "Ctrl+L", CMD_LOCATION);
+    menu_item(m, "New Folder...", 'N', 0, "Ctrl+Shift+N", CMD_NEW_FOLDER);
     separator(m);
     menu_item(m, "Exit", 'x', "Alt<Key>F4", "Alt+F4", CMD_EXIT);
     m = pulldown(menubar_, "Edit", 'E');
+    /* The keys are the file list's and the viewer's own (file_key), not
+     * accelerators, so the location bar keeps Del and its Ctrl keys. */
+    menu_item(m, "Cut", 't', 0, "Ctrl+X", CMD_CUT);
+    menu_item(m, "Copy", 'C', 0, "Ctrl+C", CMD_COPY);
+    menu_item(m, "Paste", 'P', 0, "Ctrl+V", CMD_PASTE);
+    separator(m);
+    menu_item(m, "Rename...", 'R', 0, "F2", CMD_RENAME);
+#ifdef __sgi
+    menu_item(m, "Delete...", 'D', 0, "Del", CMD_DELETE_NOW);
+#else
+    menu_item(m, "Move to Trash...", 'D', 0, "Del", CMD_DELETE);
+    menu_item(m, "Delete Permanently...", 'e', 0, "Shift+Del", CMD_DELETE_NOW);
+#endif
+    separator(m);
     menu_item(m, "Mark All", 'A', "Ctrl<Key>a", "Ctrl+A", CMD_MARK_ALL);
     menu_item(m, "Unmark All", 'U', 0, 0, CMD_UNMARK_ALL);
     m = pulldown(menubar_, "View", 'V');
@@ -1323,6 +1340,23 @@ void App::command(Command c)
         list_->rows_changed(0);
         show_status();
         break;
+    case CMD_RENAME:
+        cmd_rename();
+        break;
+    case CMD_DELETE:
+    case CMD_DELETE_NOW:
+        cmd_delete(c == CMD_DELETE_NOW);
+        break;
+    case CMD_CUT:
+    case CMD_COPY:
+        cmd_clip(c == CMD_CUT);
+        break;
+    case CMD_PASTE:
+        cmd_paste();
+        break;
+    case CMD_NEW_FOLDER:
+        cmd_new_folder();
+        break;
     case CMD_ABOUT: {
         Widget d = XmCreateInformationDialog(top_, (char*)"about", 0, 0);
         char about[600];
@@ -1371,7 +1405,7 @@ bool App::list_key(FileList*, XKeyEvent* ev)
             view(list_->cursor(), true);
         return true;
     }
-    return false;
+    return file_key(ev);
 }
 
 int App::viewer_count()
@@ -1440,6 +1474,347 @@ void App::viewer_closed(int i)
 void App::viewer_status(const char* text)
 {
     set_label(status_[0], text);
+}
+
+bool App::viewer_key(XKeyEvent* ev)
+{
+    return file_key(ev);
+}
+
+/* ------------------------------------------------------------------ */
+/* File operations (section 2.4)                                       */
+
+/* F2, Del, Ctrl+X / C / V, Ctrl+Shift+N, from the list or the viewer. */
+bool App::file_key(XKeyEvent* ev)
+{
+    KeySym ks = XLookupKeysym(ev, 0);
+    bool ctrl = (ev->state & ControlMask) != 0, shift = (ev->state & ShiftMask) != 0;
+    if (ev->state & Mod1Mask)
+        return false;
+    if (ks == XK_F2 && !ctrl) {
+        command(CMD_RENAME);
+        return true;
+    }
+    if ((ks == XK_Delete || ks == XK_KP_Delete) && !ctrl) {
+        command(shift ? CMD_DELETE_NOW : CMD_DELETE);
+        return true;
+    }
+    if (!ctrl)
+        return false;
+    switch (ks) {
+    case XK_x: command(CMD_CUT); return true;
+    case XK_c: command(CMD_COPY); return true;
+    case XK_v: command(CMD_PASTE); return true;
+    case XK_n:
+        if (shift) {
+            command(CMD_NEW_FOLDER);
+            return true;
+        }
+        return false;
+    default:
+        return false;
+    }
+}
+
+/* Inside an archive nothing changes: say so. */
+bool App::read_only(const char* what)
+{
+    if (dir_.empty() || !listing_.empty())
+        return true;
+    if (tf::is_local_path(dir_.c_str()))
+        return false;
+    char m[200];
+    snprintf(m, sizeof(m), "This folder is inside an archive: files here cannot be %s.", what);
+    ops_.error("ttrv", m);
+    return true;
+}
+
+/* The files an operation is for: the marked ones, else the one under the
+ * cursor; in the viewer, the image shown. */
+void App::selection(ttr::Vector<ttr::Str>* names, bool cursor_only)
+{
+    names->clear();
+    if (!cursor_only && !viewer_->active())
+        for (int i = 0; i < list_->count(); i++)
+            if (list_->row(i)->marked && !list_->row(i)->up)
+                names->push_back(list_->row(i)->name);
+    if (names->empty()) {
+        Row* r = list_->row(list_->cursor());
+        if (r && !r->up)
+            names->push_back(r->name);
+    }
+}
+
+/* Where the cursor goes when these go: the next row after the cursor
+ * that stays (an image, in the viewer), else the one before. */
+ttr::Str App::neighbour(const ttr::Vector<ttr::Str>& going, bool images)
+{
+    int c = list_->cursor();
+    for (int pass = 0; pass < 2; pass++)
+        for (int i = pass ? c - 1 : c; pass ? i >= 0 : i < list_->count(); pass ? i-- : i++) {
+            Row* r = list_->row(i);
+            if (!r || r->up || (images && !r->image))
+                continue;
+            bool gone = false;
+            for (int j = 0; j < going.size() && !gone; j++)
+                gone = strcmp(going[j].c_str(), r->name.c_str()) == 0;
+            if (!gone)
+                return r->name;
+        }
+    return ttr::Str("");
+}
+
+/* A file renamed, moved or deleted: its decodes and thumbnails go, in
+ * memory and on disk (the thumbnail spec says so). */
+void App::forget(const char* path, bool dir)
+{
+    size_t pl = strlen(path);
+    ttr::Vector<Cached*>* lists[2] = { &cache_, &thumbs_ };
+    for (int l = 0; l < 2; l++) {
+        ttr::Vector<Cached*>& v = *lists[l];
+        for (int i = v.size() - 1; i >= 0; i--) {
+            const char* p = v[i]->path.c_str();
+            if (strncmp(p, path, pl) != 0 || (p[pl] != 0 && p[pl] != '/'))
+                continue;
+            if (viewer_->active() && strcmp(p, viewer_->current_path().c_str()) == 0)
+                continue;   /* still on screen; the cache's budget takes it later */
+            unsigned long b = (unsigned long)v[i]->r->image.w * v[i]->r->image.h * 4;
+            if (l == 0)
+                cache_bytes_ -= b < cache_bytes_ ? b : cache_bytes_;
+            else
+                thumb_bytes_ -= b < thumb_bytes_ ? b : thumb_bytes_;
+            delete v[i]->r;
+            delete v[i];
+            v.remove_at(i);
+        }
+    }
+    if (!dir) {
+        static const int sizes[2] = { 128, 256 };
+        for (int i = 0; i < 2; i++) {
+            char t[4200];
+            if (thumb_path(path, sizes[i], t, sizeof(t)))
+                unlink(t);
+        }
+    }
+    list_->forget_thumbs();
+}
+
+/* The folder read again after an operation, the cursor on 'keep'. Not
+ * F5: the decodes of the files that stayed stay. */
+void App::reload(const char* keep)
+{
+    if (preview_)
+        preview_->show(0);
+    go(dir_.c_str(), keep && *keep ? keep : 0, false);
+}
+
+void App::cmd_rename()
+{
+    ttr::Vector<ttr::Str> names;
+    selection(&names, true);
+    if (names.empty() || read_only("renamed"))
+        return;
+    ttr::Str old_path = child_path(dir_.c_str(), names[0].c_str(), false);
+    Row* r = list_->row(list_->find(names[0].c_str()));
+    bool dir = r && r->dir;
+    char label[700];
+    snprintf(label, sizeof(label), "New name for %.600s:", names[0].c_str());
+    ttr::Str name(names[0]);
+    if (!ops_.ask_name("Rename", label, &name) || name.empty() ||
+        strcmp(name.c_str(), names[0].c_str()) == 0)
+        return;
+    if (strchr(name.c_str(), '/') || strcmp(name.c_str(), ".") == 0 ||
+        strcmp(name.c_str(), "..") == 0) {
+        ops_.error("Rename", "A name cannot contain a slash, or be \".\" or \"..\".");
+        return;
+    }
+    ttr::Str new_path = child_path(dir_.c_str(), name.c_str(), false);
+    tf::Fs* fs = tf::local_fs();
+    tf::Stat st;
+    int err = fs->stat(new_path.c_str(), &st, false) == 0 ? EEXIST
+                                                          : fs->rename(old_path.c_str(),
+                                                                       new_path.c_str());
+    if (err) {
+        char m[1400];
+        snprintf(m, sizeof(m), "Cannot rename %.600s:\n%s", names[0].c_str(),
+                 err == EEXIST ? "a file of that name is already here." : strerror(err));
+        ops_.error("Rename", m);
+        return;
+    }
+    forget(old_path.c_str(), dir);
+    reload(name.c_str());
+}
+
+void App::cmd_delete(bool permanent)
+{
+#ifdef __sgi
+    permanent = true;   /* the Dumpster is the desktop's own */
+#endif
+    ttr::Vector<ttr::Str> names;
+    selection(&names, false);
+    if (names.empty() || read_only("deleted"))
+        return;
+    char q[800];
+    Row* one = names.size() == 1 ? list_->row(list_->find(names[0].c_str())) : 0;
+    if (one && one->dir)
+        snprintf(q, sizeof(q), permanent ? "Delete the folder %.600s and all in it for good?\nIt does not go to the Trash."
+                                         : "Move the folder %.600s and all in it to the Trash?",
+                 names[0].c_str());
+    else if (names.size() == 1)
+        snprintf(q, sizeof(q), permanent ? "Delete %.600s for good?\nIt does not go to the Trash."
+                                         : "Move %.600s to the Trash?",
+                 names[0].c_str());
+    else
+        snprintf(q, sizeof(q), permanent ? "Delete these %d files for good?\nThey do not go to the Trash."
+                                         : "Move these %d files to the Trash?",
+                 names.size());
+    if (!ops_.confirm(permanent ? "Delete" : "Move to Trash", q, permanent ? "Delete" : "Move to Trash"))
+        return;
+    ttr::Str keep = neighbour(names, viewer_->active());
+    ttr::Vector<ttr::Str> left;     /* what the trash would not take */
+    int why = 0;
+    for (int i = 0; i < names.size(); i++) {
+        ttr::Str p = child_path(dir_.c_str(), names[i].c_str(), false);
+        Row* r = list_->row(list_->find(names[i].c_str()));
+        int err = permanent ? -1 : tf::trash(p.c_str());
+        if (err == 0)
+            forget(p.c_str(), r && r->dir);
+        else {
+            left.push_back(names[i]);
+            if (err > 0 && !why)
+                why = err;
+        }
+    }
+    if (!left.empty() && !permanent) {
+        char m[1200];
+        snprintf(m, sizeof(m), "%s%.600s cannot go to the Trash:\n%s.\n\nDelete %s for good?",
+                 left.size() == 1 ? "" : "These files, starting with ",
+                 left[0].c_str(),
+                 why == EXDEV ? "its file system has no trash" : strerror(why),
+                 left.size() == 1 ? "it" : "them");
+        if (!ops_.confirm("Move to Trash", m, "Delete"))
+            left.clear();
+    }
+    if (!left.empty()) {
+        tf::Job job(tf::OP_DELETE, tf::local_fs(), 0);
+        for (int i = 0; i < left.size(); i++)
+            job.add(child_path(dir_.c_str(), left[i].c_str(), false).c_str());
+        ops_.run(job, "Deleting");
+        for (int i = 0; i < left.size(); i++) {
+            Row* r = list_->row(list_->find(left[i].c_str()));
+            forget(child_path(dir_.c_str(), left[i].c_str(), false).c_str(), r && r->dir);
+        }
+    }
+    reload(keep.c_str());
+}
+
+void App::cmd_clip(bool cut)
+{
+    ttr::Vector<ttr::Str> names;
+    selection(&names, false);
+    if (names.empty() || (cut && read_only("moved")))
+        return;
+    clip_.clear();
+    for (int i = 0; i < names.size(); i++)
+        clip_.push_back(child_path(dir_.c_str(), names[i].c_str(), false));
+    clip_move_ = cut;
+    char m[700];
+    if (names.size() == 1)
+        snprintf(m, sizeof(m), "%.600s: %s", names[0].c_str(), cut ? "to move (Ctrl+V)" : "to copy (Ctrl+V)");
+    else
+        snprintf(m, sizeof(m), "%d files to %s (Ctrl+V)", names.size(), cut ? "move" : "copy");
+    set_label(status_[0], m);
+}
+
+void App::cmd_paste()
+{
+    if (clip_.empty() || read_only("added"))
+        return;
+    const char* here = dir_.c_str();
+    size_t hl = strlen(here);
+    tf::Job job(clip_move_ ? tf::OP_MOVE : tf::OP_COPY, tf::vfs(), tf::vfs());
+    job.preserve_attrs = true;
+    int queued = 0;
+    ttr::Str first("");
+    for (int i = 0; i < clip_.size(); i++) {
+        const char* src = clip_[i].c_str();
+        const char* slash = strrchr(src, '/');
+        size_t sl = strlen(src);
+        /* A folder into itself, or below itself. */
+        if (strncmp(here, src, sl) == 0 && (here[sl] == 0 || here[sl] == '/')) {
+            char m[1200];
+            snprintf(m, sizeof(m), "%.600s cannot go into itself.", slash ? slash + 1 : src);
+            ops_.error(clip_move_ ? "Move" : "Copy", m);
+            return;
+        }
+        bool same = slash && (size_t)(slash - src) == (hl == 1 ? 0 : hl) &&
+                    strncmp(src, here, (size_t)(slash - src)) == 0;
+        if (same && clip_move_)
+            continue;   /* already here */
+        if (same) {
+            /* A copy in its own folder: "a copy.jpg", "a copy 2.jpg". */
+            const char* name = slash + 1;
+            const char* dot = strrchr(name, '.');
+            if (!dot || dot == name)
+                dot = name + strlen(name);
+            char n[1200];
+            tf::Stat st;
+            for (int k = 1; k < 1000; k++) {
+                if (k == 1)
+                    snprintf(n, sizeof(n), "%.*s copy%s", (int)(dot - name), name, dot);
+                else
+                    snprintf(n, sizeof(n), "%.*s copy %d%s", (int)(dot - name), name, k, dot);
+                if (tf::local_fs()->stat(child_path(here, n, false).c_str(), &st, false) != 0)
+                    break;
+            }
+            tf::Job one(tf::OP_COPY, tf::vfs(), tf::vfs());
+            one.preserve_attrs = true;
+            one.add(src);
+            one.set_target(child_path(here, n, false).c_str(), false);
+            if (!ops_.run(one, "Copying"))
+                break;
+            if (first.empty())
+                first = n;
+            continue;
+        }
+        job.add(src);
+        if (first.empty())
+            first = slash ? slash + 1 : src;
+        queued++;
+    }
+    if (queued) {
+        job.set_target(here, true);
+        bool done = ops_.run(job, clip_move_ ? "Moving" : "Copying");
+        if (clip_move_) {
+            for (int i = 0; i < clip_.size(); i++)
+                forget(clip_[i].c_str(), true);
+            if (done)
+                clip_.clear();
+        }
+    }
+    reload(first.c_str());
+}
+
+void App::cmd_new_folder()
+{
+    if (read_only("added"))
+        return;
+    ttr::Str name("New Folder");
+    if (!ops_.ask_name("New Folder", "Name of the new folder:", &name) || name.empty())
+        return;
+    if (strchr(name.c_str(), '/') || strcmp(name.c_str(), ".") == 0 ||
+        strcmp(name.c_str(), "..") == 0) {
+        ops_.error("New Folder", "A name cannot contain a slash, or be \".\" or \"..\".");
+        return;
+    }
+    int err = tf::local_fs()->mkdir(child_path(dir_.c_str(), name.c_str(), false).c_str(), 0777);
+    if (err) {
+        char m[1200];
+        snprintf(m, sizeof(m), "Cannot make %.600s:\n%s", name.c_str(), strerror(err));
+        ops_.error("New Folder", m);
+        return;
+    }
+    reload(name.c_str());
 }
 
 /* Ctrl+Down / Ctrl+Up in the viewer: the parent is listed, and the next

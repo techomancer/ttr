@@ -151,6 +151,7 @@ bool Loader::start(LoaderClient* client, int decoders)
     fcntl(pipe_[1], F_SETFL, fcntl(pipe_[1], F_GETFL) | O_NONBLOCK);
     fcntl(pipe_[0], F_SETFD, FD_CLOEXEC);
     fcntl(pipe_[1], F_SETFD, FD_CLOEXEC);
+    ti::raw_init();     /* camera raw files, where the build has libraw */
     ti::set_lock(ti_lock, ti_unlock, &g_ti_mutex);
     ndec_ = decoders > 0 ? decoders : cpus() - 1;
     if (ndec_ < 1)
@@ -415,6 +416,13 @@ void Loader::run_header(Job* j)
     r->err = fs->stat(p, &r->st, true);
     if (r->err)
         return;
+    if (ti::raw_name(p)) {
+        /* libraw reads the headers it needs from the file; in an
+         * archive, the decode tells. */
+        if (tf::is_local_path(p) && ti::raw_decoder())
+            ti::raw_probe_file(p, &r->info, &r->exif);
+        return;
+    }
     int err = 0;
     tf::Stream* s = fs->open(p, tf::OPEN_READ, 0, &err);
     if (!s) {
@@ -528,10 +536,13 @@ void Loader::run_thumb_decode(Job* j)
     int cls = thumb_class(w > h ? w : h);
     ti::DecodeOptions o;
     o.reduce_to = j->cached_thumb ? 0 : cls;
+    o.raw = !j->cached_thumb && ti::raw_name(j->want.path.c_str());
     ti::Image im;
     ti::Info info;
     bool ok = ti::decode(j->data, j->len, &im, &info, r->msg, sizeof(r->msg), o);
-    if (!j->cached_thumb)
+    if (o.raw)
+        ti::raw_exif(j->data, j->len, &r->exif);
+    else if (!j->cached_thumb)
         ti::read_exif(j->data, j->len, &r->exif);
     free(j->data);
     j->data = 0;
@@ -575,11 +586,15 @@ void Loader::run_decode(Job* j)
     ti::DecodeOptions o;
     int w = j->want.w, h = j->want.h;
     o.reduce_to = w > h ? w : h;
+    o.raw = ti::raw_name(j->want.path.c_str());
     ti::Image im;
     /* The box is upright; the decoder's reduction is by the longer side,
      * the same either way. */
     bool ok = ti::decode(j->data, j->len, &im, &r->info, r->msg, sizeof(r->msg), o);
-    ti::read_exif(j->data, j->len, &r->exif);
+    if (o.raw)
+        ti::raw_exif(j->data, j->len, &r->exif);    /* libraw turned it already */
+    else
+        ti::read_exif(j->data, j->len, &r->exif);
     free(j->data);
     j->data = 0;
     if (!ok)

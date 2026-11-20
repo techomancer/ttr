@@ -10,9 +10,11 @@
 
 #include "../../th/motif.h"
 #include "../../th/theme.h"
+#include "../../tx/appicon.h"
 #include "../../tx/scale.h"
 #include "../../tx/ttr.h"
 #include "core/settings.h"
+#include "icon_ttrv.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -105,11 +107,14 @@ int main(int argc, char** argv)
     merge_settings(top);
     Resources res;
     XtGetApplicationResources(top, &res, k_resources, XtNumber(k_resources), 0, 0);
-    if (argc > 2 || (argc == 2 && argv[1][0] == '-')) {
-        fprintf(stderr, "usage: ttrv [-fullscreen] [-renderer auto|gl|soft] [X toolkit options] "
-                        "[folder | image]\n");
-        return 2;
-    }
+    /* More than one path (files dropped on the IRIX desktop icon): the
+     * first. */
+    for (int i = 1; i < argc; i++)
+        if (argv[i][0] == '-') {
+            fprintf(stderr, "usage: ttrv [-fullscreen] [-renderer auto|gl|soft] "
+                            "[X toolkit options] [folder | image]\n");
+            return 2;
+        }
 
     static const tx::ScaledFont fonts[] = {
         { "*fontList", "-*-helvetica-medium-r-normal--12-*-*-*-*-*-iso8859-1" },
@@ -157,6 +162,7 @@ int main(int argc, char** argv)
     XtVaSetValues(top, XmNtitle, "ttrv", XmNiconName, "ttrv", (char*)0);
     ttrv::App* app = new ttrv::App(top, o);
     XtRealizeWidget(top);
+    tx::set_app_icon(top, k_icon_ttrv);
     app->realized();
     XtAppMainLoop(ctx);
     return 0;

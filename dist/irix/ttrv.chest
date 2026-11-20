@@ -1,0 +1,4 @@
+Menu Desktop
+{
+    "ttrv Image Viewer"     f.checkexec "/usr/bin/ttrv $HOME &"
+}

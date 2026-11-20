@@ -37,6 +37,8 @@ public:
     virtual void viewer_folder(int step) = 0;
     /* A line for the status bar (the viewer in the window). */
     virtual void viewer_status(const char* text) = 0;
+    /* A key the viewer does not use (F2, Del: the file shown). */
+    virtual bool viewer_key(XKeyEvent* ev) { (void)ev; return false; }
 };
 
 class Viewer : public ImageViewHost {

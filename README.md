@@ -61,8 +61,9 @@ run as a window manager there yet. A Wayland mode is planned for later
   a workspace tree, tabs, dockable panes, a terminal, and a debugger with
   VC6's keys (early; see "The code editor" below).
 - **ttrv**, an image browser and viewer in the style of ACDSee 3: a folder
-  tree, a file list with image sizes, a preview, zip files as folders
-  (early; see "The image viewer" below).
+  tree, a file list with image sizes, thumbnails, a preview, zip files as
+  folders, camera raw files, copy, move, rename and the trash (early; see
+  "The image viewer" below).
 
 ## Building
 
@@ -73,15 +74,17 @@ run as a window manager there yet. A Wayland mode is planned for later
 - libXpm and libpng, for icons; libjpeg, giflib and libtiff for images in
   ttrc's viewer. Each but libXpm is optional (see below).
 - libdbus-1, for desktop notifications. This is optional (see below).
+- libraw, for camera raw files in ttrv (Linux). This is optional (see
+  below).
 - `make`: GNU make, BSD make and IRIX smake all work.
 
 Package names on some distributions:
 
 | Distribution | Packages |
 |---|---|
-| Gentoo | `x11-libs/motif x11-libs/libXt x11-libs/libXpm media-libs/libpng media-libs/libjpeg-turbo media-libs/giflib media-libs/tiff sys-apps/dbus` |
-| Debian, Ubuntu | `libmotif-dev libxt-dev libxpm-dev libpng-dev libjpeg-dev libgif-dev libtiff-dev libdbus-1-dev` |
-| Arch, CachyOS | `openmotif libxt libxpm libpng libjpeg-turbo giflib libtiff dbus` |
+| Gentoo | `x11-libs/motif x11-libs/libXt x11-libs/libXpm media-libs/libpng media-libs/libjpeg-turbo media-libs/giflib media-libs/tiff sys-apps/dbus media-libs/libraw` |
+| Debian, Ubuntu | `libmotif-dev libxt-dev libxpm-dev libpng-dev libjpeg-dev libgif-dev libtiff-dev libdbus-1-dev libraw-dev` |
+| Arch, CachyOS | `openmotif libxt libxpm libpng libjpeg-turbo giflib libtiff dbus libraw` |
 
 ### Build
 
@@ -120,7 +123,9 @@ drop an icon format. The image libraries are named by `TI_CPPFLAGS`
 `TI_LIBS` (`-lpng -ljpeg -lgif -ltiff`); drop one and PNG, JPEG or GIF
 are read by the built-in decoder instead, while TIFF is not read at all
 (see [ti/DESIGN.md](ti/DESIGN.md)). `make ti-test` decodes the test
-images with both. The top of the
+images with both. ttrv reads camera raw files through libraw
+(`RAW_CPPFLAGS`, `RAW_LIBS`); `make RAW_CPPFLAGS= RAW_LIBS=` builds it
+without, and only ttrv links libraw. The top of the
 [Makefile](Makefile) has an example command line for IRIX with MIPSpro.
 
 ### Building on IRIX
@@ -134,11 +139,13 @@ make B=build-irix CXX=CC WARNFLAGS= DBUS_CFLAGS= \
      CPPFLAGS="-Isrc -I/usr/Motif-2.1/include -DTTR_HAVE_XPM -DTTR_HAVE_SVG" \
      LDFLAGS=-L/usr/Motif-2.1/lib32 LIBS="-lXm -lXt -lXpm -lX11 -lm" \
      TI_CPPFLAGS="-DTTR_HAVE_PNG -DTTR_HAVE_JPEG -DTTR_HAVE_TIFF" \
-     TI_LIBS="-lpng -ljpeg -ltiff -lz" STB_CFLAGS=-c99 \
-     TP_SYS=build-irix/tp_sys_irix.o
+     TI_LIBS="-lpng -ljpeg -ltiff -lz" STB_CFLAGS=-c99 RAW_CPPFLAGS= RAW_LIBS= \
+     TP_SYS=build-irix/tp_sys_irix.o TF_SYS=build-irix/tf_sys_irix.o
 ```
 
-`TP_SYS` selects the IRIX pseudo-terminal code that ttrt needs.
+`TP_SYS` and `TF_SYS` select the IRIX pseudo-terminal and file system
+code that ttrt and ttrc need. IRIX has no libraw, hence the empty
+`RAW_CPPFLAGS` and `RAW_LIBS`.
 
 IRIX 6.5 installs Motif 1.2 as the default `Xm` headers and library; ttr
 needs Motif 2.1 (the `motif21_dev` product), which lives in
@@ -181,8 +188,8 @@ This installs:
 | `/usr/bin/ttr-session` | starts a ttr session (see below) |
 | `/usr/share/xsessions/ttr.desktop` | makes display managers offer "To The Roots" |
 | `/usr/share/ttr/schemes/` | the color themes (`ttr`, `irix`) and text color schemes (`text`) |
-| `/usr/share/icons/hicolor/scalable/apps/` | the icons of ttr, ttrt and ttrcode (`ttr.svg`, `ttrt.svg`, `ttrcode.svg`) |
-| `/usr/share/applications/ttrt.desktop`, `ttrcode.desktop` | menu entries for ttrt and ttrcode, in ttr's Start menu and other desktops' |
+| `/usr/share/icons/hicolor/scalable/apps/` | the icons of ttr, ttrt, ttrcode and ttrv (`ttr.svg`, `ttrt.svg`, `ttrcode.svg`, `ttrv.svg`) |
+| `/usr/share/applications/ttrt.desktop`, `ttrcode.desktop`, `ttrv.desktop` | menu entries for ttrt, ttrcode and ttrv, in ttr's Start menu and other desktops' (ttrv's also offers it for opening images) |
 
 You can install while ttr is running: the old program is renamed to
 `ttr.old` and keeps running, and Start > Restart ttr switches to the new
@@ -208,22 +215,24 @@ or Software Manager. `tools/irix-dist.sh` builds it in the IRIX test guest
 ```sh
 tools/irix-dist.sh                      # writes build-irix/ttr-VERSION.tardist
 inst -f ttr-VERSION.tardist             # on IRIX, as root
+inst -a -f ttr-VERSION.tardist -I ttr   # the same without questions, also over an older ttr
 ```
 
-The package has four subsystems: `ttr.sw.wm` (ttr and its themes),
+The package has five subsystems: `ttr.sw.wm` (ttr and its themes),
 `ttr.sw.term` (ttrt, its fonts and a Desktop toolchest entry),
 `ttr.sw.commander` (ttrc and its editor ttre, with `/usr/bin/tc` as a link to
-ttrc, since IRIX has no other `tc`) and `ttr.sw.code` (ttrcode and its color
-schemes). Installing it compiles ttrt's terminfo entry into
+ttrc, since IRIX has no other `tc`), `ttr.sw.code` (ttrcode and its color
+schemes) and `ttr.sw.viewer` (ttrv and a Desktop toolchest entry). Installing it compiles ttrt's terminfo entry into
 `/usr/share/lib/terminfo` with `tic`, and removing it deletes the entry.
 
-ttr, ttrt and ttrcode get their icons in the IRIX desktop (file manager
+ttr, ttrt, ttrcode and ttrv get their icons in the IRIX desktop (file manager
 and icon catalog): filetype rules in `/usr/lib/filetype/local/` match each
 program's tag, and the icons are in `/usr/lib/filetype/local/iconlib/`.
 They are made from the SVG icons in `data/icons/` by `tools/svg2fti.py`
 (run it again after changing an SVG: `tools/svg2fti.py
 data/icons/ttrt.svg > dist/irix/ttrt.fti`). Minimized ttrt and ttrcode
-windows show the icon under 4Dwm as well, from the windows themselves.
+windows show the icon under 4Dwm as well, from the windows themselves, and
+so do ttrv's. Dropping image files on ttrv's icon opens the first of them.
 
 ## Running
 
@@ -1085,8 +1094,8 @@ The plan is in [ttrcode/DESIGN.md](ttrcode/DESIGN.md).
 ### The image viewer (ttrv)
 
 ttrv browses folders of images the way ACDSee 3 did on Windows 95. It is
-young: the browser, thumbnails, the viewer, EXIF and OpenGL drawing work;
-raw photographs and file operations come next (the plan is in
+young: the browser, thumbnails, the viewer, EXIF, OpenGL drawing, raw
+photographs and the basic file operations work (the plan is in
 [ttrv/DESIGN.md](ttrv/DESIGN.md)).
 
 ```sh
@@ -1104,7 +1113,7 @@ again to reverse), and the preview and the file's information at the
 bottom. They are panes: right-click a pane's tab to move or close it, and
 View brings it back; ttrv remembers the layout. Zip files and the other
 archives ttrc opens are folders. The formats are ttrc's viewer's: PNG,
-JPEG, GIF, TIFF, BMP, PNM, SGI and XPM.
+JPEG, GIF, TIFF, BMP, PNM, SGI and XPM, and on Linux camera raw files.
 
 | Key | Does |
 |---|---|
@@ -1120,6 +1129,12 @@ JPEG, GIF, TIFF, BMP, PNM, SGI and XPM.
 | Ctrl+1 / Ctrl+2 | details / thumbnails (View has the thumbnail sizes, 64 to 192) |
 | Enter on an image | the viewer, in the window |
 | Alt+Enter on an image | the viewer, full screen |
+| F2 | rename the file under the cursor |
+| Del | move the marked files (or the one under the cursor) to the trash, after asking |
+| Shift+Del | delete them for good, after asking |
+| Ctrl+C / Ctrl+X | copy / cut them, for Ctrl+V |
+| Ctrl+V | copy or move them here |
+| Ctrl+Shift+N | a new folder |
 
 The viewer shows one image, fitted to the window (never enlarged), and
 steps through the folder in the browser's order. The next two images in
@@ -1140,6 +1155,7 @@ Space shows the next one at once.
 | Arrows, dragging | move a zoomed image |
 | `[` / `]` | turn left / right (not saved) |
 | I | the file's name, size, zoom and place in the folder over the image |
+| Del, Shift+Del, F2, Ctrl+C / Ctrl+X | as in the browser, for the image shown; Del then shows the next one |
 
 In the folder tree, moving the selection opens that folder after a
 moment; Right or Enter opens a branch, Left closes it or goes up.
@@ -1182,6 +1198,25 @@ VPro's memory, which pages them) goes up reduced, and zooming in past
 that is drawn in software. A 12-megapixel photograph takes about a
 second to go up on a 600 MHz Octane, and then pans at 60 frames a
 second.
+
+The file operations are on the Edit menu too. Del moves files to the
+trash every Linux desktop shares (the freedesktop.org trash, in
+`~/.local/share/Trash`, or a `.Trash-<uid>` folder at the top of another
+disk), so a file manager can put them back; where there is none, ttrv
+asks whether to delete them for good. On IRIX, Del deletes for good,
+after asking. Copying and moving show their progress when they take
+longer than a moment, ask before replacing a file (Replace, Skip, or
+either for all), and can be stopped. Pasting a copy into its own folder
+names it "photo copy.jpg". Files inside archives can be copied out but
+not changed.
+
+Camera raw files (CR2, CR3, NEF, ARW, RAF, RW2, ORF, DNG, PEF and the
+rest libraw knows) are shown on Linux when ttrv is built with libraw.
+Thumbnails, the preview and the viewer's first look use the JPEG preview
+the camera put in the file, which takes a few tens of milliseconds;
+zooming in to actual size develops the raw data itself (a second or two
+for 24 megapixels), with the camera's white balance. The list shows the
+sensor's size and bits, and the Information pane what the camera wrote.
 
 ttrv's settings are in `~/.config/ttrv/settings` (layout, sorting,
 `viewMode`, `thumbnailSize`, `showHidden`, `listFont`, and

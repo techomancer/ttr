@@ -44,6 +44,13 @@ bool xpm_decode(Ctx& c);
  * unknown. */
 long xpm_color_name(const char* name, size_t len);
 
+/* The raw decoder raw_init() installs (raw.cpp), or 0. */
+struct RawDecoder {
+    const char* (*name)();
+    bool (*decode)(Ctx& c);
+};
+extern const RawDecoder* g_raw;
+
 /* set_lock()'s lock; no-ops without one. */
 void lock();
 void unlock();

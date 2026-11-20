@@ -1,0 +1,10 @@
+TYPE TtrvExecutable
+    MATCH       tag == 0x54545256;
+    LEGEND      ttrv image viewer
+    SUPERTYPE   Executable
+    CMD OPEN    $LEADER
+    CMD ALTOPEN launch -c $LEADER
+    CMD DROP    $TARGET $SELECTED
+    ICON        {
+        include("iconlib/ttrv.fti");
+    }

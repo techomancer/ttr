@@ -111,7 +111,7 @@ The browser keys are ACDSee's where it had one:
 | Tab, Shift+Tab | the next / previous pane |
 | Ctrl+1 / Ctrl+2 | details / thumbnails |
 | F5 | read the folder again |
-| F2 | rename; Del delete (to the trash on Linux, asked first); Ctrl+C / Ctrl+X / Ctrl+V copy or move files |
+| F2 | rename; Del delete (to the trash on Linux, asked first); Ctrl+C / Ctrl+X / Ctrl+V copy or move files; Ctrl+Shift+N a new folder (section 2.4) |
 | Alt+Enter | the viewer, full screen (F is typing to find a name here) |
 | Ctrl+L | the location bar |
 
@@ -119,6 +119,43 @@ Any key the files pane does not use, when another pane has focus, still
 reaches it if the other pane has no use for it either (the arrows in the
 preview move the file cursor), so "which pane has focus" matters as
 little as possible.
+
+### 2.4 File operations
+
+As built (2026-11-19). ttrv's own and basic, as decided in section 9:
+rename, delete, copy and move, a new folder. They work on the marked
+files, else the one under the cursor; in the viewer, always on the image
+shown. The keys are the list's and the viewer's own, not menu
+accelerators, so Del and Ctrl+C keep their meaning in the location bar;
+the Edit menu shows them.
+
+- **Rename (F2)** is a prompt with the name before its extension
+  selected, as Explorer's; a name that is taken is refused, not
+  overwritten.
+- **Delete (Del)** moves to the freedesktop.org trash (`tf/trash.cpp`,
+  the Trash specification: the home trash for files on its file system,
+  `$topdir/.Trash/$uid` or `$topdir/.Trash-$uid` for others, an info
+  file written first with `O_EXCL` to claim the name). It is plain
+  POSIX, but only Linux desktops look there; on IRIX the Dumpster is the
+  desktop's own, so Del deletes for good. Shift+Del always does. Where a
+  file system has no trash ttrv may use, it asks whether to delete for
+  good instead. A delete in the viewer moves on to the next image.
+- **Copy and move (Ctrl+C / Ctrl+X, then Ctrl+V)** keep the paths in
+  ttrv; there is no exchange with other programs' clipboards yet. A copy
+  into its own folder becomes "name copy.ext"; a folder into itself is
+  refused.
+- They are `tf::Job`s, as in ttrc, run in steps on the main thread
+  between X events, not in the reader thread the plan named: a job is
+  disk-bound, the loader's threads stay free to read and decode, and the
+  questions (replace? an error: retry, skip?) need the user anyway. A
+  progress dialog appears when a job takes longer than 0.4 s, with
+  Cancel.
+- Archives are read only: copying out of one works, nothing goes in, and
+  nothing in one is renamed or deleted.
+- Afterwards the folder is read again without dropping the cache, the
+  cursor on the next file that stayed. The decodes and thumbnails of the
+  files that went are dropped, the thumbnails on disk too, as the
+  thumbnail spec asks.
 
 ## 3. The viewer
 
@@ -138,7 +175,8 @@ little as possible.
 | `[` / `]` | rotate left / right (shown only; saving is a separate action) |
 | Ctrl+Up / Ctrl+Down | the next / previous folder (ACDSee's), first image there |
 | I | the information overlay on / off |
-| Del | delete this file, show the next |
+| Del, Shift+Del | delete this file (to the trash), show the next |
+| F2, Ctrl+C / Ctrl+X | rename, copy or cut this file |
 
 The order is the browser's sort. Archive members step like files.
 
@@ -309,7 +347,16 @@ check). They are pulled out of the text renderers into
   list's image properties: each format's header is a few bytes.
 - libraw (`TTR_HAVE_RAW`, Linux only, optional): the embedded JPEG
   preview for thumbnails and the browser, the full raw decode in the
-  viewer.
+  viewer. As built: `ti/raw.cpp`, outside `libti.a` so that only ttrv
+  links libraw (the window manager and the terminal use ti too);
+  `ti::raw_init()` installs it. A reduced decode takes the camera's
+  preview when it is at least the size asked, else libraw's half-size
+  development; a full decode develops the raw data (AHD, the camera's
+  white balance, sRGB). libraw turns the image upright, so the EXIF the
+  loader gets for a raw (from libraw, not ti's reader) has no
+  orientation. The list's sizes come from `libraw_open_file`, which reads
+  only the headers. Measured on a desktop: preview 10 to 90 ms, a full
+  24-megapixel development 1.2 to 2.9 s.
 - GIF: the first frame, as now; animation later.
 
 **From tf:** everything as ttrc uses it. A file's archive members are a
@@ -345,7 +392,8 @@ the viewer, and the start folder (last one, or a fixed one).
 6. **GL.** The texture renderer on Linux and VPro, the shader filters on
    Linux. Done 2026-11-19 (section 5.2).
 7. **libraw** on Linux; file operations (rename, delete, copy, move);
-   the IRIX tardist and desktop icon.
+   the IRIX tardist and desktop icon. Done 2026-11-19 (sections 2.4 and
+   6; `ttr.sw.viewer` in the tardist, `data/icons/ttrv.svg`).
 
 Each milestone is tested on Linux, on the Indy guest (8-bit and 24-bit
 visuals, one CPU), and from milestone 3 on the Octane (VPro, two CPUs)

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=ttrv
+GenericName=Image Viewer
+Comment=The To The Roots image browser and viewer
+Exec=ttrv %f
+Icon=ttrv
+Terminal=false
+Categories=Graphics;Viewer;2DGraphics;RasterGraphics;
+MimeType=image/png;image/jpeg;image/gif;image/tiff;image/bmp;image/x-portable-pixmap;image/x-portable-graymap;image/x-portable-bitmap;image/x-portable-anymap;image/x-sgi;image/x-rgb;image/x-xpixmap;image/x-canon-cr2;image/x-canon-cr3;image/x-nikon-nef;image/x-sony-arw;image/x-fuji-raf;image/x-panasonic-rw2;image/x-olympus-orf;image/x-adobe-dng;image/x-pentax-pef;image/x-dcraw;

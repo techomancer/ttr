@@ -567,7 +567,7 @@ bool Viewer::key(XKeyEvent* ev)
         redraw();
         return true;
     default:
-        return false;
+        return host_->viewer_key(ev);
     }
 }
 

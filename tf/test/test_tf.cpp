@@ -4,6 +4,7 @@
 #include "../vfs.h"
 #include "../path.h"
 #include "../tf.h"
+#include "../trash.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -502,6 +503,63 @@ static void test_spools()
     tf::local_fs()->remove(copy2.c_str());
 }
 
+/* The freedesktop trash, in a home of its own (XDG_DATA_HOME). */
+static void test_trash()
+{
+    tf::Fs* fs = tf::local_fs();
+    char root[64];
+    sprintf(root, "/tmp/tftrash%ld", (long)getpid());
+    CHECK(fs->mkdir(root, 0755) == 0);
+    tf::Path r(root);
+    static char env[200];
+    sprintf(env, "XDG_DATA_HOME=%s/data", root);
+    putenv(env);
+    char home[300];
+    tf::trash_home(home, sizeof(home));
+    CHECK_STR(home, r.child("data").child("Trash").c_str());
+
+    tf::Path a = r.child("a b.jpg");
+    write_file(fs, a.c_str(), "one");
+    char where[600];
+    CHECK(tf::trash(a.c_str(), where, sizeof(where)) == 0);
+    tf::Stat st;
+    CHECK(fs->stat(a.c_str(), &st, false) == ENOENT);
+    tf::Path t(home);
+    CHECK_STR(where, t.child("files").child("a b.jpg").c_str());
+    CHECK(read_is(fs, where, "one"));
+    char info[800];
+    sprintf(info, "[Trash Info]\nPath=%s/a%%20b.jpg\nDeletionDate=", root);
+    {
+        int err = 0;
+        tf::Stream* s = fs->open(t.child("info").child("a b.jpg.trashinfo").c_str(),
+                                 tf::OPEN_READ, 0, &err);
+        char buf[800];
+        long n = s ? s->read(buf, sizeof(buf) - 1) : -1;
+        delete s;
+        buf[n > 0 ? n : 0] = 0;
+        CHECK(n > 0 && strncmp(buf, info, strlen(info)) == 0 &&
+              strlen(buf) == strlen(info) + 20);
+    }
+    /* The same name again: a.2.jpg. A folder goes whole. */
+    write_file(fs, a.c_str(), "two");
+    CHECK(tf::trash(a.c_str(), where, sizeof(where)) == 0);
+    CHECK_STR(where, t.child("files").child("a b.2.jpg").c_str());
+    CHECK(fs->stat(t.child("info").child("a b.2.jpg.trashinfo").c_str(), &st, false) == 0);
+    tf::Path d = r.child("folder");
+    CHECK(fs->mkdir(d.c_str(), 0755) == 0);
+    write_file(fs, d.child("in.txt").c_str(), "in");
+    CHECK(tf::trash(d.c_str()) == 0);
+    CHECK(read_is(fs, t.child("files").child("folder").child("in.txt").c_str(), "in"));
+    /* Missing, relative, and the trash itself. */
+    CHECK(tf::trash(a.c_str()) == ENOENT);
+    CHECK(tf::trash("rel.txt") == EINVAL);
+    CHECK(tf::trash(r.child("data").c_str()) == EINVAL);
+
+    tf::Job j(tf::OP_DELETE, fs, 0);
+    j.add(root);
+    CHECK(run(j) == tf::Job::DONE);
+}
+
 int main(int argc, char** argv)
 {
     if (argc > 1)
@@ -509,6 +567,7 @@ int main(int argc, char** argv)
     test_path();
     test_local();
     test_ops();
+    test_trash();
     test_archive_paths();
     test_archives();
     test_spools();

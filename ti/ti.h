@@ -32,6 +32,7 @@ enum Format {
     FMT_PNM,
     FMT_SGI,
     FMT_XPM,
+    FMT_RAW,            /* a camera's raw file, through libraw (ti_raw.o) */
     FMT_COUNT
 };
 
@@ -91,7 +92,10 @@ struct DecodeOptions {
      * on its longer side, where the decoder can do that for free
      * (JPEG's DCT scaling). */
     int reduce_to;
-    DecodeOptions() : backend(BACKEND_ANY), reduce_to(0) {}
+    /* The file is a camera raw by its name (raw_name): most are TIFFs
+     * inside, and their first image is a small preview. */
+    bool raw;
+    DecodeOptions() : backend(BACKEND_ANY), reduce_to(0), raw(false) {}
 };
 
 /* Decode a whole file held in memory. On failure 'err' says why. */
@@ -104,6 +108,25 @@ bool decode(const unsigned char* d, size_t n, Image* out, Info* info, char* err,
  * large preview or a TIFF whose directory is at its end. False if the
  * header is not there or not sane; *info then has what was found. */
 bool probe(const unsigned char* d, size_t n, Info* info);
+
+/* Camera raw files (CR2, CR3, NEF, ARW, RAF, RW2, ORF, DNG, ...) are
+ * decoded by libraw, in ti_raw.o (raw.cpp), which only the programs that
+ * want it link, with RAW_LIBS: raw_init() makes decode() use it. Without
+ * TTR_HAVE_RAW the functions are there and do nothing. A reduced decode
+ * is the camera's own preview when it is large enough, else libraw's
+ * half-size development; a full one is the full development (seconds).
+ * Images come out upright: libraw turns them, so the caller does not. */
+struct Exif;
+void raw_init();
+/* By the name's extension. */
+bool raw_name(const char* name);
+/* "libraw 0.22.1", or 0: no raw decoder (none built, or no raw_init). */
+const char* raw_decoder();
+/* A local raw file's size, bits and EXIF from its headers alone (libraw
+ * reads what it needs). orientation is 0: images come out upright. */
+bool raw_probe_file(const char* path, Info* info, Exif* exif);
+/* The EXIF of a raw held in memory, the same way. */
+bool raw_exif(const unsigned char* d, size_t n, Exif* exif);
 
 /* EXIF: what a camera wrote. Strings are "" and numbers 0 when absent. */
 struct Exif {

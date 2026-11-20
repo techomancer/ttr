@@ -11,7 +11,7 @@
 #        CPPFLAGS="-Isrc -I/usr/Motif-2.1/include -DTTR_HAVE_XPM -DTTR_HAVE_SVG" \
 #        LDFLAGS=-L/usr/Motif-2.1/lib32 LIBS="-lXm -lXt -lXpm -lX11 -lm" \
 #        TP_SYS=build-irix/tp_sys_irix.o TF_SYS=build-irix/tf_sys_irix.o \
-#        CC=cc CFLAGS=-n32
+#        RAW_CPPFLAGS= RAW_LIBS= CC=cc CFLAGS=-n32
 #                                     (IRIX 6.5, MIPSpro; see README "Building on IRIX")
 #
 # TTR_HAVE_XPM and TTR_HAVE_SVG enable icon files in those formats; drop
@@ -46,7 +46,7 @@ TW_LIBS = -lXext $(GL_LIBS)
 # make install: the program and the session launcher go to BINDIR, the
 # session file to XSESSIONDIR, where display managers look for sessions,
 # the color themes to DATADIR/schemes, the icons to ICONDIR (the hicolor
-# theme every desktop falls back to) and ttrt's and ttrcode's menu entries
+# theme every desktop falls back to) and ttrt's, ttrcode's and ttrv's menu entries
 # to APPDIR. DESTDIR is prepended to all of them, for packaging.
 PREFIX = /usr
 BINDIR = $(PREFIX)/bin
@@ -401,6 +401,10 @@ $(B)/icon_ttrcode.h: $(B)/.dir data/icons/ttrcode.svg
 	{ echo 'static const char k_icon_ttrcode[] ='; \
 	  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/^/"/' -e 's/$$/\\n"/' data/icons/ttrcode.svg; \
 	  echo ';'; } > $@
+$(B)/icon_ttrv.h: $(B)/.dir data/icons/ttrv.svg
+	{ echo 'static const char k_icon_ttrv[] ='; \
+	  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/^/"/' -e 's/$$/\\n"/' data/icons/ttrv.svg; \
+	  echo ';'; } > $@
 
 # tx_demo shows the font chooser (needs a display).
 $(B)/tx_demo: $(B)/tx_demo.o $(B)/libtx.a $(B)/core_str.o
@@ -449,6 +453,12 @@ $(B)/th_test_th.o: $(B)/.dir th/test/test_th.cpp $(TH_H)
 TI_CPPFLAGS = -DTTR_HAVE_PNG -DTTR_HAVE_JPEG -DTTR_HAVE_GIF -DTTR_HAVE_TIFF
 TI_LIBS = -lpng -ljpeg -lgif -ltiff
 STB_CFLAGS = -fwrapv
+# Camera raw files through libraw: ti_raw.o, outside libti.a so only the
+# programs that want them (ttrv) link RAW_LIBS. Without libraw (IRIX):
+# make RAW_CPPFLAGS= RAW_LIBS=. libraw.h declares its C++ class too,
+# which throws: -fexceptions for this one file (ti calls the C API).
+RAW_CPPFLAGS = -DTTR_HAVE_RAW -fexceptions
+RAW_LIBS = -lraw_r
 # Threads, for the programs that decode in several (ttrv) and ti's test.
 THREAD_LIBS = -lpthread
 TI_OBJS = $(B)/ti_image.o \
@@ -479,6 +489,8 @@ $(B)/ti_jpeg.o: $(B)/.dir ti/jpeg.cpp $(TI_H)
 	$(COMPILE) $(TI_CPPFLAGS) -c ti/jpeg.cpp -o $@
 $(B)/ti_gif.o: $(B)/.dir ti/gif.cpp $(TI_H)
 	$(COMPILE) $(TI_CPPFLAGS) -c ti/gif.cpp -o $@
+$(B)/ti_raw.o: $(B)/.dir ti/raw.cpp $(TI_H)
+	$(COMPILE) $(RAW_CPPFLAGS) -c ti/raw.cpp -o $@
 $(B)/ti_tiff.o: $(B)/.dir ti/tiff.cpp $(TI_H)
 	$(COMPILE) $(TI_CPPFLAGS) -c ti/tiff.cpp -o $@
 $(B)/ti_sgi.o: $(B)/.dir ti/sgi.cpp $(TI_H)
@@ -517,6 +529,7 @@ TF_OBJS = $(B)/tf_archive.o \
 	$(B)/tf_local.o \
 	$(B)/tf_ops.o \
 	$(B)/tf_path.o \
+	$(B)/tf_trash.o \
 	$(B)/tf_vfs.o \
 	$(B)/tf_zlib.o \
 	$(B)/tf_zlib_inflate.o \
@@ -524,7 +537,7 @@ TF_OBJS = $(B)/tf_archive.o \
 	$(B)/tf_zlib_inftrees.o \
 	$(B)/tf_bzip2.o \
 	$(TF_SYS)
-TF_H = tf/tf.h tf/archive.h tf/ops.h tf/path.h tf/sys.h tf/vfs.h tl/port.h
+TF_H = tf/tf.h tf/archive.h tf/ops.h tf/path.h tf/sys.h tf/trash.h tf/vfs.h tl/port.h
 
 $(B)/libtf.a: $(TF_OBJS)
 	rm -f $@
@@ -551,6 +564,8 @@ $(B)/tf_ops.o: $(B)/.dir tf/ops.cpp $(TF_H)
 	$(COMPILE) -c tf/ops.cpp -o $@
 $(B)/tf_path.o: $(B)/.dir tf/path.cpp $(TF_H)
 	$(COMPILE) -c tf/path.cpp -o $@
+$(B)/tf_trash.o: $(B)/.dir tf/trash.cpp $(TF_H)
+	$(COMPILE) -c tf/trash.cpp -o $@
 $(B)/tf_sys_linux.o: $(B)/.dir tf/sys_linux.cpp $(TF_H)
 	$(COMPILE) -c tf/sys_linux.cpp -o $@
 $(B)/tf_sys_irix.o: $(B)/.dir tf/sys_irix.cpp $(TF_H)
@@ -907,6 +922,7 @@ $(B)/ttrt_settingsdlg.o: $(B)/.dir src/ttrt/settingsdlg.cpp $(TTRT_H) \
 TTRV_OBJS = $(B)/ttrv_main.o \
 	$(B)/ttrv_app.o \
 	$(B)/ttrv_filelist.o \
+	$(B)/ttrv_fileops.o \
 	$(B)/ttrv_folders.o \
 	$(B)/ttrv_glpaint.o \
 	$(B)/ttrv_imageview.o \
@@ -919,7 +935,7 @@ TTRV_OBJS = $(B)/ttrv_main.o \
 	$(B)/core_scale.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
-TTRV_H = src/ttrv/app.h src/ttrv/filelist.h src/ttrv/folders.h src/ttrv/glpaint.h \
+TTRV_H = src/ttrv/app.h src/ttrv/filelist.h src/ttrv/fileops.h src/ttrv/folders.h src/ttrv/glpaint.h \
 	src/ttrv/imageview.h \
 	src/ttrv/loader.h src/ttrv/pixels.h src/ttrv/render.h src/ttrv/thumbs.h src/ttrv/viewer.h \
 	$(TF_H) $(TI_H) $(TW_H) $(TX_H) $(TH_H) \
@@ -927,16 +943,20 @@ TTRV_H = src/ttrv/app.h src/ttrv/filelist.h src/ttrv/folders.h src/ttrv/glpaint.
 
 ttrv: $(B)/ttrv
 
-$(B)/ttrv: $(TTRV_OBJS) $(B)/libtx.a $(B)/libth.a $(B)/libtw.a $(B)/libtf.a $(B)/libti.a
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRV_OBJS) $(B)/libtx.a $(B)/libth.a $(B)/libtw.a \
-		$(B)/libtf.a $(B)/libti.a $(TI_LIBS) $(TW_LIBS) $(LIBS) $(THREAD_LIBS)
+$(B)/ttrv: $(TTRV_OBJS) $(B)/ti_raw.o $(B)/libtx.a $(B)/libth.a $(B)/libtw.a $(B)/libtf.a \
+		$(B)/libti.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(TTRV_OBJS) $(B)/ti_raw.o $(B)/libtx.a $(B)/libth.a \
+		$(B)/libtw.a $(B)/libtf.a $(B)/libti.a $(RAW_LIBS) $(TI_LIBS) $(TW_LIBS) $(LIBS) \
+		$(THREAD_LIBS)
 
-$(B)/ttrv_main.o: $(B)/.dir src/ttrv/main.cpp $(TTRV_H)
-	$(COMPILE) -c src/ttrv/main.cpp -o $@
+$(B)/ttrv_main.o: $(B)/.dir src/ttrv/main.cpp $(TTRV_H) $(B)/icon_ttrv.h
+	$(COMPILE) -I$(B) -c src/ttrv/main.cpp -o $@
 $(B)/ttrv_app.o: $(B)/.dir src/ttrv/app.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/app.cpp -o $@
 $(B)/ttrv_filelist.o: $(B)/.dir src/ttrv/filelist.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/filelist.cpp -o $@
+$(B)/ttrv_fileops.o: $(B)/.dir src/ttrv/fileops.cpp $(TTRV_H)
+	$(COMPILE) -c src/ttrv/fileops.cpp -o $@
 $(B)/ttrv_folders.o: $(B)/.dir src/ttrv/folders.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/folders.cpp -o $@
 $(B)/ttrv_glpaint.o: $(B)/.dir src/ttrv/glpaint.cpp $(TTRV_H)
@@ -955,9 +975,10 @@ $(B)/ttrv_viewer.o: $(B)/.dir src/ttrv/viewer.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/viewer.cpp -o $@
 
 $(B)/ttrv_test_loader: $(B)/ttrv_test_loader.o $(B)/ttrv_loader.o $(B)/ttrv_thumbs.o \
-		$(B)/core_str.o $(B)/libtf.a $(B)/libti.a
+		$(B)/core_str.o $(B)/ti_raw.o $(B)/libtf.a $(B)/libti.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/ttrv_test_loader.o $(B)/ttrv_loader.o $(B)/ttrv_thumbs.o \
-		$(B)/core_str.o $(B)/libtf.a $(B)/libti.a $(TI_LIBS) $(THREAD_LIBS) -lm
+		$(B)/core_str.o $(B)/ti_raw.o $(B)/libtf.a $(B)/libti.a $(RAW_LIBS) $(TI_LIBS) \
+		$(THREAD_LIBS) -lm
 $(B)/ttrv_test_loader.o: $(B)/.dir src/ttrv/test/test_loader.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/test/test_loader.cpp -o $@
 
@@ -1296,11 +1317,14 @@ install: $(B)/ttr $(B)/ttrt $(B)/ttrc $(B)/ttre $(B)/ttrcode $(B)/ttrv
 	chmod 644 $(DESTDIR)$(DATADIR)/schemes/ttr/* \
 		$(DESTDIR)$(DATADIR)/schemes/irix/* $(DESTDIR)$(DATADIR)/schemes/text/*
 	mkdir -p $(DESTDIR)$(ICONDIR) $(DESTDIR)$(APPDIR)
-	cp data/icons/ttr.svg data/icons/ttrt.svg data/icons/ttrcode.svg $(DESTDIR)$(ICONDIR)
+	cp data/icons/ttr.svg data/icons/ttrt.svg data/icons/ttrcode.svg data/icons/ttrv.svg \
+		$(DESTDIR)$(ICONDIR)
 	chmod 644 $(DESTDIR)$(ICONDIR)/ttr.svg $(DESTDIR)$(ICONDIR)/ttrt.svg \
-		$(DESTDIR)$(ICONDIR)/ttrcode.svg
-	cp dist/applications/ttrt.desktop dist/applications/ttrcode.desktop $(DESTDIR)$(APPDIR)
-	chmod 644 $(DESTDIR)$(APPDIR)/ttrt.desktop $(DESTDIR)$(APPDIR)/ttrcode.desktop
+		$(DESTDIR)$(ICONDIR)/ttrcode.svg $(DESTDIR)$(ICONDIR)/ttrv.svg
+	cp dist/applications/ttrt.desktop dist/applications/ttrcode.desktop \
+		dist/applications/ttrv.desktop $(DESTDIR)$(APPDIR)
+	chmod 644 $(DESTDIR)$(APPDIR)/ttrt.desktop $(DESTDIR)$(APPDIR)/ttrcode.desktop \
+		$(DESTDIR)$(APPDIR)/ttrv.desktop
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/ttr $(DESTDIR)$(BINDIR)/ttr.old \
@@ -1312,8 +1336,9 @@ uninstall:
 		$(DESTDIR)/usr/share/lib/terminfo/x/xterm-ttrt \
 		$(DESTDIR)$(XSESSIONDIR)/ttr.desktop \
 		$(DESTDIR)$(ICONDIR)/ttr.svg $(DESTDIR)$(ICONDIR)/ttrt.svg \
-		$(DESTDIR)$(ICONDIR)/ttrcode.svg \
-		$(DESTDIR)$(APPDIR)/ttrt.desktop $(DESTDIR)$(APPDIR)/ttrcode.desktop
+		$(DESTDIR)$(ICONDIR)/ttrcode.svg $(DESTDIR)$(ICONDIR)/ttrv.svg \
+		$(DESTDIR)$(APPDIR)/ttrt.desktop $(DESTDIR)$(APPDIR)/ttrcode.desktop \
+		$(DESTDIR)$(APPDIR)/ttrv.desktop
 	rm -rf $(DESTDIR)$(DATADIR) $(DESTDIR)$(TTRC_DATADIR)
 
 clean:

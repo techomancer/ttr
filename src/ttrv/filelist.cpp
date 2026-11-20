@@ -154,6 +154,8 @@ bool image_name(const char* name)
         "png", "jpg", "jpeg", "jpe", "jfif", "gif", "tif", "tiff", "bmp", "dib", "ppm", "pgm",
         "pnm", "pbm", "rgb", "rgba", "bw", "sgi", "int", "inta", "xpm", 0
     };
+    if (ti::raw_name(name))
+        return ti::raw_decoder() != 0;
     const char* e = extension(name);
     for (int i = 0; exts[i]; i++) {
         const char* a = e;
