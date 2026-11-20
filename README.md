@@ -1085,8 +1085,9 @@ The plan is in [ttrcode/DESIGN.md](ttrcode/DESIGN.md).
 ### The image viewer (ttrv)
 
 ttrv browses folders of images the way ACDSee 3 did on Windows 95. It is
-early: the browser, thumbnails, the viewer and EXIF work; the OpenGL
-renderer comes next (the plan is in [ttrv/DESIGN.md](ttrv/DESIGN.md)).
+young: the browser, thumbnails, the viewer, EXIF and OpenGL drawing work;
+raw photographs and file operations come next (the plan is in
+[ttrv/DESIGN.md](ttrv/DESIGN.md)).
 
 ```sh
 ttrv                    # the current folder
@@ -1094,6 +1095,7 @@ ttrv ~/pictures         # a folder
 ttrv photo.jpg          # the viewer on it, its folder behind it
 ttrv -fullscreen a.jpg  # the same, full screen
 ttrv album.zip          # a zip (or tar.gz, ...) as a folder
+ttrv -renderer soft .   # the viewer without OpenGL (auto, gl or soft)
 ```
 
 The window has the folder tree on the left, the files in the middle (name,
@@ -1165,6 +1167,21 @@ uses the screen's deepest TrueColor visual: on an Indy with a 24-bit
 board that is 24 bits beside the 8-bit desktop. `TTRv*imageVisual:
 default` uses the desktop's own visual instead, dithered to a colour
 cube on an 8-bit screen.
+
+The viewer draws with OpenGL where that is fast: textures in hardware
+and direct rendering, as on a PC with a GPU, an Octane or an Onyx with
+VPro, or an O2. The image goes up to the board once, so zooming and
+moving a zoomed image cost nothing more; enlarging is bicubic where the
+board has shaders (Linux). Elsewhere (no GL, a software renderer such as
+llvmpipe, an Indy, an IMPACT with its few megabytes of texture memory)
+it draws in software, the same pixels a little slower. `-renderer gl` or
+`TTRv*renderer: gl` uses GL even then, `soft` never; About ttrv says
+which it uses, and `TTRV_VERBOSE=1` prints it. An image larger than
+`TTRv*textureMegabytes` (by default 256 on Linux, and four times a
+VPro's memory, which pages them) goes up reduced, and zooming in past
+that is drawn in software. A 12-megapixel photograph takes about a
+second to go up on a 600 MHz Octane, and then pans at 60 frames a
+second.
 
 ttrv's settings are in `~/.config/ttrv/settings` (layout, sorting,
 `viewMode`, `thumbnailSize`, `showHidden`, `listFont`, and

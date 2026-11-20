@@ -228,20 +228,55 @@ shared place (section 6).
 | Renderer | How | Where |
 |---|---|---|
 | soft | the scaled image in an `XImage`, sent with `XShmPutImage` when the server can attach the segment, else `XPutImage` | everywhere; the floor |
-| gl | the image as textures, scaled by the GPU | Linux with direct rendering; IMPACT and VPro on IRIX |
+| gl | the image as textures, scaled by the GPU | Linux with direct rendering and a GPU; VPro (and O2) on IRIX |
 
 - **soft:** the decoder thread produces the image already scaled to the
   window (area average when shrinking, as `ti::scale`; bilinear when
   growing), in the server's byte order and pixel layout. The main thread
   only puts it. Panning a zoomed image puts the newly visible strip.
-- **gl:** the full image is uploaded once as tiles no larger than
-  `GL_MAX_TEXTURE_SIZE`, with mipmaps (`gluBuild2DMipmaps` on GL 1.1,
-  `GL_GENERATE_MIPMAP` where there is 1.4), drawn with
-  `GL_LINEAR_MIPMAP_LINEAR`; zoom and pan cost nothing more. Where GLSL
-  is available (Linux), a Lanczos or bicubic shader for enlarging and a
-  better minification filter. GL 1.1 is the floor, so VPro works.
+- **gl** (`src/ttrv/glpaint.cpp`, as built): the image goes up once as
+  power-of-two tiles (1.1 has no others) of at most
+  `GL_MAX_TEXTURE_SIZE` and 2048. Neighbouring tiles overlap by two
+  pixels, so filtering across a seam reads the same pixels on both
+  sides. Each side is cut into whole tiles, then one at most a quarter
+  padding, so a side of 1024 is a 1024 and an 8, not a 2048. Mipmaps
+  come from `GL_GENERATE_MIPMAP` (1.4) or from a 2 x 2 box filter on the
+  CPU (VPro; no GLU needed). Interior tiles of an opaque image go to GL
+  straight from the decoded image (`GL_UNPACK_ROW_LENGTH`). The other
+  tiles are copied, with transparent pixels put over the background, so
+  the textures are RGB and need no blending.
+
+  Shrinking is `GL_LINEAR_MIPMAP_LINEAR`. Enlarging is bilinear up to
+  2x and the nearest pixel from 2x, as the soft renderer does. Where
+  there is GLSL (Linux), a Catmull-Rom shader does the enlarging below
+  2x. The trilinear filter is close to soft's area average on
+  photographs (42 dB against an exact box filter, soft 41 dB), and
+  softer on pixel-aligned checkers. No shader for shrinking was needed.
+
+  Two named images stay up, the fitted decode and the full one, so
+  going between fit and a zoom uploads neither again. Zoomed out to
+  where the fitted decode has every pixel shown, the viewer draws from
+  it.
+
+  Textures fit a budget (`textureMegabytes`): a larger image goes up
+  reduced, and a zoom past what the reduced one keeps is a soft frame
+  drawn 1:1. Text is `glXUseXFont` lists.
+- **Measured** (`ttrv_test_gl`, which reads the frames back and compares
+  them with `render_view`'s: 1:1 and 2x or more are exact on 24-bit
+  visuals). On the Octane (V10, 32 MB, R14000 at 600 MHz, 30-bit visual):
+  - A 12-megapixel JPEG takes 1.2 s to upload (1.5 s before the
+    zero-copy tiles).
+  - At 1:1 and every zoom above, a 1024 x 768 frame takes 16 ms (60 Hz),
+    where the soft renderer takes 160 to 420 ms.
+  - When the whole image is in sight it takes 290 ms (soft: 880 ms). The
+    board is paging textures then, because 67 MB of tiles do not fit in
+    its 32 MB, so the budget there is four times the board's memory.
+  - A 2400 x 1800 image fits on the board and draws in 16 ms at every
+    zoom.
 - `-renderer soft|gl` forces one, as in ttrt; `auto` picks gl when the
-  context is direct and textures are in hardware, else soft.
+  context is direct and the renderer is not a software one (llvmpipe,
+  softpipe, swrast) or a board that textures in software (Newport, XZ,
+  Elan) or from a few megabytes of TRAM (IMPACT).
 
 ## 6. What is reused, and what moves
 
@@ -308,7 +343,7 @@ the viewer, and the start folder (last one, or a fixed one).
 5. **Information.** EXIF in ti, the Information pane and overlay,
    orientation.
 6. **GL.** The texture renderer on Linux and VPro, the shader filters on
-   Linux.
+   Linux. Done 2026-11-19 (section 5.2).
 7. **libraw** on Linux; file operations (rename, delete, copy, move);
    the IRIX tardist and desktop icon.
 

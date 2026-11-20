@@ -1,7 +1,7 @@
 /*
  * ttrv, the To The Roots image viewer (ttrv/DESIGN.md).
  *
- *   ttrv [-fullscreen] [X toolkit options] [folder | image]
+ *   ttrv [-fullscreen] [-renderer auto|gl|soft] [X toolkit options] [folder | image]
  *
  * A folder opens in the browser; an image opens in the viewer (full
  * screen with -fullscreen), its folder behind it. Archives are folders.
@@ -23,8 +23,8 @@
 namespace {
 
 struct Resources {
-    String layout, list_font, ui_scale, ui_theme, image_visual, view_mode;
-    int sort_key, cache_mb, thumb_size;
+    String layout, list_font, ui_scale, ui_theme, image_visual, view_mode, renderer;
+    int sort_key, cache_mb, thumb_size, texture_mb;
     Boolean sort_reverse, show_hidden, fullscreen, auto_rotate;
 };
 
@@ -39,7 +39,8 @@ struct Resources {
     { (String)name, (String)cls, (String)XtRBoolean, sizeof(Boolean), ROFF(f), \
       (String)XtRString, (XtPointer)dflt }
 XrmOptionDescRec k_options[] = {
-    { (char*)"-fullscreen", (char*)".fullScreen", XrmoptionNoArg, (XPointer) "true" }
+    { (char*)"-fullscreen", (char*)".fullScreen", XrmoptionNoArg, (XPointer) "true" },
+    { (char*)"-renderer", (char*)".renderer", XrmoptionSepArg, (XPointer)0 }
 };
 
 XtResource k_resources[] = {
@@ -48,6 +49,8 @@ XtResource k_resources[] = {
     RSTR("uiScale", "UiScale", ui_scale, ""),
     RSTR("uiTheme", "UiTheme", ui_theme, ""),
     RSTR("imageVisual", "ImageVisual", image_visual, "auto"),
+    RSTR("renderer", "Renderer", renderer, "auto"),
+    RINT("textureMegabytes", "TextureMegabytes", texture_mb, "0"),
     RINT("sortKey", "SortKey", sort_key, "0"),
     RSTR("viewMode", "ViewMode", view_mode, "details"),
     RINT("thumbnailSize", "ThumbnailSize", thumb_size, "128"),
@@ -103,7 +106,8 @@ int main(int argc, char** argv)
     Resources res;
     XtGetApplicationResources(top, &res, k_resources, XtNumber(k_resources), 0, 0);
     if (argc > 2 || (argc == 2 && argv[1][0] == '-')) {
-        fprintf(stderr, "usage: ttrv [-fullscreen] [X toolkit options] [folder | image]\n");
+        fprintf(stderr, "usage: ttrv [-fullscreen] [-renderer auto|gl|soft] [X toolkit options] "
+                        "[folder | image]\n");
         return 2;
     }
 
@@ -137,6 +141,7 @@ int main(int argc, char** argv)
     }
 
     ttrv::ImageView::set_visual_choice(res.image_visual);
+    ttrv::ImageView::set_renderer(res.renderer, res.texture_mb);
     ttrv::Options o;
     o.start = start;
     o.layout = res.layout ? res.layout : "";

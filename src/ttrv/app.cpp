@@ -1325,12 +1325,20 @@ void App::command(Command c)
         break;
     case CMD_ABOUT: {
         Widget d = XmCreateInformationDialog(top_, (char*)"about", 0, 0);
-        XmString m = XmStringGenerate((XtPointer) "ttrv, the To The Roots image viewer.\n\n"
-                                                  "Browse with the arrows; Enter opens a folder,\n"
-                                                  "Backspace goes up. Archives are folders.",
-                                      (char*)XmFONTLIST_DEFAULT_TAG, XmCHARSET_TEXT, 0);
-        XtVaSetValues(d, XmNmessageString, m, (char*)0);
+        char about[600];
+        const char* r = viewer_->renderer();
+        snprintf(about, sizeof(about),
+                 "ttrv, the To The Roots image viewer.\n\n"
+                 "Browse with the arrows; Enter opens a folder,\n"
+                 "Backspace goes up. Archives are folders.%s%.300s",
+                 r ? "\n\nThe viewer draws with: " : "", r ? r : "");
+        XmString m = XmStringGenerate((XtPointer)about, (char*)XmFONTLIST_DEFAULT_TAG,
+                                      XmCHARSET_TEXT, 0);
+        XmString title = XmStringGenerate((XtPointer) "About ttrv", (char*)XmFONTLIST_DEFAULT_TAG,
+                                          XmCHARSET_TEXT, 0);
+        XtVaSetValues(d, XmNmessageString, m, XmNdialogTitle, title, (char*)0);
         XmStringFree(m);
+        XmStringFree(title);
         XtUnmanageChild(XtNameToWidget(d, "Cancel"));
         XtUnmanageChild(XtNameToWidget(d, "Help"));
         XtManageChild(d);

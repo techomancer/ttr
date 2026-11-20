@@ -55,6 +55,8 @@ public:
     void reset(int i);
     void close();
     void set_fullscreen(bool on);
+    /* How the viewer draws ("soft", the GL board), 0 before it has. */
+    const char* renderer() const { return view()->renderer(); }
 
     /* The wants, most important first (appended). */
     void wants(ttr::Vector<Want*>* out);
@@ -101,7 +103,6 @@ private:
     int rot_;                   /* quarter turns clockwise */
     bool overlay_;
     unsigned long bg_;
-    ti::Image frame_;           /* rendered (zoomed) */
     const ti::Image* rot_src_;  /* rot_img_ is rot_src_ turned rot_q_ */
     int rot_q_;
     ti::Image rot_img_;

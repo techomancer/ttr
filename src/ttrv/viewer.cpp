@@ -37,7 +37,7 @@ Viewer::Viewer(Widget box, Widget top, ViewerHost* host)
       overlay_(false), bg_(0x000000), rot_src_(0), rot_q_(0), dragging_(false), drag_x_(0),
       drag_y_(0), drag_cx_(0), drag_cy_(0), click_at_(0)
 {
-    win_view_ = new ImageView(box, "viewer", this);
+    win_view_ = new ImageView(box, "viewer", this, true);
     XtVaSetValues(win_view_->widget(), XmNtopAttachment, XmATTACH_FORM, XmNbottomAttachment,
                   XmATTACH_FORM, XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment,
                   XmATTACH_FORM, XmNtraversalOn, True, (char*)0);
@@ -127,7 +127,6 @@ void Viewer::close()
     active_ = false;
     rot_src_ = 0;
     rot_img_.clear();
-    frame_.clear();
     win_view_->show(0);
     host_->viewer_closed(index_);
 }
@@ -143,7 +142,7 @@ void Viewer::make_fullscreen()
                                    HeightOfScreen(scr), XmNmwmDecorations, 0, XmNtitle, "ttrv",
                                    XmNdeleteResponse, XmDO_NOTHING, (char*)0);
     Widget form = XtVaCreateManagedWidget("form", xmFormWidgetClass, fs_shell_, (char*)0);
-    full_view_ = new ImageView(form, "viewer", this);
+    full_view_ = new ImageView(form, "viewer", this, true);
     XtVaSetValues(full_view_->widget(), XmNtopAttachment, XmATTACH_FORM, XmNbottomAttachment,
                   XmATTACH_FORM, XmNleftAttachment, XmATTACH_FORM, XmNrightAttachment,
                   XmATTACH_FORM, XmNtraversalOn, True, (char*)0);
@@ -325,9 +324,14 @@ void Viewer::redraw()
     int rw = 0, rh = 0;
     bool known = dims(&rw, &rh);
     double z = zoom_ > 0 ? zoom_ : fit_zoom();
+    /* The image's name for GL's textures: the file, the decode's size and
+     * the turn. */
+    char key[1200];
     if (zoom_ <= 0 && fit && !fit->image.empty()) {
         /* Fitted: as decoded, turned. */
-        v->show(rotated(&fit->image));
+        snprintf(key, sizeof(key), "%.1100s|%dx%d|%d", fit->path.c_str(), fit->image.w,
+                 fit->image.h, rot_);
+        v->show(rotated(&fit->image), key);
     } else {
         /* Zoomed, or fitted from another size until the fitted one
          * comes: the best source there is, drawn at the zoom. */
@@ -336,13 +340,19 @@ void Viewer::redraw()
             src = fit;
         if (!src || (best && !best->image.empty() && best->image.w > src->image.w))
             src = best && !best->image.empty() ? best : src;
+        /* Zoomed out: the fitted decode has all the pixels shown, and is
+         * smaller to render from (and to keep in textures). */
+        if (known && zoom_ > 0 && fit && !fit->image.empty() &&
+            z <= (double)(rot_ & 1 ? fit->image.h : fit->image.w) / rw * 1.0001)
+            src = fit;
         if (src && known) {
             const ti::Image* im = rotated(&src->image);
             double s = (double)im->w / rw;      /* source pixels per image pixel */
             double cx = zoom_ > 0 ? cx_ : rw / 2.0, cy = zoom_ > 0 ? cy_ : rh / 2.0;
             double x0 = (cx - w / (2 * z)) * s, y0 = (cy - h / (2 * z)) * s;
-            if (render_view(*im, z / s, x0, y0, w, h, bg_, &frame_))
-                v->show(&frame_);
+            snprintf(key, sizeof(key), "%.1100s|%dx%d|%d", src->path.c_str(), src->image.w,
+                     src->image.h, rot_);
+            v->show_at(im, key, z / s, x0, y0);
             if (zoom_ <= 0 ? !fit : (z > s * 1.01 && src != full))
                 note = "Decoding...";
         } else {

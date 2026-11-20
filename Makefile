@@ -908,6 +908,7 @@ TTRV_OBJS = $(B)/ttrv_main.o \
 	$(B)/ttrv_app.o \
 	$(B)/ttrv_filelist.o \
 	$(B)/ttrv_folders.o \
+	$(B)/ttrv_glpaint.o \
 	$(B)/ttrv_imageview.o \
 	$(B)/ttrv_loader.o \
 	$(B)/ttrv_pixels.o \
@@ -918,7 +919,8 @@ TTRV_OBJS = $(B)/ttrv_main.o \
 	$(B)/core_scale.o \
 	$(B)/core_settings.o \
 	$(B)/core_str.o
-TTRV_H = src/ttrv/app.h src/ttrv/filelist.h src/ttrv/folders.h src/ttrv/imageview.h \
+TTRV_H = src/ttrv/app.h src/ttrv/filelist.h src/ttrv/folders.h src/ttrv/glpaint.h \
+	src/ttrv/imageview.h \
 	src/ttrv/loader.h src/ttrv/pixels.h src/ttrv/render.h src/ttrv/thumbs.h src/ttrv/viewer.h \
 	$(TF_H) $(TI_H) $(TW_H) $(TX_H) $(TH_H) \
 	src/core/settings.h src/core/str.h src/core/vector.h
@@ -937,6 +939,8 @@ $(B)/ttrv_filelist.o: $(B)/.dir src/ttrv/filelist.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/filelist.cpp -o $@
 $(B)/ttrv_folders.o: $(B)/.dir src/ttrv/folders.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/folders.cpp -o $@
+$(B)/ttrv_glpaint.o: $(B)/.dir src/ttrv/glpaint.cpp $(TTRV_H)
+	$(COMPILE) $(GL_CPPFLAGS) -c src/ttrv/glpaint.cpp -o $@
 $(B)/ttrv_imageview.o: $(B)/.dir src/ttrv/imageview.cpp $(TTRV_H)
 	$(COMPILE) -c src/ttrv/imageview.cpp -o $@
 $(B)/ttrv_loader.o: $(B)/.dir src/ttrv/loader.cpp $(TTRV_H)
@@ -959,6 +963,19 @@ $(B)/ttrv_test_loader.o: $(B)/.dir src/ttrv/test/test_loader.cpp $(TTRV_H)
 
 ttrv-test: $(B)/ttrv_test_loader
 	$(B)/ttrv_test_loader
+
+# The GL renderer against the soft one, with timings (needs a display with
+# GLX; src/ttrv/test/test_gl.cpp says how to run it).
+$(B)/ttrv_test_gl: $(B)/ttrv_test_gl.o $(B)/ttrv_glpaint.o $(B)/ttrv_render.o $(B)/core_str.o \
+		$(B)/libtw.a $(B)/libti.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $(B)/ttrv_test_gl.o $(B)/ttrv_glpaint.o \
+		$(B)/ttrv_render.o $(B)/core_str.o $(B)/libtw.a $(B)/libti.a $(TI_LIBS) $(TW_LIBS) \
+		-lX11 -lm
+$(B)/ttrv_test_gl.o: $(B)/.dir src/ttrv/test/test_gl.cpp $(TTRV_H)
+	$(COMPILE) -c src/ttrv/test/test_gl.cpp -o $@
+
+ttrv-test-gl: $(B)/ttrv_test_gl
+	$(B)/ttrv_test_gl
 
 # ttrcode, the code editor (ttrcode/DESIGN.md): te + tw + tt in Motif.
 TTRCODE_OBJS = $(B)/ttrcode_main.o \
